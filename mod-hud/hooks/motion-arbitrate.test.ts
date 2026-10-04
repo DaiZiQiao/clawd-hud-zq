@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'claude-code/testing'
 
-import { CROUCHED, FLAT, HEADS, TORSOS } from './mascot-sprites'
+import { CROUCHED, FLAT, HEADS, LEANING, TORSOS, flipped } from './mascot-sprites'
 import { stepField } from './motion-arbitrate'
 import { AIRBORNE, AIR_MARGIN, CONTACT_COOLDOWN_MS, DEPTH_FRAMES, FLY_SKY, GAP, HOP_AIR, HOP_HEIGHT, KNOCKED_TICKS, LEAP_ONE_IN, PROPELLER_ROWS, hopLift, pairKey, roll } from './motion-rules'
 import { gapBetween } from './motion-space'
@@ -306,7 +306,8 @@ describe('wandering', () => {
     const cell = lineRows(lines[index] ?? [], plans[index]!).map(row => row.padEnd(72).slice(one.drawnX, one.drawnX + one.width))
     expect(cell[1]?.slice(2, 10)).toBe(HEADS[one.facing ?? 'right'].slice(0, 8))
     // Its torso upright or leaning a cell the way it goes, a thought beside; no laptop.
-    expect(cell[2]?.replace('·', '').trim()).toBe(TORSOS.rest)
+    // At rest, or leaning half a cell the way it walks.
+    expect([TORSOS.rest, ...Object.values(LEANING)].map(row => row.trim())).toContain(cell[2]?.replace('·', '').trim())
     expect(cell.join('')).not.toMatch(/▗▄▄▄▖|▐▒▒▒▌/)
     expect(cell[3]?.trim()).toMatch(/^[▘▝]{2} [▘▝]{2}$/)
   })
@@ -417,7 +418,7 @@ describe('collisions', () => {
     for (const id of ['main', 'w1', 'w2', 'w3']) expect(new Set(plans.map(plan => plan.placements.find(one => one.id === id)).map(one => `${one?.drawnX},${one?.d}`)).size, id).toBeGreaterThan(1)
   })
 
-  test('in a plan: both knocked flat on their backs, legs in the air, then dizzy with spiral eyes under three blinking stars; a crouch, then up, a working one setting its laptop down again', () => {
+  test('in a plan: both knocked flat on their backs, legs in the air, then dizzy, eyes crossing and rolling apart under three blinking stars; a crouch, then up, a working one setting its laptop down again', () => {
     const scene: MascotScene = { main: { mood: 'idle', sweating: false }, agents: [working('a', 'typing'), working('b', 'thinking')] }
     const layout = (tick: number) => room(72, 8, tick, { wander: true, collisions: 'normal' })
     const base = mascotPlan(scene, layout(T0))!
@@ -434,11 +435,11 @@ describe('collisions', () => {
     // Frame k is step k + 1 of its fall.
     const cellAt = (frame: number) => (frames[frame] ?? []).map(row => row.padEnd(72).slice(a.drawnX, a.drawnX + a.width))
     // Flat on its back, legs in the air, its head on the floor, eyes shut.
-    expect(cellAt(0).slice(1).map(row => row.slice(2, 11))).toEqual([FLAT.legs, FLAT.body, HEADS.shut])
+    expect(cellAt(0).slice(1).map(row => row.slice(2, 11))).toEqual([FLAT.legs, FLAT.body, flipped(HEADS.shut)])
     expect(cellAt(0)[0]?.trim()).toBe('')
-    // Dizzy: spiral eyes spinning a frame at a time; three stars over it, one hidden in turn.
-    expect(cellAt(1).slice(1).map(row => row.slice(2, 11))).toEqual([FLAT.legs, FLAT.body, HEADS.spiral])
-    expect(cellAt(2)[3]?.slice(2, 11)).toBe(HEADS.spin)
+    // Dizzy: its head upside down, the eyes crossing and rolling apart a frame at a time; three stars over it, one hidden in turn.
+    expect(cellAt(1).slice(1).map(row => row.slice(2, 11))).toEqual([FLAT.legs, FLAT.body, flipped(HEADS.spiral)])
+    expect(cellAt(2)[3]?.slice(2, 11)).toBe(flipped(HEADS.spin))
     expect([1, 2, 3].map(frame => [3, 6, 9].map(x => cellAt(frame)[0]?.[x]).join(''))).toEqual([' ✦✦', '✧ ✦', '✧✧ '])
     // Crouched, hands on the floor, its eyes back, then up at its laptop again.
     expect(cellAt(KNOCKED_TICKS - 3)[3]?.startsWith(`  ${CROUCHED}`)).toBe(true)

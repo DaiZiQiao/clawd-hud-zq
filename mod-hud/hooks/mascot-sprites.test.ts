@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'claude-code/testing'
 
 import { spriteSheet } from './mascot-sheet'
-import { BOX, FRAME_TABLES, HEADS, LEGS, MINI_OVERLAYS, OVERLAYS, SLOT, THOUGHTS, THOUGHT_FRAMES, TORSOS, thoughtBubble } from './mascot-sprites'
+import { BOX, FRAME_TABLES, HEADS, LEGS, MINI_HEADS, MINI_LEGS, MINI_OVERLAYS, OVERLAYS, SLOT, THOUGHTS, THOUGHT_FRAMES, TORSOS, flipped, thoughtBubble } from './mascot-sprites'
 import { displayWidth } from './text-width'
 
 // The frame tables, as text: every frame of a table one size, every glyph one cell, every overlay's ink known.
@@ -37,10 +37,19 @@ describe('frame tables', () => {
     }
   })
 
-  test('the figure is the welcome-screen figure, eyes open; shut eyes are slits, dizzy ones spirals', () => {
+  test('the figure is the welcome-screen figure, eyes open; every look keeps the head whole, the eyes only notches in its lower half', () => {
     expect([HEADS.open, TORSOS.rest, LEGS.stand].map(row => row.trimEnd())).toEqual([' ▐▛███▜▌', '▝▜█████▛▘', '  ▘▘ ▝▝'])
-    expect(HEADS.shut).toBe(' ▐▬███▬▌ ')
-    expect([HEADS.spiral, HEADS.spin]).toEqual([' ▐@███@▌ ', ' ▐ø███ø▌ '])
+    for (const [name, head] of Object.entries(HEADS)) {
+      expect([head[0], head[1], head[7], head[8]], name).toEqual([' ', '▐', '▌', ' '])
+      // The top half of every cell between the sides filled: the outline whole, whatever the eyes do.
+      for (const glyph of head.slice(2, 7)) expect('█▛▜▀', `${name}: ${glyph}`).toContain(glyph)
+    }
+    // Shut eyes are none; dizzy ones cross, then roll apart; flat on its back the head turns over, eyes against the body.
+    expect(HEADS.shut).toBe(' ▐█████▌ ')
+    expect([HEADS.spiral, HEADS.spin]).toEqual([' ▐█▜█▛█▌ ', ' ▐▜███▛▌ '])
+    expect(flipped(HEADS.open)).toBe(' ▐▙███▟▌ ')
+    // The mini is Clawd at half size: a head with its eyes over a body with arms and two legs.
+    expect([MINI_HEADS.open, MINI_LEGS.stand]).toEqual([' ▛█▜ ', '▝▜▀▛▘'])
   })
 
   test('the sprite sheet: frames of a look all one size, 13 cells across (17 with a laptop or a big thought, 5 a mini), 4 to 8 rows', () => {

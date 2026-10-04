@@ -131,7 +131,7 @@ export const spriteSheet = (): SheetEntry[] => {
     framesOf('agent · walking left', motions([{ kind: 'walk' }, { kind: 'walk' }, { kind: 'walk' }, { kind: 'walk' }], {}, 'left')),
     framesOf('agent · hop (6 frames, lifts 0 2 4 4 2 0: squash, stretch, apex, apex, air, squash)', motions([hop(0, 0, 'squash'), hop(1, 2, 'stretch'), hop(2, 4, 'apex'), hop(3, 4, 'apex'), hop(4, 2, 'air'), hop(5, 0, 'squash')])),
     framesOf('agent · flying under the propeller cap (climb two rows a second, cruise, come down, land with a bounce)', motions([fly(0, 1), fly(1, 1), fly(2, 2), fly(3, 2), fly(4, 3), fly(5, 3), fly(6, 2), fly(7, 1), { kind: 'land' }])),
-    framesOf('agent · knocked over (a stagger, flat on its back with its hat knocked off, dizzy ×8: spiral eyes and three blinking stars; a crouch, up at its laptop)',
+    framesOf('agent · knocked over (a stagger, flat on its back with its hat knocked off, dizzy ×8: eyes crossing and rolling apart under three blinking stars; a crouch, up at its laptop)',
       ticks(12).map(step => full(agent('typing'), { kind: 'work' }, step, { motion: { kind: 'fallen', step } }))),
     framesOf('main · knocked over (the crown knocked off beside it, back on as it gets up)', [1, 2, 3, 10, 11].map(step => session({ mood: 'watching' }, step, { motion: { kind: 'fallen', step } }))),
     framesOf('agent · arriving by the pipe: it drops out of the mouth (eyes wide, arms up, legs tucked), falling ever faster to its floor; then it turns to its desk', [

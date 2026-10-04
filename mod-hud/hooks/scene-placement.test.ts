@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'claude-code/testing'
 
 import { SHADOW_IDLE_MS, shadowCallEnded, shadowCallStarted, shadowsPruned, shownShadows } from './agent-shadows'
-import { HEADS } from './mascot-sprites'
+import { HEADS, MINI_HEADS, MINI_LEGS } from './mascot-sprites'
 import { sceneCanvas } from './scene-canvas'
 import { NOW, busy, entry, oneAgent, working } from './scene-model.fixtures'
 import { LINK_WINDOW_MS, SCENE_FRAME_MS } from './scene-phases'
@@ -47,8 +47,8 @@ describe('props and paint regressions', () => {
     expect(mini.kind).toBe('mini')
     const text = mini.cells.map(row => row.map(cell => cell?.ch ?? ' ').join('')).join('\n')
     expect(text).not.toContain('▐▒▒▒▌')
-    expect(text).toContain('▐█▜▛▌')
-    expect(text).toContain('▝▘ ▝▘')
+    expect(text).toContain(MINI_HEADS.right)
+    expect(text).toContain(MINI_LEGS.stand)
   })
 
   test('held targets and senders suppress stamps, sparks and message bubbles', () => {

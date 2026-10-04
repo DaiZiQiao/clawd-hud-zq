@@ -3,7 +3,7 @@ import { describe, expect, test } from 'claude-code/testing'
 import { boxed, drawnAlone, figureIn, rowsOf, spriteOf, windowOf } from './mascot-glyphs.fixtures'
 import { spriteSheet } from './mascot-sheet'
 import type { SheetEntry } from './mascot-sheet'
-import { ACCESSORIES, BLANKET, CROUCHED, HEADS, LEGS, OVERLAYS, SLOT, SQUASHED, THOUGHTS, TORSOS, WALK_LEGS, thoughtBubble } from './mascot-sprites'
+import { ACCESSORIES, BLANKET, CROUCHED, CROWN, HAT_X, HEADS, LEANING, LEGS, OVERLAYS, SLOT, SQUASHED, THOUGHTS, TORSOS, WALK_LEGS, flipped, thoughtBubble } from './mascot-sprites'
 import { sceneOf } from './scene-model'
 import { DONE_HOLD, NOW, entry, family, idleHud, oneAgent, working } from './scene-model.fixtures'
 import { BLANKET_AFTER_MS, CHEER_TICKS, IDLE_SLOT_MS, LONG_IDLE_MS, SCENE_FRAME_MS, idleBitOf } from './scene-phases'
@@ -120,7 +120,8 @@ describe('looks', () => {
       expect(rows[3]?.slice(2, 12), `@${tick}`).toBe(`${BLANKET.hem}${glyph}`)
       expect(rows.join('\n'), `@${tick}`).toMatch(/z/)
     }
-    expect(drawnAlone(oneAgent(working('a', 'asking')), 'a').map(row => row.trimEnd())).toEqual(['           ?', `  ${HEADS.open}▌`, `  ${TORSOS.raised}`.trimEnd(), `  ${LEGS.stand}`.trimEnd()])
+    // Asking, the right hand up beside the head, on from its shoulder.
+    expect(drawnAlone(oneAgent(working('a', 'asking')), 'a').map(row => row.trimEnd())).toEqual(['           ?', `  ${HEADS.open.trimEnd()}▌`, `  ${TORSOS.raised}`.trimEnd(), `  ${LEGS.stand}`.trimEnd()])
   })
 
   test('idle bits: the first slot looks around, each later slot a new bit by a hash of id and slot; from 90 s the blanket', () => {
@@ -149,15 +150,16 @@ describe('looks', () => {
   test('idle frames: look around, stretch (once, then rest), sit (a blink), a puff of smoke, the blanket and its z z Z, the moon', () => {
     const frames = (prefix: string) => sheetOf(prefix).frames
     const heads = (prefix: string) => frames(prefix).map(frame => HEADS_BY_INNER.get(windowOf(frame, figureIn(frame)!.head, figureIn(frame)!.x).slice(1, 8)))
-    expect(heads('idle · look around')).toEqual(['left', 'left', 'open', 'open', 'right', 'right', 'up', 'open'])
+    // Eyes up look as open eyes do: the head's top is its outline.
+    expect(heads('idle · look around')).toEqual(['left', 'left', 'open', 'open', 'right', 'right', 'open', 'open'])
     expect(heads('idle · stretch')).toEqual(['shut', 'shut', 'shut', 'shut', 'shut', 'shut', 'open', 'open'])
-    expect(frames('idle · stretch').slice(0, 4).every(frame => frame.join('').includes('▚') && frame.join('').includes('▞'))).toBe(true)
+    expect(frames('idle · stretch').slice(0, 4).every(frame => armsUp(frame))).toBe(true)
     expect(heads('idle · sit').map((head, index) => [index, head]).filter(([, head]) => head === 'shut').map(([index]) => index)).toEqual([12, 13])
     expect(frames('idle · sit').every(frame => figureIn(frame)!.head + 1 === frame.length - 1 && frame[figureIn(frame)!.head + 1]?.includes(TORSOS.low))).toBe(true)
     expect(frames('idle · a puff').map(frame => frame.join('').replace(/[^╼·∘○]/g, ''))).toEqual(['·╼', '∘╼', '○╼', '╼'])
     const blanket = frames('idle · asleep under the blanket')
     expect(blanket.map(frame => frame.join('').replace(/[^zZ]/g, ''))).toEqual(['z', 'z', 'zz', 'zz', 'Zzz', 'Zzz', 'Zzz', 'Zzz'])
-    expect(blanket.map(frame => frame.find(row => row.includes('▗▞▚▞▚▞▚▞▖')) === undefined ? 'b' : 'a')).toEqual(['a', 'a', 'a', 'a', 'b', 'b', 'b', 'b'])
+    expect(blanket.map(frame => frame.find(row => row.includes(BLANKET.quilt[0])) === undefined ? 'b' : 'a')).toEqual(['a', 'a', 'a', 'a', 'b', 'b', 'b', 'b'])
     expect(blanket.every(frame => frame.some(row => row.includes(BLANKET.hem.trim())))).toBe(true)
     expect(frames('idle · asleep, idle 10 minutes').every(frame => frame.join('').includes('☾'))).toBe(true)
     expect(blanket.every(frame => !frame.join('').includes('☾'))).toBe(true)
@@ -165,8 +167,8 @@ describe('looks', () => {
 
   test('an agent idle 90 s and still listed sleeps under its blanket; one idle less does its bits; neither wanders', () => {
     const at = (quiet: number) => sceneOf([entry('a', { lastActivityAt: NOW - quiet })], idleHud, NOW)
-    expect(mascotLines(at(91_000), layout(40, 4))?.join('\n')).toContain('▞▚')
-    expect(mascotLines(at(30_000), layout(40, 4))?.join('\n')).not.toContain('▞▚')
+    expect(mascotLines(at(91_000), layout(40, 4))?.join('\n')).toContain(BLANKET.hem)
+    expect(mascotLines(at(30_000), layout(40, 4))?.join('\n')).not.toContain(BLANKET.hem)
     for (const quiet of [30_000, 91_000]) {
       const scene = at(quiet)
       const xs = new Set<number>()
@@ -182,14 +184,14 @@ describe('looks', () => {
   test('the session mascot: idle bits, then its blanket and the moon; thinks; watches; sweats; stretches after a compaction', () => {
     const draw = (main: MascotScene['main'], tick = 4) => rowsOf(spriteOf({ main, agents: [] }, 'main', tick, 5, 20))
     expect(draw({ mood: 'idle', sweating: false, idleMs: 0 }, 0)[2]).toBe(`  ${HEADS.left}`.trimEnd())
-    expect(draw({ mood: 'idle', sweating: false, idleMs: BLANKET_AFTER_MS }).slice(2).join('\n')).toContain('▗▚▞▚▞▚▞▚▖')
+    expect(draw({ mood: 'idle', sweating: false, idleMs: BLANKET_AFTER_MS }).slice(2).join('\n')).toContain(BLANKET.quilt[1])
     expect(draw({ mood: 'idle', sweating: false, idleMs: LONG_IDLE_MS })[1]?.startsWith('☾')).toBe(true)
     const thought = draw({ mood: 'thinking', sweating: false })
     expect(THOUGHTS).toContain(thought[0]!.trim().slice(1, -1))
-    expect(thought.slice(1, 3)).toEqual(['     ▴♛▴    ∘', `  ${HEADS.up}·`])
+    expect(thought.slice(1, 3)).toEqual([`     ${CROWN.art}    ∘`, `  ${HEADS.up}·`])
     expect(draw({ mood: 'watching', sweating: false })[2]).toBe(`  ${HEADS.right}`.trimEnd())
     expect(draw({ mood: 'watching', sweating: true }, 0)[2]?.[1]).toBe("'")
-    expect(draw({ mood: 'idle', sweating: false, stretchMs: 0 }).slice(1, 4)).toEqual([' ▚   ▴♛▴   ▞', `  ▚${HEADS.shut.slice(1, 8)}▞`, `  ${TORSOS.up}`.trimEnd()])
+    expect(draw({ mood: 'idle', sweating: false, stretchMs: 0 }).slice(1, 4)).toEqual([`     ${CROWN.art}`, `  ▐${HEADS.shut.slice(1, 8)}▌`, `  ${TORSOS.up}`.trimEnd()])
   })
 
   test('a parent points at the child beside it, which stands smaller', () => {
@@ -222,10 +224,20 @@ describe('looks', () => {
   })
 })
 
-const HEADS_BY_INNER = new Map(Object.entries(HEADS).map(([name, row]) => [row.slice(1, 8), name]))
+// A head row's name: the first that draws it (eyes up draw as open), upside down too (flat on its back).
+const HEADS_BY_INNER = new Map<string, string>()
+for (const [name, row] of Object.entries(HEADS)) for (const one of [row, flipped(row)]) if (!HEADS_BY_INNER.has(one.slice(1, 8))) HEADS_BY_INNER.set(one.slice(1, 8), name)
+
+/** Both arms up: a stub on from each shoulder beside the head. */
+const armsUp = (frame: readonly string[]): boolean => {
+  const at = figureIn(frame)
+  const row = [...(frame[at?.head ?? -1] ?? '')]
+
+  return at !== undefined && row[at.x] === '▐' && row[at.x + 8] === '▌'
+}
 
 describe('motion frames', () => {
-  test('the walk: four frames, the feet passing; on 1 and 3 a bob a row up and the torso a cell the way it goes; eyes that way', () => {
+  test('the walk: four frames, the feet passing; on 1 and 3 a bob a row up and the torso half a cell the way it goes; eyes that way', () => {
     for (const [prefix, facing, lean] of [['agent · walking right', 'right', 1], ['agent · walking left', 'left', -1]] as const) {
       const frames = sheetOf(prefix).frames
       expect(frames).toHaveLength(4)
@@ -234,7 +246,7 @@ describe('motion frames', () => {
       found.forEach((at, index) => {
         const lifted = index % 2 === 1
         expect(at.head, `${prefix} #${index}`).toBe(lifted ? ground - 1 : ground)
-        expect(at.rows[0]!.x - at.x, `${prefix} #${index}: lean`).toBe(lifted ? lean : 0)
+        expect(windowOf(frames[index]!, at.rows[0]!.row, at.rows[0]!.x), `${prefix} #${index}: lean`).toBe(lifted ? LEANING[lean === 1 ? 'right' : 'left'] : TORSOS.rest)
         expect(windowOf(frames[index]!, at.rows[1]!.row, at.x), `${prefix} #${index}: legs`).toBe(LEGS[WALK_LEGS[index]!])
         expect(HEADS_BY_INNER.get(windowOf(frames[index]!, at.head, at.x).slice(1, 8))).toBe(facing)
       })
@@ -268,16 +280,18 @@ describe('motion frames', () => {
     frames.slice(0, 8).forEach((frame, index) => {
       const at = figureIn(frame)!
       const air = windowOf(frame, at.head - 1, at.x)
-      expect(air.slice(0, 3), `#${index}`).toBe('▄▄▄')
+      // The cap on the head's corner, as the hat it stands for.
+      const cap = HAT_X.left - 2
+      expect(air.slice(cap, cap + 3), `#${index}`).toBe('▄▄▄')
       expect(air[4], `#${index}`).toBe('w')
-      expect(windowOf(frame, at.head - 2, at.x)[1], `#${index}`).toBe(index % 2 === 0 ? '+' : 'x')
-      expect(cells[index]![at.head - 2]![at.x + 1]?.colour).toBe(ACCESSORIES.beanie.colour)
+      expect(windowOf(frame, at.head - 2, at.x)[cap + 1], `#${index}`).toBe(index % 2 === 0 ? '+' : 'x')
+      expect(cells[index]![at.head - 2]![at.x + cap + 1]?.colour).toBe(ACCESSORIES.beanie.colour)
       expect(windowOf(frame, at.rows[1]!.row, at.x)).toBe(LEGS.tuck)
     })
     for (const { frames: all } of spriteSheet()) for (const frame of all) expect(frame.join('')).not.toMatch(/[˂˃⌃]/)
   })
 
-  test('knocked over: a stagger, flat on its back; dizzy eight frames, spiral eyes spinning every frame under three stars blinking in turn; a crouch with its eyes back; up', () => {
+  test('knocked over: a stagger, flat on its back; dizzy eight frames, its eyes crossing and rolling apart every frame under three stars blinking in turn; a crouch with its eyes back; up', () => {
     const { frames, cells } = sheetOf('agent · knocked over')
     expect(frames).toHaveLength(12)
     const at = frames.map(frame => figureIn(frame)!)
@@ -317,17 +331,17 @@ describe('motion frames', () => {
       if (lifted) {
         expect(one.x, `#${index}`).toBe(2)
         expect(windowOf(frame, one.head + 1, one.x)).toBe(TORSOS.up)
-        expect(frame[one.head]?.[one.x] === '▚' && frame[one.head]?.[one.x + 8] === '▞', `#${index}: arms up`).toBe(true)
+        expect(armsUp(frame), `#${index}: arms up`).toBe(true)
       } else {
         const left = index % 4 === 0
         expect(one.x, `#${index}`).toBe(left ? 1 : 3)
         expect(windowOf(frame, one.head + 2, one.x)).toBe(left ? LEGS.shuffleLeft : LEGS.shuffleRight)
       }
     })
-    // The pipe coming down: eyes up at it, still under its ✓; then sucked up it, stretched: arms up, legs long, nothing beside it.
+    // The pipe coming down: eyes up at it (as open eyes), still under its ✓; then sucked up it, stretched: arms up, legs long, nothing beside it.
     const lowered = frames[CHEER_TICKS]!
     expect(lowered.join('')).toContain('✓')
-    expect(HEADS_BY_INNER.get(windowOf(lowered, figureIn(lowered)!.head, figureIn(lowered)!.x).slice(1, 8))).toBe('up')
+    expect(HEADS_BY_INNER.get(windowOf(lowered, figureIn(lowered)!.head, figureIn(lowered)!.x).slice(1, 8))).toBe('open')
     for (const frame of frames.slice(CHEER_TICKS + 1)) {
       const at = figureIn(frame)!
       expect(windowOf(frame, at.rows[1]!.row, at.x)).toBe(LEGS.stretch)

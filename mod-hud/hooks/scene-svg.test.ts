@@ -2,11 +2,11 @@ import type { RenderElement, SvgProps } from 'claude-code'
 import { describe, expect, test } from 'claude-code/testing'
 
 import type { HudSelection } from '../types'
-import { HEADS } from './mascot-sprites'
+import { CROWN, HAT_X, HEADS } from './mascot-sprites'
 import { draw } from './scene-client'
 import type { SceneElements } from './scene-client'
 import { arrange, headAt, mount, rowsOf } from './scene-client.fixtures'
-import { PALETTE, colourFor, sceneFromInputs } from './scene-model'
+import { PALETTE, colourFor, sceneFromInputs, sideOf } from './scene-model'
 import { NOW, entry } from './scene-model.fixtures'
 import { SVG_MAX, layerSvg, sceneAlt, sceneSvg } from './scene-svg'
 import { svgCells, svgRects, svgRows } from './scene-svg.fixtures'
@@ -137,9 +137,11 @@ describe('the desktop draws it in pixels', () => {
     const agent = world.cur!.placements.find(one => one.id === 'a')!
     expect(cells[row]?.[4]).toEqual({ ch: '█', fill: SCENE_THEMES.dark.claude, theme: 'a' })
     expect(cells[row]?.[agent.drawnX + 4]).toEqual({ ch: '█', fill: colourFor('a') })
-    expect(cells[row - 1]?.[6]).toEqual({ ch: '♛', fill: '#A6801F' })
-    // In the sprite's own cells (its sky row, then its air row), centred: half a cell in, its baseline 12 pixels down.
-    expect(source).toContain(`<text x='52' y='28'>♛</text>`)
+    // The crown is block glyphs too: its quarters as rects, in its gold.
+    expect([5, 6, 7].map(x => cells[row - 1]?.[x])).toEqual([...CROWN.art].map(ch => ({ ch, fill: CROWN.colour })))
+    // Any other glyph (the agent's halo) is text in the sprite's own cells (its sky row, then its air row), centred: half a cell in, its baseline 12 pixels down.
+    const halo = HAT_X[sideOf('a')] + 1
+    expect(source).toContain(`<text x='${halo * CELL_WIDTH + CELL_WIDTH / 2}' y='28'>◠</text>`)
   })
 
   test('each block glyph is the quarters of its cell; a shade at half strength, a bar across the middle, any other glyph text centred in its cell', () => {
@@ -300,27 +302,28 @@ describe('the desktop draws it in pixels', () => {
     const hex = async (text: string): Promise<string> =>
       [...new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text)))].map(byte => byte.toString(16).padStart(2, '0')).join('')
     // Recorded from the field: the agents at depths of their own, the session front-left; the near hand off the keys at 350 ms.
+    // Re-recorded for Clawd's redrawn kit: the crown in blocks, each hat on its head's corner.
     const expected = [
-      [0, '502c168547ad1c9f0350a75f5b79224b6ffd3dd4cbc4becdee15c690164acfe6'],
-      [350, '7ea0dd3e23632fb3bb645667365f243025d3fdc13baaa0aed49926c29d790808'],
-      [1850, '502c168547ad1c9f0350a75f5b79224b6ffd3dd4cbc4becdee15c690164acfe6'],
+      [0, '67c75fa2b6c74a0cf3f120f28c8eb65c132589eb9da71c7b0fc06edee78e52cc'],
+      [350, 'd4f0174f5e5b51eb4cbc835bf11a261bb42d94d36a6087d3205172ad7d85fcb4'],
+      [1850, '67c75fa2b6c74a0cf3f120f28c8eb65c132589eb9da71c7b0fc06edee78e52cc'],
     ] as const
     for (const [ms, hash] of expected) {
       if (ms > 0) await ui.advance(ms)
       expect(await hex(JSON.stringify(await ui.drawn({ in: 'mascots' }))), `${ms} ms`).toBe(hash)
     }
     expect((await rowsOf(ui)).slice(-14)).toEqual([
-      '                        ◜◠◝',
+      '                       ◜◠◝',
       '                   ▐█▜██▛▌  ▗▄▄▄▖',
       '                  ▝▜█████▛▀▖▐▒▒▒▌',
       '                    ▘▘ ▝▝  ▀▀▀▀▀▀',
-      '                            ♫  r  ✦✦',
+      '                             ♫ r  ✦✦',
       '                            ▐█▜██▛▌  ▗▄▄▄▖',
       '                           ▝▜█████▛▀▖▐▒▒▒▌',
       '                             ▘▘ ▝▝  ▀▀▀▀▀▀',
       ' ',
       ' ',
-      '     ▴♛▴',
+      '     ▙█▟',
       '   ▐█▜██▛▌',
       '  ▝▜█████▛▘',
       '    ▘▘ ▝▝',

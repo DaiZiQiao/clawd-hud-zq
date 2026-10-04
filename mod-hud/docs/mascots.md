@@ -141,10 +141,10 @@ stand in the back row as minis, packed from its left. Eight agents at 72 by
 8 (a field one row deep, so its one row is the back row):
 
 ```
-     ▴♛▴ ✦✦
+     ▙█▟ ✦✦
    ▐█▜██▛▌          ▗▖·   ⋈ ·   ◠ ·   ▄▖·   ✣ ·   ▗█·   ♫ ·   ✿ ·
-  ▝▜█████▛▘       ▐▛█▜▌ ▐▛█▜▌ ▐▛█▜▌ ▐▛█▜▌ ▐▛█▜▌ ▐▛█▜▌ ▐▛█▜▌ ▐▛█▜▌
-    ▘▘ ▝▝         ▝▘ ▝▘ ▝▘ ▝▘ ▝▘ ▝▘ ▝▘ ▝▘ ▝▘ ▝▘ ▝▘ ▝▘ ▝▘ ▝▘ ▝▘ ▝▘
+  ▝▜█████▛▘        ▛█▜   ▛█▜   ▛█▜   ▛█▜   ▛█▜   ▛█▜   ▛█▜   ▛█▜
+    ▘▘ ▝▝         ▝▜▀▛▘ ▝▜▀▛▘ ▝▜▀▛▘ ▝▜▀▛▘ ▝▜▀▛▘ ▝▜▀▛▘ ▝▜▀▛▘ ▝▜▀▛▘
 ```
 
 When even that cannot hold everyone, the oldest agents (whole families)
@@ -156,10 +156,10 @@ before another agent folds. Twelve agents at 40 by 4: nine fold into the
 count, three stand as minis:
 
 ```
-     ▴♛▴ ✦✦
+     ▙█▟ ✦✦
    ▐█▜██▛▌               ♫ ·   ✣ ·   ▗█·
-  ▝▜█████▛▘       ● ×9 ▐▛█▜▌ ▐▛█▜▌ ▐▛█▜▌
-    ▘▘ ▝▝              ▝▘ ▝▘ ▝▘ ▝▘ ▝▘ ▝▘
+  ▝▜█████▛▘       ● ×9  ▛█▜   ▛█▜   ▛█▜
+    ▘▘ ▝▝              ▝▜▀▛▘ ▝▜▀▛▘ ▝▜▀▛▘
 ```
 
 A count-only strip fits beside the session at 20 columns for a one-digit
@@ -172,26 +172,22 @@ reading, a Plan agent thinking (its phrase bubble growing), an Explore agent and
 debugger at their laptops, each at a depth of its own, nearer ones lower:
 
 ```
-
-
-
-
-                                                        p ▗▄▖ ∘
-                   ♫  d                              ▐▙███▟▌ ·
-                   ▐█▜██▛▌  ▗▄▄▄▖                   ▝▜█████▛▘
-                  ▝▜█████▛▀▖▐▒▒▒▌                     ▘▘ ▝▝
-                    ▘▘ ▝▝  ▀▀▀▀▀▀          w ◜◠◝
-                   ✿  e                 ▐█▜██▛▌  ▗▄▄▄▖
-                   ▐█▜██▛▌  ▗▄▄▄▖      ▝▜█████▛▀▖▐▒▒▒▌
-                  ▝▜█████▛▀▖▐▒▒▒▌        ▘▘ ▝▝  ▀▀▀▀▀▀
-                    ▘▘ ▝▝  ▀▀▀▀▀▀
-                                  ▄▄▖ r  ✦✦
-                                   ▐█▜██▛▌  ▗▄▄▄▖
-                                  ▝▜█████▛▀▖▐▒▒▒▌
-     ▴♛▴ ✦✦                         ▘▘ ▝▝  ▀▀▀▀▀▀
-   ▐█▜██▛▌
-  ▝▜█████▛▘
-    ▘▘ ▝▝
+              ▄▄▖r  ✦✦
+              ▐█▜██▛▌  ▗▄▄▄▖       e◜◠◝
+             ▝▜█████▛▀▖▐▒▒▒▌    ▐█▜██▛▌  ▗▄▄▄▖
+               ▘▘ ▝▝  ▀▀▀▀▀▀   ▝▜█████▛▀▖▐▒▒▒▌
+                                 ▘▘ ▝▝  ▀▀▀▀▀▀
+                             w ✣
+                          ▐█▜██▛▌  ▗▄▄▄▖
+                         ▝▜█████▛▀▖▐▒▒▒▌
+                           ▘▘ ▝▝  ▀▀▀▀▀▀
+                                                      ♫ p
+                                                     ▐▛███▜▌ ·
+                                                    ▝▜█████▛▘
+     ▙█▟ ✦✦               d▗█▖                        ▘▘ ▝▝
+   ▐█▜██▛▌             ▐█▜██▛▌  ▗▄▄▄▖
+  ▝▜█████▛▘           ▝▜█████▛▀▖▐▒▒▒▌
+    ▘▘ ▝▝               ▘▘ ▝▝  ▀▀▀▀▀▀
 ```
 
 ## Colour
@@ -230,7 +226,7 @@ or more on both surfaces (`KIT_COLOURS`, tested):
 
 | What | Raw colour | Dracula | Light |
 | --- | --- | ---: | ---: |
-| the session's crown `▴♛▴` (gold) | `#A6801F` | 3.88:1 | 3.24:1 |
+| the session's crown `▙█▟` (gold) | `#A6801F` | 3.88:1 | 3.24:1 |
 | beanie `▗▄▖` | `#D05454` | 3.44:1 | 3.66:1 |
 | cap `▄▄▖` | `#38905A` | 3.60:1 | 3.50:1 |
 | top hat `▗█▖` | `#9B5CB8` | 3.13:1 | 4.02:1 |
@@ -303,8 +299,8 @@ row is free:
                         1
               01234567890123456
   sky    -1              (hmm)
-  air     0     ▗▄▖ w     ∘
-  head    1      ▐▙███▟▌ ·
+  air     0      ▗▄▖w     ∘
+  head    1      ▐▛███▜▌ ·
   torso   2     ▝▜█████▛▘
   legs    3       ▘▘ ▝▝
 ```
@@ -313,15 +309,18 @@ Rules that keep it the figure in every frame (tested over every frame of the
 sheet):
 
 - **The figure is drawn only from the body tables**, in the mascot's colour:
-  no foreign cell on its head, torso or legs. Its eyes are notches (open,
-  glancing left, right or up), or glyphs of the head in its colour: shut
-  eyes are thin slits `▬`, dizzy ones spirals `@` and `ø`, spinning a frame
-  at a time. The figure only changes shape whole: squashed a row shorter on
+  no foreign cell on its head, torso or legs. As Claude Code draws Clawd,
+  its eyes are notches in the lower half of its head, and no look breaks the
+  head's outline: they glance left or right (looking up, they stay as when
+  open), widen to square notches (held, thrown, scanning the floor), cross
+  and then roll apart a frame at a time when dizzy, and close to none at all
+  (a blink, asleep, a stretch). Flat on its back its head is drawn upside
+  down, its eyes against its body. The figure only changes shape whole: squashed a row shorter on
   a hop's take-off and landing, sitting a row lower, flat on its back,
   crouched to get up, wrapped in its blanket asleep.
-- **The air row** holds the session's crown `▴♛▴` centred, or an agent's role
-  letter centred (foreground) with its accessory at the left or right end
-  (columns 2 to 4, or 8 to 10, by a hash of its id); its energy takes the
+- **The air row** holds the session's crown `▙█▟` centred, or an agent's role
+  letter centred (foreground) with its accessory on the head's left or right
+  corner (columns 3 to 5, or 7 to 9, by a hash of its id); its energy takes the
   other end's outer cells. Nothing else is ever on it. It rides with the head:
   a row lower while sitting, crouched or squashed.
 - **The sides** take at most one item at a time: on the right (columns 11
@@ -406,7 +405,7 @@ crown. The inspect view's title row names the effort as text
 
 ### The crown
 
-The session's mascot always wears a crown, `▴♛▴`, in a fixed gold
+The session's mascot always wears a crown, `▙█▟` (three points on a band, in blocks like its body), in a fixed gold
 (`#A6801F`) that reads on dark and light alike, centred over its head in every
 look: idle, asleep, thinking, watching, stretching, wandering, handing over,
 nodding. In flight it wears the propeller cap in its place; knocked flat, the
@@ -427,10 +426,10 @@ around; each later slot takes a bit by a hash of its id and the slot
 | Bit | Frames | What |
 | --- | --- | --- |
 | look around | 8, looped | eyes left, ahead, right, up |
-| stretch | 8, once, then at rest | arms up in a V, eyes shut; arms down; at rest |
+| stretch | 8, once, then at rest | arms up beside its head, eyes shut; arms down; at rest |
 | sit | 16, looped | sitting a row lower, a blink on frames 12 and 13 |
 | puff | 4 puffs of 500 ms | eyes shut, a cigarette `╼` in its hand, its smoke `·` `∘` `○` rising |
-| blanket | from 90 s, 8 looped | asleep under its quilt `▞▚` and hem, the quilt breathing every four frames; `z`, `z z`, `z z Z` rising beside its head, held |
+| blanket | from 90 s, 8 looped | asleep under its quilt and hem, the quilt rising a little with each breath, every four frames; `z`, `z z`, `z z Z` rising beside its head, held |
 
 The moon `☾` joins after ten minutes. Idle mascots never wander, so the
 blanket never walks; an errand or a flight in progress still moves one, out
@@ -466,7 +465,7 @@ without the pipe: "The pipe" shows them in the scene.
 ### the figure: an agent (worker w, beanie) and the session (crown)
 
 ```
-  ▗▄▖ w              ▴♛▴
+   ▗▄▖w              ▙█▟
    ▐▛███▜▌         ▐▛███▜▌
   ▝▜█████▛▘       ▝▜█████▛▘
     ▘▘ ▝▝           ▘▘ ▝▝
@@ -475,7 +474,7 @@ without the pipe: "The pipe" shows them in the scene.
 ### role letters above the head: reviewer r, debugger d, Plan p, worker w, frontend f, Explore or researcher e; any other type and a workflow agent none
 
 ```
-  ▗▄▖ r           ▗▄▖ d           ▗▄▖ p           ▗▄▖ w           ▗▄▖ f           ▗▄▖ e           ▗▄▖
+   ▗▄▖r            ▗▄▖d            ▗▄▖p            ▗▄▖w            ▗▄▖f            ▗▄▖e            ▗▄▖
    ▐▛███▜▌         ▐▛███▜▌         ▐▛███▜▌         ▐▛███▜▌         ▐▛███▜▌         ▐▛███▜▌         ▐▛███▜▌
   ▝▜█████▛▘       ▝▜█████▛▘       ▝▜█████▛▘       ▝▜█████▛▘       ▝▜█████▛▘       ▝▜█████▛▘       ▝▜█████▛▘
     ▘▘ ▝▝           ▘▘ ▝▝           ▘▘ ▝▝           ▘▘ ▝▝           ▘▘ ▝▝           ▘▘ ▝▝           ▘▘ ▝▝
@@ -484,14 +483,14 @@ without the pipe: "The pipe" shows them in the scene.
 ### accessories, each in its own colour, at the left or right end by the agent's id: beanie, cap, top hat, flower, bow, halo, note, propeller
 
 ```
-  ▗▄▖ w               w ▄▄▖       ▗█▖ w               w  ✿         ⋈  w               w ◜◠◝        ♫  w
+   ▗▄▖w               w▄▄▖         ▗█▖w               w ✿           ⋈ w               w◜◠◝          ♫ w
    ▐▛███▜▌         ▐▛███▜▌         ▐▛███▜▌         ▐▛███▜▌         ▐▛███▜▌         ▐▛███▜▌         ▐▛███▜▌
   ▝▜█████▛▘       ▝▜█████▛▘       ▝▜█████▛▘       ▝▜█████▛▘       ▝▜█████▛▘       ▝▜█████▛▘       ▝▜█████▛▘
     ▘▘ ▝▝           ▘▘ ▝▝           ▘▘ ▝▝           ▘▘ ▝▝           ▘▘ ▝▝           ▘▘ ▝▝           ▘▘ ▝▝
 ```
 
 ```
-      w  ✣
+      w ✣
    ▐▛███▜▌
   ▝▜█████▛▘
     ▘▘ ▝▝
@@ -500,7 +499,7 @@ without the pipe: "The pipe" shows them in the scene.
 ### energy by effort, at the end the hat leaves: low, medium or unknown none; high ✦; xhigh or max ✦✦ (hat left, hat right, the session)
 
 ```
-  ▗▄▖ w           ▗▄▖ w  ✦        ▗▄▖ w  ✦✦        ✦  w ▗▄▖       ✦✦  w ▗▄▖          ▴♛▴ ✦           ▴♛▴ ✦✦
+   ▗▄▖w            ▗▄▖w  ✦         ▗▄▖w  ✦✦        ✦  w▗▄▖        ✦✦  w▗▄▖           ▙█▟ ✦           ▙█▟ ✦✦
    ▐▛███▜▌         ▐▛███▜▌         ▐▛███▜▌         ▐▛███▜▌         ▐▛███▜▌         ▐▛███▜▌         ▐▛███▜▌
   ▝▜█████▛▘       ▝▜█████▛▘       ▝▜█████▛▘       ▝▜█████▛▘       ▝▜█████▛▘       ▝▜█████▛▘       ▝▜█████▛▘
     ▘▘ ▝▝           ▘▘ ▝▝           ▘▘ ▝▝           ▘▘ ▝▝           ▘▘ ▝▝           ▘▘ ▝▝           ▘▘ ▝▝
@@ -509,14 +508,14 @@ without the pipe: "The pipe" shows them in the scene.
 ### idle · look around (8 frames, a 6 s slot loops it)
 
 ```
-  ▗▄▖ w           ▗▄▖ w           ▗▄▖ w           ▗▄▖ w           ▗▄▖ w           ▗▄▖ w           ▗▄▖ w
-   ▐▜██▛█▌         ▐▜██▛█▌         ▐▛███▜▌         ▐▛███▜▌         ▐█▜██▛▌         ▐█▜██▛▌         ▐▙███▟▌
+   ▗▄▖w            ▗▄▖w            ▗▄▖w            ▗▄▖w            ▗▄▖w            ▗▄▖w            ▗▄▖w
+   ▐▜██▛█▌         ▐▜██▛█▌         ▐▛███▜▌         ▐▛███▜▌         ▐█▜██▛▌         ▐█▜██▛▌         ▐▛███▜▌
   ▝▜█████▛▘       ▝▜█████▛▘       ▝▜█████▛▘       ▝▜█████▛▘       ▝▜█████▛▘       ▝▜█████▛▘       ▝▜█████▛▘
     ▘▘ ▝▝           ▘▘ ▝▝           ▘▘ ▝▝           ▘▘ ▝▝           ▘▘ ▝▝           ▘▘ ▝▝           ▘▘ ▝▝
 ```
 
 ```
-  ▗▄▖ w
+   ▗▄▖w
    ▐▛███▜▌
   ▝▜█████▛▘
     ▘▘ ▝▝
@@ -525,14 +524,14 @@ without the pipe: "The pipe" shows them in the scene.
 ### idle · stretch (8 frames, once a slot, then the rest frame)
 
 ```
- ▚▗▄▖ w    ▞     ▚▗▄▖ w    ▞     ▚▗▄▖ w    ▞     ▚▗▄▖ w    ▞      ▗▄▖ w           ▗▄▖ w           ▗▄▖ w
-  ▚▐▬███▬▌▞       ▚▐▬███▬▌▞       ▚▐▬███▬▌▞       ▚▐▬███▬▌▞        ▐▬███▬▌         ▐▬███▬▌         ▐▛███▜▌
-   ▜█████▛         ▜█████▛         ▜█████▛         ▜█████▛        ▗▜█████▛▖       ▗▜█████▛▖       ▝▜█████▛▘
+   ▗▄▖w            ▗▄▖w            ▗▄▖w            ▗▄▖w            ▗▄▖w            ▗▄▖w            ▗▄▖w
+  ▐▐█████▌▌       ▐▐█████▌▌       ▐▐█████▌▌       ▐▐█████▌▌        ▐█████▌         ▐█████▌         ▐▛███▜▌
+  ▝▜█████▛▘       ▝▜█████▛▘       ▝▜█████▛▘       ▝▜█████▛▘       ▗▜█████▛▖       ▗▜█████▛▖       ▝▜█████▛▘
     ▘▘ ▝▝           ▘▘ ▝▝           ▘▘ ▝▝           ▘▘ ▝▝           ▘▘ ▝▝           ▘▘ ▝▝           ▘▘ ▝▝
 ```
 
 ```
-  ▗▄▖ w
+   ▗▄▖w
    ▐▛███▜▌
   ▝▜█████▛▘
     ▘▘ ▝▝
@@ -542,21 +541,21 @@ without the pipe: "The pipe" shows them in the scene.
 
 ```
 
-  ▗▄▖ w           ▗▄▖ w           ▗▄▖ w           ▗▄▖ w           ▗▄▖ w           ▗▄▖ w           ▗▄▖ w
+   ▗▄▖w            ▗▄▖w            ▗▄▖w            ▗▄▖w            ▗▄▖w            ▗▄▖w            ▗▄▖w
    ▐▛███▜▌         ▐▛███▜▌         ▐▛███▜▌         ▐▛███▜▌         ▐▛███▜▌         ▐▛███▜▌         ▐▛███▜▌
   ▗▜█████▛▖       ▗▜█████▛▖       ▗▜█████▛▖       ▗▜█████▛▖       ▗▜█████▛▖       ▗▜█████▛▖       ▗▜█████▛▖
 ```
 
 ```
 
-  ▗▄▖ w           ▗▄▖ w           ▗▄▖ w           ▗▄▖ w           ▗▄▖ w           ▗▄▖ w           ▗▄▖ w
-   ▐▛███▜▌         ▐▛███▜▌         ▐▛███▜▌         ▐▛███▜▌         ▐▛███▜▌         ▐▬███▬▌         ▐▬███▬▌
+   ▗▄▖w            ▗▄▖w            ▗▄▖w            ▗▄▖w            ▗▄▖w            ▗▄▖w            ▗▄▖w
+   ▐▛███▜▌         ▐▛███▜▌         ▐▛███▜▌         ▐▛███▜▌         ▐▛███▜▌         ▐█████▌         ▐█████▌
   ▗▜█████▛▖       ▗▜█████▛▖       ▗▜█████▛▖       ▗▜█████▛▖       ▗▜█████▛▖       ▗▜█████▛▖       ▗▜█████▛▖
 ```
 
 ```
 
-  ▗▄▖ w           ▗▄▖ w
+   ▗▄▖w            ▗▄▖w
    ▐▛███▜▌         ▐▛███▜▌
   ▗▜█████▛▖       ▗▜█████▛▖
 ```
@@ -564,8 +563,8 @@ without the pipe: "The pipe" shows them in the scene.
 ### idle · a puff (4 puffs of 500 ms, shown every other frame)
 
 ```
-  ▗▄▖ w           ▗▄▖ w     ∘     ▗▄▖ w     ○     ▗▄▖ w
-   ▐▬███▬▌  ·      ▐▬███▬▌         ▐▬███▬▌         ▐▬███▬▌
+   ▗▄▖w            ▗▄▖w     ∘      ▗▄▖w     ○      ▗▄▖w
+   ▐█████▌  ·      ▐█████▌         ▐█████▌         ▐█████▌
   ▝▜█████▛▘╼      ▝▜█████▛▘╼      ▝▜█████▛▘╼      ▝▜█████▛▘╼
     ▘▘ ▝▝           ▘▘ ▝▝           ▘▘ ▝▝           ▘▘ ▝▝
 ```
@@ -574,68 +573,68 @@ without the pipe: "The pipe" shows them in the scene.
 
 ```
                                                                                              Z
-  ▗▄▖ w               ▗▄▖ w               ▗▄▖ w     z         ▗▄▖ w     z         ▗▄▖ w     z
-   ▐▬███▬▌ z           ▐▬███▬▌ z           ▐▬███▬▌ z           ▐▬███▬▌ z           ▐▬███▬▌ z
-  ▗▞▚▞▚▞▚▞▖           ▗▞▚▞▚▞▚▞▖           ▗▞▚▞▚▞▚▞▖           ▗▞▚▞▚▞▚▞▖           ▗▚▞▚▞▚▞▚▖
-   ▀▀▀▀▀▀▀             ▀▀▀▀▀▀▀             ▀▀▀▀▀▀▀             ▀▀▀▀▀▀▀             ▀▀▀▀▀▀▀
+   ▗▄▖w                ▗▄▖w                ▗▄▖w     z          ▗▄▖w     z          ▗▄▖w     z
+   ▐█████▌ z           ▐█████▌ z           ▐█████▌ z           ▐█████▌ z           ▐█████▌ z
+  ▗███████▖           ▗███████▖           ▗███████▖           ▗███████▖           ▟███████▙
+  ▝▀▀▀▀▀▀▀▘           ▝▀▀▀▀▀▀▀▘           ▝▀▀▀▀▀▀▀▘           ▝▀▀▀▀▀▀▀▘           ▝▀▀▀▀▀▀▀▘
 ```
 
 ```
              Z                   Z                   Z
-  ▗▄▖ w     z         ▗▄▖ w     z         ▗▄▖ w     z
-   ▐▬███▬▌ z           ▐▬███▬▌ z           ▐▬███▬▌ z
-  ▗▚▞▚▞▚▞▚▖           ▗▚▞▚▞▚▞▚▖           ▗▚▞▚▞▚▞▚▖
-   ▀▀▀▀▀▀▀             ▀▀▀▀▀▀▀             ▀▀▀▀▀▀▀
+   ▗▄▖w     z          ▗▄▖w     z          ▗▄▖w     z
+   ▐█████▌ z           ▐█████▌ z           ▐█████▌ z
+  ▟███████▙           ▟███████▙           ▟███████▙
+  ▝▀▀▀▀▀▀▀▘           ▝▀▀▀▀▀▀▀▘           ▝▀▀▀▀▀▀▀▘
 ```
 
 ### idle · asleep, idle 10 minutes (the moon)
 
 ```
                                                                                              Z
-☾ ▗▄▖ w             ☾ ▗▄▖ w             ☾ ▗▄▖ w     z       ☾ ▗▄▖ w     z       ☾ ▗▄▖ w     z
-   ▐▬███▬▌ z           ▐▬███▬▌ z           ▐▬███▬▌ z           ▐▬███▬▌ z           ▐▬███▬▌ z
-  ▗▞▚▞▚▞▚▞▖           ▗▞▚▞▚▞▚▞▖           ▗▞▚▞▚▞▚▞▖           ▗▞▚▞▚▞▚▞▖           ▗▚▞▚▞▚▞▚▖
-   ▀▀▀▀▀▀▀             ▀▀▀▀▀▀▀             ▀▀▀▀▀▀▀             ▀▀▀▀▀▀▀             ▀▀▀▀▀▀▀
+☾  ▗▄▖w             ☾  ▗▄▖w             ☾  ▗▄▖w     z       ☾  ▗▄▖w     z       ☾  ▗▄▖w     z
+   ▐█████▌ z           ▐█████▌ z           ▐█████▌ z           ▐█████▌ z           ▐█████▌ z
+  ▗███████▖           ▗███████▖           ▗███████▖           ▗███████▖           ▟███████▙
+  ▝▀▀▀▀▀▀▀▘           ▝▀▀▀▀▀▀▀▘           ▝▀▀▀▀▀▀▀▘           ▝▀▀▀▀▀▀▀▘           ▝▀▀▀▀▀▀▀▘
 ```
 
 ```
              Z                   Z                   Z
-☾ ▗▄▖ w     z       ☾ ▗▄▖ w     z       ☾ ▗▄▖ w     z
-   ▐▬███▬▌ z           ▐▬███▬▌ z           ▐▬███▬▌ z
-  ▗▚▞▚▞▚▞▚▖           ▗▚▞▚▞▚▞▚▖           ▗▚▞▚▞▚▞▚▖
-   ▀▀▀▀▀▀▀             ▀▀▀▀▀▀▀             ▀▀▀▀▀▀▀
+☾  ▗▄▖w     z       ☾  ▗▄▖w     z       ☾  ▗▄▖w     z
+   ▐█████▌ z           ▐█████▌ z           ▐█████▌ z
+  ▟███████▙           ▟███████▙           ▟███████▙
+  ▝▀▀▀▀▀▀▀▘           ▝▀▀▀▀▀▀▀▘           ▝▀▀▀▀▀▀▀▘
 ```
 
 ### idle · asleep with no sky row free (the z z Z a row lower)
 
 ```
-  ▗▄▖ w               ▗▄▖ w               ▗▄▖ w               ▗▄▖ w               ▗▄▖ w      Z
-   ▐▬███▬▌             ▐▬███▬▌             ▐▬███▬▌  z          ▐▬███▬▌  z          ▐▬███▬▌  z
-  ▗▞▚▞▚▞▚▞▖z          ▗▞▚▞▚▞▚▞▖z          ▗▞▚▞▚▞▚▞▖z          ▗▞▚▞▚▞▚▞▖z          ▗▚▞▚▞▚▞▚▖z
-   ▀▀▀▀▀▀▀             ▀▀▀▀▀▀▀             ▀▀▀▀▀▀▀             ▀▀▀▀▀▀▀             ▀▀▀▀▀▀▀
+   ▗▄▖w                ▗▄▖w                ▗▄▖w                ▗▄▖w                ▗▄▖w      Z
+   ▐█████▌             ▐█████▌             ▐█████▌  z          ▐█████▌  z          ▐█████▌  z
+  ▗███████▖z          ▗███████▖z          ▗███████▖z          ▗███████▖z          ▟███████▙z
+  ▝▀▀▀▀▀▀▀▘           ▝▀▀▀▀▀▀▀▘           ▝▀▀▀▀▀▀▀▘           ▝▀▀▀▀▀▀▀▘           ▝▀▀▀▀▀▀▀▘
 ```
 
 ```
-  ▗▄▖ w      Z        ▗▄▖ w      Z        ▗▄▖ w      Z
-   ▐▬███▬▌  z          ▐▬███▬▌  z          ▐▬███▬▌  z
-  ▗▚▞▚▞▚▞▚▖z          ▗▚▞▚▞▚▞▚▖z          ▗▚▞▚▞▚▞▚▖z
-   ▀▀▀▀▀▀▀             ▀▀▀▀▀▀▀             ▀▀▀▀▀▀▀
+   ▗▄▖w      Z         ▗▄▖w      Z         ▗▄▖w      Z
+   ▐█████▌  z          ▐█████▌  z          ▐█████▌  z
+  ▟███████▙z          ▟███████▙z          ▟███████▙z
+  ▝▀▀▀▀▀▀▀▘           ▝▀▀▀▀▀▀▀▘           ▝▀▀▀▀▀▀▀▘
 ```
 
 ### agent · thinking (·, then ∘, then a phrase, held: 1 1 2 2 3 3 3 3)
 
 ```
                                                                                       (hmmm…)
-  ▗▄▖ w              ▗▄▖ w              ▗▄▖ w     ∘        ▗▄▖ w     ∘        ▗▄▖ w     ∘
-   ▐▙███▟▌ ·          ▐▙███▟▌ ·          ▐▙███▟▌ ·          ▐▙███▟▌ ·          ▐▙███▟▌ ·
+   ▗▄▖w               ▗▄▖w               ▗▄▖w     ∘         ▗▄▖w     ∘         ▗▄▖w     ∘
+   ▐▛███▜▌ ·          ▐▛███▜▌ ·          ▐▛███▜▌ ·          ▐▛███▜▌ ·          ▐▛███▜▌ ·
   ▝▜█████▛▘          ▝▜█████▛▘          ▝▜█████▛▘          ▝▜█████▛▘          ▝▜█████▛▘
     ▘▘ ▝▝              ▘▘ ▝▝              ▘▘ ▝▝              ▘▘ ▝▝              ▘▘ ▝▝
 ```
 
 ```
           (hmmm…)            (hmmm…)            (hmmm…)
-  ▗▄▖ w     ∘        ▗▄▖ w     ∘        ▗▄▖ w     ∘
-   ▐▙███▟▌ ·          ▐▙███▟▌ ·          ▐▙███▟▌ ·
+   ▗▄▖w     ∘         ▗▄▖w     ∘         ▗▄▖w     ∘
+   ▐▛███▜▌ ·          ▐▛███▜▌ ·          ▐▛███▜▌ ·
   ▝▜█████▛▘          ▝▜█████▛▘          ▝▜█████▛▘
     ▘▘ ▝▝              ▘▘ ▝▝              ▘▘ ▝▝
 ```
@@ -644,16 +643,16 @@ without the pipe: "The pipe" shows them in the scene.
 
 ```
           (hmmm…)             (ooh?)        (pondering)     (thinky thin…)            (hmmm…)
-  ▗▄▖ w     ∘        ▗▄▖ w     ∘        ▗▄▖ w     ∘        ▗▄▖ w     ∘        ▗▄▖ w     ∘
-   ▐▙███▟▌ ·          ▐▙███▟▌ ·          ▐▙███▟▌ ·          ▐▙███▟▌ ·          ▐▙███▟▌ ·
+   ▗▄▖w     ∘         ▗▄▖w     ∘         ▗▄▖w     ∘         ▗▄▖w     ∘         ▗▄▖w     ∘
+   ▐▛███▜▌ ·          ▐▛███▜▌ ·          ▐▛███▜▌ ·          ▐▛███▜▌ ·          ▐▛███▜▌ ·
   ▝▜█████▛▘          ▝▜█████▛▘          ▝▜█████▛▘          ▝▜█████▛▘          ▝▜█████▛▘
     ▘▘ ▝▝              ▘▘ ▝▝              ▘▘ ▝▝              ▘▘ ▝▝              ▘▘ ▝▝
 ```
 
 ```
        (hm hm hm)            (hmmm…)         (hm hm hm)
-  ▗▄▖ w     ∘        ▗▄▖ w     ∘        ▗▄▖ w     ∘
-   ▐▙███▟▌ ·          ▐▙███▟▌ ·          ▐▙███▟▌ ·
+   ▗▄▖w     ∘         ▗▄▖w     ∘         ▗▄▖w     ∘
+   ▐▛███▜▌ ·          ▐▛███▜▌ ·          ▐▛███▜▌ ·
   ▝▜█████▛▘          ▝▜█████▛▘          ▝▜█████▛▘
     ▘▘ ▝▝              ▘▘ ▝▝              ▘▘ ▝▝
 ```
@@ -661,15 +660,15 @@ without the pipe: "The pipe" shows them in the scene.
 ### agent · thinking with no sky row free (the thought a row lower)
 
 ```
-  ▗▄▖ w              ▗▄▖ w              ▗▄▖ w              ▗▄▖ w              ▗▄▖ w    (hmm…)
-   ▐▙███▟▌            ▐▙███▟▌            ▐▙███▟▌  ∘         ▐▙███▟▌  ∘         ▐▙███▟▌  ∘
+   ▗▄▖w               ▗▄▖w               ▗▄▖w               ▗▄▖w               ▗▄▖w    (hmm…)
+   ▐▛███▜▌            ▐▛███▜▌            ▐▛███▜▌  ∘         ▐▛███▜▌  ∘         ▐▛███▜▌  ∘
   ▝▜█████▛▘·         ▝▜█████▛▘·         ▝▜█████▛▘·         ▝▜█████▛▘·         ▝▜█████▛▘·
     ▘▘ ▝▝              ▘▘ ▝▝              ▘▘ ▝▝              ▘▘ ▝▝              ▘▘ ▝▝
 ```
 
 ```
-  ▗▄▖ w    (hmm…)    ▗▄▖ w    (hmm…)    ▗▄▖ w    (hmm…)
-   ▐▙███▟▌  ∘         ▐▙███▟▌  ∘         ▐▙███▟▌  ∘
+   ▗▄▖w    (hmm…)     ▗▄▖w    (hmm…)     ▗▄▖w    (hmm…)
+   ▐▛███▜▌  ∘         ▐▛███▜▌  ∘         ▐▛███▜▌  ∘
   ▝▜█████▛▘·         ▝▜█████▛▘·         ▝▜█████▛▘·
     ▘▘ ▝▝              ▘▘ ▝▝              ▘▘ ▝▝
 ```
@@ -677,7 +676,7 @@ without the pipe: "The pipe" shows them in the scene.
 ### agent · start of work (turns to its desk, then at its laptop)
 
 ```
-  ▗▄▖ w               ▗▄▖ w               ▗▄▖ w
+   ▗▄▖w                ▗▄▖w                ▗▄▖w
    ▐█▜██▛▌             ▐█▜██▛▌  ▗▄▄▄▖      ▐█▜██▛▌  ▗▄▄▄▖
   ▝▜█████▛▘           ▝▜█████▛▘ ▐▒▒▒▌     ▝▜█████▛▀▖▐▒▒▒▌
     ▘▘ ▝▝               ▘▘ ▝▝  ▀▀▀▀▀▀       ▘▘ ▝▝  ▀▀▀▀▀▀
@@ -686,7 +685,7 @@ without the pipe: "The pipe" shows them in the scene.
 ### agent · at its laptop, any tool (the near hand on the keys every other frame)
 
 ```
-  ▗▄▖ w               ▗▄▖ w               ▗▄▖ w               ▗▄▖ w
+   ▗▄▖w                ▗▄▖w                ▗▄▖w                ▗▄▖w
    ▐█▜██▛▌  ▗▄▄▄▖      ▐█▜██▛▌  ▗▄▄▄▖      ▐█▜██▛▌  ▗▄▄▄▖      ▐█▜██▛▌  ▗▄▄▄▖
   ▝▜█████▛▀▖▐▒▒▒▌     ▝▜█████▛▘ ▐▒▒▒▌     ▝▜█████▛▀▖▐▒▒▒▌     ▝▜█████▛▘ ▐▒▒▒▌
     ▘▘ ▝▝  ▀▀▀▀▀▀       ▘▘ ▝▝  ▀▀▀▀▀▀       ▘▘ ▝▝  ▀▀▀▀▀▀       ▘▘ ▝▝  ▀▀▀▀▀▀
@@ -695,23 +694,23 @@ without the pipe: "The pipe" shows them in the scene.
 ### agent · asking (waiting on permission)
 
 ```
-  ▗▄▖ w    ?
-   ▐▛███▜▌ ▌
-  ▝▜█████▛
+   ▗▄▖w    ?
+   ▐▛███▜▌▌
+  ▝▜█████▛▘
     ▘▘ ▝▝
 ```
 
 ### agent · stalled (its idle bits, a clock beside)
 
 ```
-  ▗▄▖ w    ◴      ▗▄▖ w    ◴      ▗▄▖ w    ◷      ▗▄▖ w    ◷      ▗▄▖ w    ◶      ▗▄▖ w    ◶      ▗▄▖ w    ◵
+   ▗▄▖w    ◴       ▗▄▖w    ◴       ▗▄▖w    ◷       ▗▄▖w    ◷       ▗▄▖w    ◶       ▗▄▖w    ◶       ▗▄▖w    ◵
    ▐▜██▛█▌         ▐▜██▛█▌         ▐▜██▛█▌         ▐▜██▛█▌         ▐▜██▛█▌         ▐▜██▛█▌         ▐▜██▛█▌
   ▝▜█████▛▘       ▝▜█████▛▘       ▝▜█████▛▘       ▝▜█████▛▘       ▝▜█████▛▘       ▝▜█████▛▘       ▝▜█████▛▘
     ▘▘ ▝▝           ▘▘ ▝▝           ▘▘ ▝▝           ▘▘ ▝▝           ▘▘ ▝▝           ▘▘ ▝▝           ▘▘ ▝▝
 ```
 
 ```
-  ▗▄▖ w    ◵
+   ▗▄▖w    ◵
    ▐▜██▛█▌
   ▝▜█████▛▘
     ▘▘ ▝▝
@@ -721,26 +720,26 @@ without the pipe: "The pipe" shows them in the scene.
 
 ```
                                                                                              Z
-  ▗▄▖ w               ▗▄▖ w               ▗▄▖ w     z         ▗▄▖ w     z         ▗▄▖ w     z
-   ▐▬███▬▌ z           ▐▬███▬▌ z           ▐▬███▬▌ z           ▐▬███▬▌ z           ▐▬███▬▌ z
-  ▗▞▚▞▚▞▚▞▖           ▗▞▚▞▚▞▚▞▖           ▗▞▚▞▚▞▚▞▖           ▗▞▚▞▚▞▚▞▖           ▗▚▞▚▞▚▞▚▖
-   ▀▀▀▀▀▀▀ ◴           ▀▀▀▀▀▀▀ ◴           ▀▀▀▀▀▀▀ ◷           ▀▀▀▀▀▀▀ ◷           ▀▀▀▀▀▀▀ ◶
+   ▗▄▖w                ▗▄▖w                ▗▄▖w     z          ▗▄▖w     z          ▗▄▖w     z
+   ▐█████▌ z           ▐█████▌ z           ▐█████▌ z           ▐█████▌ z           ▐█████▌ z
+  ▗███████▖           ▗███████▖           ▗███████▖           ▗███████▖           ▟███████▙
+  ▝▀▀▀▀▀▀▀▘◴          ▝▀▀▀▀▀▀▀▘◴          ▝▀▀▀▀▀▀▀▘◷          ▝▀▀▀▀▀▀▀▘◷          ▝▀▀▀▀▀▀▀▘◶
 ```
 
 ```
              Z                   Z                   Z
-  ▗▄▖ w     z         ▗▄▖ w     z         ▗▄▖ w     z
-   ▐▬███▬▌ z           ▐▬███▬▌ z           ▐▬███▬▌ z
-  ▗▚▞▚▞▚▞▚▖           ▗▚▞▚▞▚▞▚▖           ▗▚▞▚▞▚▞▚▖
-   ▀▀▀▀▀▀▀ ◶           ▀▀▀▀▀▀▀ ◵           ▀▀▀▀▀▀▀ ◵
+   ▗▄▖w     z          ▗▄▖w     z          ▗▄▖w     z
+   ▐█████▌ z           ▐█████▌ z           ▐█████▌ z
+  ▟███████▙           ▟███████▙           ▟███████▙
+  ▝▀▀▀▀▀▀▀▘◶          ▝▀▀▀▀▀▀▀▘◵          ▝▀▀▀▀▀▀▀▘◵
 ```
 
 ### agent · walking right (4 frames: the feet passing; a bob and a lean on 1 and 3)
 
 ```
-                  ▗▄▖ w                           ▗▄▖ w     ∘
-  ▗▄▖ w            ▐█▜██▛▌ ·      ▗▄▖ w     ∘      ▐█▜██▛▌ ·
-   ▐█▜██▛▌ ·       ▝▜█████▛▘       ▐█▜██▛▌ ·       ▝▜█████▛▘
+                   ▗▄▖w                            ▗▄▖w     ∘
+   ▗▄▖w            ▐█▜██▛▌ ·       ▗▄▖w     ∘      ▐█▜██▛▌ ·
+   ▐█▜██▛▌ ·       ▀██████▀        ▐█▜██▛▌ ·       ▀██████▀
   ▝▜█████▛▘         ▝▝ ▘▘         ▝▜█████▛▘         ▝▘ ▝▘
     ▘▘ ▝▝                           ▘▝ ▘▝
 ```
@@ -748,9 +747,9 @@ without the pipe: "The pipe" shows them in the scene.
 ### agent · walking left
 
 ```
-                  ▗▄▖ w                           ▗▄▖ w     ∘
-  ▗▄▖ w            ▐▜██▛█▌ ·      ▗▄▖ w     ∘      ▐▜██▛█▌ ·
-   ▐▜██▛█▌ ·     ▝▜█████▛▘         ▐▜██▛█▌ ·     ▝▜█████▛▘
+                   ▗▄▖w                            ▗▄▖w     ∘
+   ▗▄▖w            ▐▜██▛█▌ ·       ▗▄▖w     ∘      ▐▜██▛█▌ ·
+   ▐▜██▛█▌ ·      ▀██████▀         ▐▜██▛█▌ ·      ▀██████▀
   ▝▜█████▛▘         ▝▝ ▘▘         ▝▜█████▛▘         ▝▘ ▝▘
     ▘▘ ▝▝                           ▘▝ ▘▝
 ```
@@ -758,23 +757,23 @@ without the pipe: "The pipe" shows them in the scene.
 ### agent · hop (6 frames, lifts 0 2 4 4 2 0: squash, stretch, apex, apex, air, squash)
 
 ```
-                                 ▚▗▄▖ w    ▞     ▚▗▄▖ w    ▞
-                                  ▚▐█▜██▛▌▞       ▚▐█▜██▛▌▞
-                 ▚▗▄▖ w    ▞       ▜█████▛         ▜█████▛       ▚▗▄▖ w    ▞
-                  ▚▐█▜██▛▌▞         ▝▘ ▝▘           ▝▘ ▝▘         ▚▐█▜██▛▌▞
-                   ▜█████▛                                         ▜█████▛
-  ▗▄▖ w             ▐▌ ▐▌                                           ▘▘ ▝▝         ▗▄▖ w
+                                   ▗▄▖w            ▗▄▖w
+                                  ▐▐█▜██▛▌▌       ▐▐█▜██▛▌▌
+                   ▗▄▖w           ▝▜█████▛▘       ▝▜█████▛▘        ▗▄▖w
+                  ▐▐█▜██▛▌▌         ▝▘ ▝▘           ▝▘ ▝▘         ▐▐█▜██▛▌▌
+                  ▝▜█████▛▘                                       ▝▜█████▛▘
+   ▗▄▖w             ▐▌ ▐▌                                           ▘▘ ▝▝          ▗▄▖w
    █▛███▜█                                                                         █▛███▜█
-  ▀█▜▀▀▀▛█▀                                                                       ▀█▜▀▀▀▛█▀
+  ▀▀▛▛▀▜▜▀▀                                                                       ▀▀▛▛▀▜▜▀▀
 ```
 
 ### agent · flying under the propeller cap (climb two rows a second, cruise, come down, land with a bounce)
 
 ```
-                                                                   +               x
-                                   +               x              ▄▄▄ w           ▄▄▄ w            +
-   +               x              ▄▄▄ w           ▄▄▄ w            ▐█▜██▛▌         ▐█▜██▛▌        ▄▄▄ w
-  ▄▄▄ w           ▄▄▄ w            ▐█▜██▛▌         ▐█▜██▛▌        ▝▜█████▛▘       ▝▜█████▛▘        ▐█▜██▛▌
+                                                                    +               x
+                                    +               x              ▄▄▄w            ▄▄▄w             +
+    +               x              ▄▄▄w            ▄▄▄w            ▐█▜██▛▌         ▐█▜██▛▌         ▄▄▄w
+   ▄▄▄w            ▄▄▄w            ▐█▜██▛▌         ▐█▜██▛▌        ▝▜█████▛▘       ▝▜█████▛▘        ▐█▜██▛▌
    ▐█▜██▛▌         ▐█▜██▛▌        ▝▜█████▛▘       ▝▜█████▛▘         ▝▘ ▝▘           ▝▘ ▝▘         ▝▜█████▛▘
   ▝▜█████▛▘       ▝▜█████▛▘         ▝▘ ▝▘           ▝▘ ▝▘                                           ▝▘ ▝▘
     ▝▘ ▝▘           ▝▘ ▝▘
@@ -784,33 +783,33 @@ without the pipe: "The pipe" shows them in the scene.
 ```
 
 
-   x
-  ▄▄▄ w
+    x
+   ▄▄▄w
    ▐█▜██▛▌
-  ▝▜█████▛▘       ▗▄▖ w
+  ▝▜█████▛▘        ▗▄▖w
     ▝▘ ▝▘          █▛███▜█
-                  ▀█▜▀▀▀▛█▀
+                  ▀▀▛▛▀▜▜▀▀
 ```
 
-### agent · knocked over (a stagger, flat on its back with its hat knocked off, dizzy ×8: spiral eyes and three blinking stars; a crouch, up at its laptop)
+### agent · knocked over (a stagger, flat on its back with its hat knocked off, dizzy ×8: eyes crossing and rolling apart under three blinking stars; a crouch, up at its laptop)
 
 ```
-  ▗▄▖ w                                       ✦  ✦             ✧     ✦             ✧  ✧
-   ▐▬███▬▌              ▖▖ ▗▗               ▖▖ ▗▗               ▖▖ ▗▗               ▖▖ ▗▗
+   ▗▄▖w                                       ✦  ✦             ✧     ✦             ✧  ✧
+   ▐█████▌              ▖▖ ▗▗               ▖▖ ▗▗               ▖▖ ▗▗               ▖▖ ▗▗
   ▗▜█████▛▖           ▗▟█████▙▖           ▗▟█████▙▖           ▗▟█████▙▖           ▗▟█████▙▖
-    ▘▘ ▝▝              ▐▬███▬▌  ▗▄▖        ▐@███@▌  ▗▄▖        ▐ø███ø▌  ▗▄▖        ▐@███@▌  ▗▄▖
+    ▘▘ ▝▝              ▐█████▌  ▗▄▖        ▐█▟█▙█▌  ▗▄▖        ▐▟███▙▌  ▗▄▖        ▐█▟█▙█▌  ▗▄▖
 ```
 
 ```
       ✧  ✧             ✦     ✧             ✦  ✦                   ✦  ✦             ✧     ✦
     ▖▖ ▗▗               ▖▖ ▗▗               ▖▖ ▗▗               ▖▖ ▗▗               ▖▖ ▗▗
   ▗▟█████▙▖           ▗▟█████▙▖           ▗▟█████▙▖           ▗▟█████▙▖           ▗▟█████▙▖
-   ▐ø███ø▌  ▗▄▖        ▐@███@▌  ▗▄▖        ▐ø███ø▌  ▗▄▖        ▐@███@▌  ▗▄▖        ▐ø███ø▌  ▗▄▖
+   ▐▟███▙▌  ▗▄▖        ▐█▟█▙█▌  ▗▄▖        ▐▟███▙▌  ▗▄▖        ▐█▟█▙█▌  ▗▄▖        ▐▟███▙▌  ▗▄▖
 ```
 
 ```
-                      ▗▄▖ w
-  ▗▄▖ w                ▐█▜██▛▌  ▗▄▄▄▖
+                       ▗▄▖w
+   ▗▄▖w                ▐█▜██▛▌  ▗▄▄▄▖
    ▐▛███▜▌            ▝▜█████▛▘ ▐▒▒▒▌
   ▄▟█████▙▄             ▘▘ ▝▝  ▀▀▀▀▀▀
 ```
@@ -818,20 +817,20 @@ without the pipe: "The pipe" shows them in the scene.
 ### main · knocked over (the crown knocked off beside it, back on as it gets up)
 
 ```
-                          ✦  ✦             ✧     ✦                                   ▴♛▴
-    ▖▖ ▗▗               ▖▖ ▗▗               ▖▖ ▗▗                ▴♛▴               ▐▛███▜▌
+                          ✦  ✦             ✧     ✦                                   ▙█▟
+    ▖▖ ▗▗               ▖▖ ▗▗               ▖▖ ▗▗                ▙█▟               ▐▛███▜▌
   ▗▟█████▙▖           ▗▟█████▙▖           ▗▟█████▙▖            ▐▛███▜▌            ▝▜█████▛▘
-   ▐▬███▬▌  ▴♛▴        ▐@███@▌  ▴♛▴        ▐ø███ø▌  ▴♛▴       ▄▟█████▙▄             ▘▘ ▝▝
+   ▐█████▌  ▙█▟        ▐█▟█▙█▌  ▙█▟        ▐▟███▙▌  ▙█▟       ▄▟█████▙▄             ▘▘ ▝▝
 ```
 
 ### agent · arriving by the pipe: it drops out of the mouth (eyes wide, arms up, legs tucked), falling ever faster to its floor; then it turns to its desk
 
 ```
- ▚▗▄▖ w    ▞
-  ▚▐▌███▐▌▞      ▚▗▄▖ w    ▞
-   ▜█████▛        ▚▐▌███▐▌▞      ▚▗▄▖ w    ▞
-    ▝▘ ▝▘          ▜█████▛        ▚▐▌███▐▌▞       ▗▄▖ w
-                    ▝▘ ▝▘          ▜█████▛         ▐█▜██▛▌
+   ▗▄▖w
+  ▐▐▀███▀▌▌        ▗▄▖w
+  ▝▜█████▛▘       ▐▐▀███▀▌▌        ▗▄▖w
+    ▝▘ ▝▘         ▝▜█████▛▘       ▐▐▀███▀▌▌        ▗▄▖w
+                    ▝▘ ▝▘         ▝▜█████▛▘        ▐█▜██▛▌
                                     ▝▘ ▝▘         ▝▜█████▛▘
                                                     ▘▘ ▝▝
 ```
@@ -839,7 +838,7 @@ without the pipe: "The pipe" shows them in the scene.
 ### agent · done (at its laptop, the laptop gone)
 
 ```
-  ▗▄▖ w               ▗▄▖ w               ▗▄▖ w
+   ▗▄▖w                ▗▄▖w                ▗▄▖w
    ▐█▜██▛▌  ▗▄▄▄▖      ▐█▜██▛▌  ▗▄▄▄▖      ▐▛███▜▌
   ▝▜█████▛▀▖▐▒▒▒▌     ▝▜█████▛▘ ▐▒▒▒▌     ▝▜█████▛▘
     ▘▘ ▝▝  ▀▀▀▀▀▀       ▘▘ ▝▝  ▀▀▀▀▀▀       ▘▘ ▝▝
@@ -851,21 +850,21 @@ without the pipe: "The pipe" shows them in the scene.
 
 
 
-                 ▚▗▄▖ w    ▞                     ▚▗▄▖ w    ▞                     ▚▗▄▖ w    ▞
- ▗▄▖ w            ▚▐▛███▜▌▞✓       ▗▄▖ w          ▚▐▛███▜▌▞✓     ▗▄▖ w            ▚▐▛███▜▌▞✓       ▗▄▖ w
-  ▐▛███▜▌ ✓        ▜█████▛          ▐▛███▜▌ ✓      ▜█████▛        ▐▛███▜▌ ✓        ▜█████▛          ▐▛███▜▌ ✓
+                   ▗▄▖w                            ▗▄▖w                            ▗▄▖w
+  ▗▄▖w            ▐▐▛███▜▌▌✓        ▗▄▖w          ▐▐▛███▜▌▌✓      ▗▄▖w            ▐▐▛███▜▌▌✓        ▗▄▖w
+  ▐▛███▜▌ ✓       ▝▜█████▛▘         ▐▛███▜▌ ✓     ▝▜█████▛▘       ▐▛███▜▌ ✓       ▝▜█████▛▘         ▐▛███▜▌ ✓
  ▝▜█████▛▘          ▘▘ ▝▝          ▝▜█████▛▘        ▘▘ ▝▝        ▝▜█████▛▘          ▘▘ ▝▝          ▝▜█████▛▘
    ▘▘ ▘▘                             ▝▝ ▝▝                         ▘▘ ▘▘                             ▝▝ ▝▝
 ```
 
 ```
-                                                                 ▚▗▄▖ w    ▞
-                                                                  ▚▐▙███▟▌▞
-                                                 ▚▗▄▖ w    ▞       ▜█████▛
- ▚▗▄▖ w    ▞                                      ▚▐▙███▟▌▞         ▐▌ ▐▌
-  ▚▐▛███▜▌▞✓      ▗▄▖ w          ▚▗▄▖ w    ▞       ▜█████▛
-   ▜█████▛         ▐▙███▟▌ ✓      ▚▐▙███▟▌▞         ▐▌ ▐▌
-    ▘▘ ▝▝         ▝▜█████▛▘        ▜█████▛
+                                                                   ▗▄▖w
+                                                                  ▐▐▛███▜▌▌
+                                                   ▗▄▖w           ▝▜█████▛▘
+   ▗▄▖w                                           ▐▐▛███▜▌▌         ▐▌ ▐▌
+  ▐▐▛███▜▌▌✓       ▗▄▖w            ▗▄▖w           ▝▜█████▛▘
+  ▝▜█████▛▘        ▐▛███▜▌ ✓      ▐▐▛███▜▌▌         ▐▌ ▐▌
+    ▘▘ ▝▝         ▝▜█████▛▘       ▝▜█████▛▘
                     ▘▘ ▝▝           ▐▌ ▐▌
 ```
 
@@ -874,16 +873,16 @@ without the pipe: "The pipe" shows them in the scene.
 ```
 
 
-  ▗▄▖ w               ▗▄▖ w                   ✗                   ✗              ▚▗▄▖ w    ▞
-   ▐█▜██▛▌  ▗▄▄▄▖      ▐█▜██▛▌  ▗▄▄▄▖     ▗▄▖ w               ▗▄▖ w               ▚▐▬███▬▌▞
-  ▝▜█████▛▀▖▐▒▒▒▌     ▝▜█████▛▘ ▐▒▒▒▌      ▐▬███▬▌             ▐▬███▬▌             ▜█████▛
+   ▗▄▖w                ▗▄▖w                   ✗                   ✗                ▗▄▖w
+   ▐█▜██▛▌  ▗▄▄▄▖      ▐█▜██▛▌  ▗▄▄▄▖      ▗▄▖w                ▗▄▖w               ▐▐█████▌▌
+  ▝▜█████▛▀▖▐▒▒▒▌     ▝▜█████▛▘ ▐▒▒▒▌      ▐█████▌             ▐█████▌            ▝▜█████▛▘
     ▘▘ ▝▝  ▀▀▀▀▀▀       ▘▘ ▝▝  ▀▀▀▀▀▀     ▗▜█████▛▖           ▗▜█████▛▖             ▐▌ ▐▌
 ```
 
 ```
- ▚▗▄▖ w    ▞
-  ▚▐▬███▬▌▞
-   ▜█████▛
+   ▗▄▖w
+  ▐▐█████▌▌
+  ▝▜█████▛▘
     ▐▌ ▐▌
 
 
@@ -892,7 +891,7 @@ without the pipe: "The pipe" shows them in the scene.
 ### scenes · hands back (holds out a hand, nothing drawn in it), and a parent pointing at its child
 
 ```
-  ▗▄▖ w               ▗▄▖ p               ▗▄▖ p
+   ▗▄▖w                ▗▄▖p                ▗▄▖p
    ▐▛███▜▌             ▐█▜██▛▌  ▗▄▄▄▖      ▐█▜██▛▌  ▗▄▄▄▖
   ▝▜█████▛▀           ▝▜█████▛▀ ▐▒▒▒▌     ▝▜█████▛▀⇢▐▒▒▒▌
     ▘▘ ▝▝               ▘▘ ▝▝  ▀▀▀▀▀▀       ▘▘ ▝▝  ▀▀▀▀▀▀
@@ -901,25 +900,25 @@ without the pipe: "The pipe" shows them in the scene.
 ### smooth · held up by the pointer: eyes wide, arms up, legs kicking, its laptop gone
 
 ```
- ▚▗▄▖ w    ▞     ▚▗▄▖ w    ▞     ▚▗▄▖ w    ▞     ▚▗▄▖ w    ▞
-  ▚▐▌███▐▌▞       ▚▐▌███▐▌▞       ▚▐▌███▐▌▞       ▚▐▌███▐▌▞
-   ▜█████▛         ▜█████▛         ▜█████▛         ▜█████▛
+   ▗▄▖w            ▗▄▖w            ▗▄▖w            ▗▄▖w
+  ▐▐▀███▀▌▌       ▐▐▀███▀▌▌       ▐▐▀███▀▌▌       ▐▐▀███▀▌▌
+  ▝▜█████▛▘       ▝▜█████▛▘       ▝▜█████▛▘       ▝▜█████▛▘
     ▝▝ ▘▘           ▘▘ ▝▝           ▝▝ ▘▘           ▘▘ ▝▝
 ```
 
 ### smooth · thrown or falling: eyes wide, arms up, legs tucked
 
 ```
- ▚▗▄▖ w    ▞
-  ▚▐▌███▐▌▞
-   ▜█████▛
+   ▗▄▖w
+  ▐▐▀███▀▌▌
+  ▝▜█████▛▘
     ▝▘ ▝▘
 ```
 
 ### smooth · a wobble after a bounce (a cell aside and back, 100 ms each)
 
 ```
- ▗▄▖ w             ▗▄▖ w         ▗▄▖ w             ▗▄▖ w
+  ▗▄▖w              ▗▄▖w          ▗▄▖w              ▗▄▖w
   ▐▛███▜▌           ▐▛███▜▌       ▐▛███▜▌           ▐▛███▜▌
  ▝▜█████▛▘         ▝▜█████▛▘     ▝▜█████▛▘         ▝▜█████▛▘
    ▘▘ ▝▝             ▘▘ ▝▝         ▘▘ ▝▝             ▘▘ ▝▝
@@ -928,9 +927,9 @@ without the pipe: "The pipe" shows them in the scene.
 ### smooth · an Explore agent at work flies, scanning the floor (eyes down)
 
 ```
-                                   +               x
-   +               x              ▄▄▄ e           ▄▄▄ e
-  ▄▄▄ e           ▄▄▄ e            ▐▀███▀▌         ▐▀███▀▌
+                                    +               x
+    +               x              ▄▄▄e            ▄▄▄e
+   ▄▄▄e            ▄▄▄e            ▐▀███▀▌         ▐▀███▀▌
    ▐▀███▀▌         ▐▀███▀▌        ▝▜█████▛▘       ▝▜█████▛▘
   ▝▜█████▛▘       ▝▜█████▛▘         ▝▘ ▝▘           ▝▘ ▝▘
     ▝▘ ▝▘           ▝▘ ▝▘
@@ -942,16 +941,16 @@ without the pipe: "The pipe" shows them in the scene.
 
 ```
                                                                                       (hmmm…)
-   ♫                  ♫                  ♫        ∘         ♫        ∘         ♫        ∘
-   ▐▙███▟▌ ·          ▐▙███▟▌ ·          ▐▙███▟▌ ·          ▐▙███▟▌ ·          ▐▙███▟▌ ·
+    ♫                  ♫                  ♫       ∘          ♫       ∘          ♫       ∘
+   ▐▛███▜▌ ·          ▐▛███▜▌ ·          ▐▛███▜▌ ·          ▐▛███▜▌ ·          ▐▛███▜▌ ·
   ▝▜█████▛▘          ▝▜█████▛▘          ▝▜█████▛▘          ▝▜█████▛▘          ▝▜█████▛▘
     ▘▘ ▝▝              ▘▘ ▝▝              ▘▘ ▝▝              ▘▘ ▝▝              ▘▘ ▝▝
 ```
 
 ```
           (hmmm…)            (hmmm…)            (hmmm…)
-   ♫        ∘         ♫        ∘         ♫        ∘
-   ▐▙███▟▌ ·          ▐▙███▟▌ ·          ▐▙███▟▌ ·
+    ♫       ∘          ♫       ∘          ♫       ∘
+   ▐▛███▜▌ ·          ▐▛███▜▌ ·          ▐▛███▜▌ ·
   ▝▜█████▛▘          ▝▜█████▛▘          ▝▜█████▛▘
     ▘▘ ▝▝              ▘▘ ▝▝              ▘▘ ▝▝
 ```
@@ -959,7 +958,7 @@ without the pipe: "The pipe" shows them in the scene.
 ### workflow agent · at its laptop
 
 ```
-   ♫                   ♫
+    ♫                   ♫
    ▐█▜██▛▌  ▗▄▄▄▖      ▐█▜██▛▌  ▗▄▄▄▖
   ▝▜█████▛▀▖▐▒▒▒▌     ▝▜█████▛▘ ▐▒▒▒▌
     ▘▘ ▝▝  ▀▀▀▀▀▀       ▘▘ ▝▝  ▀▀▀▀▀▀
@@ -969,16 +968,16 @@ without the pipe: "The pipe" shows them in the scene.
 
 ```
                                                                                 (lemme think)
-     ▴♛▴                ▴♛▴                ▴♛▴    ∘           ▴♛▴    ∘           ▴♛▴    ∘
-   ▐▙███▟▌ ·          ▐▙███▟▌ ·          ▐▙███▟▌ ·          ▐▙███▟▌ ·          ▐▙███▟▌ ·
+     ▙█▟                ▙█▟                ▙█▟    ∘           ▙█▟    ∘           ▙█▟    ∘
+   ▐▛███▜▌ ·          ▐▛███▜▌ ·          ▐▛███▜▌ ·          ▐▛███▜▌ ·          ▐▛███▜▌ ·
   ▝▜█████▛▘          ▝▜█████▛▘          ▝▜█████▛▘          ▝▜█████▛▘          ▝▜█████▛▘
     ▘▘ ▝▝              ▘▘ ▝▝              ▘▘ ▝▝              ▘▘ ▝▝              ▘▘ ▝▝
 ```
 
 ```
     (lemme think)      (lemme think)      (lemme think)
-     ▴♛▴    ∘           ▴♛▴    ∘           ▴♛▴    ∘
-   ▐▙███▟▌ ·          ▐▙███▟▌ ·          ▐▙███▟▌ ·
+     ▙█▟    ∘           ▙█▟    ∘           ▙█▟    ∘
+   ▐▛███▜▌ ·          ▐▛███▜▌ ·          ▐▛███▜▌ ·
   ▝▜█████▛▘          ▝▜█████▛▘          ▝▜█████▛▘
     ▘▘ ▝▝              ▘▘ ▝▝              ▘▘ ▝▝
 ```
@@ -986,15 +985,15 @@ without the pipe: "The pipe" shows them in the scene.
 ### main · watching (a blink every 2 s)
 
 ```
-     ▴♛▴             ▴♛▴             ▴♛▴             ▴♛▴             ▴♛▴             ▴♛▴             ▴♛▴
+     ▙█▟             ▙█▟             ▙█▟             ▙█▟             ▙█▟             ▙█▟             ▙█▟
    ▐█▜██▛▌         ▐█▜██▛▌         ▐█▜██▛▌         ▐█▜██▛▌         ▐█▜██▛▌         ▐█▜██▛▌         ▐█▜██▛▌
   ▝▜█████▛▘       ▝▜█████▛▘       ▝▜█████▛▘       ▝▜█████▛▘       ▝▜█████▛▘       ▝▜█████▛▘       ▝▜█████▛▘
     ▘▘ ▝▝           ▘▘ ▝▝           ▘▘ ▝▝           ▘▘ ▝▝           ▘▘ ▝▝           ▘▘ ▝▝           ▘▘ ▝▝
 ```
 
 ```
-     ▴♛▴
-   ▐▬███▬▌
+     ▙█▟
+   ▐█████▌
   ▝▜█████▛▘
     ▘▘ ▝▝
 ```
@@ -1002,14 +1001,14 @@ without the pipe: "The pipe" shows them in the scene.
 ### main · idle: the same bits as an agent (here, looking around)
 
 ```
-     ▴♛▴             ▴♛▴             ▴♛▴             ▴♛▴             ▴♛▴             ▴♛▴             ▴♛▴
-   ▐▜██▛█▌         ▐▜██▛█▌         ▐▛███▜▌         ▐▛███▜▌         ▐█▜██▛▌         ▐█▜██▛▌         ▐▙███▟▌
+     ▙█▟             ▙█▟             ▙█▟             ▙█▟             ▙█▟             ▙█▟             ▙█▟
+   ▐▜██▛█▌         ▐▜██▛█▌         ▐▛███▜▌         ▐▛███▜▌         ▐█▜██▛▌         ▐█▜██▛▌         ▐▛███▜▌
   ▝▜█████▛▘       ▝▜█████▛▘       ▝▜█████▛▘       ▝▜█████▛▘       ▝▜█████▛▘       ▝▜█████▛▘       ▝▜█████▛▘
     ▘▘ ▝▝           ▘▘ ▝▝           ▘▘ ▝▝           ▘▘ ▝▝           ▘▘ ▝▝           ▘▘ ▝▝           ▘▘ ▝▝
 ```
 
 ```
-     ▴♛▴
+     ▙█▟
    ▐▛███▜▌
   ▝▜█████▛▘
     ▘▘ ▝▝
@@ -1019,25 +1018,25 @@ without the pipe: "The pipe" shows them in the scene.
 
 ```
                                                                                              Z
-☾    ▴♛▴            ☾    ▴♛▴            ☾    ▴♛▴    z       ☾    ▴♛▴    z       ☾    ▴♛▴    z
-   ▐▬███▬▌ z           ▐▬███▬▌ z           ▐▬███▬▌ z           ▐▬███▬▌ z           ▐▬███▬▌ z
-  ▗▞▚▞▚▞▚▞▖           ▗▞▚▞▚▞▚▞▖           ▗▞▚▞▚▞▚▞▖           ▗▞▚▞▚▞▚▞▖           ▗▚▞▚▞▚▞▚▖
-   ▀▀▀▀▀▀▀             ▀▀▀▀▀▀▀             ▀▀▀▀▀▀▀             ▀▀▀▀▀▀▀             ▀▀▀▀▀▀▀
+☾    ▙█▟            ☾    ▙█▟            ☾    ▙█▟    z       ☾    ▙█▟    z       ☾    ▙█▟    z
+   ▐█████▌ z           ▐█████▌ z           ▐█████▌ z           ▐█████▌ z           ▐█████▌ z
+  ▗███████▖           ▗███████▖           ▗███████▖           ▗███████▖           ▟███████▙
+  ▝▀▀▀▀▀▀▀▘           ▝▀▀▀▀▀▀▀▘           ▝▀▀▀▀▀▀▀▘           ▝▀▀▀▀▀▀▀▘           ▝▀▀▀▀▀▀▀▘
 ```
 
 ```
              Z                   Z                   Z
-☾    ▴♛▴    z       ☾    ▴♛▴    z       ☾    ▴♛▴    z
-   ▐▬███▬▌ z           ▐▬███▬▌ z           ▐▬███▬▌ z
-  ▗▚▞▚▞▚▞▚▖           ▗▚▞▚▞▚▞▚▖           ▗▚▞▚▞▚▞▚▖
-   ▀▀▀▀▀▀▀             ▀▀▀▀▀▀▀             ▀▀▀▀▀▀▀
+☾    ▙█▟    z       ☾    ▙█▟    z       ☾    ▙█▟    z
+   ▐█████▌ z           ▐█████▌ z           ▐█████▌ z
+  ▟███████▙           ▟███████▙           ▟███████▙
+  ▝▀▀▀▀▀▀▀▘           ▝▀▀▀▀▀▀▀▘           ▝▀▀▀▀▀▀▀▘
 ```
 
 ### main · sweating (ctx ≥ 85 %)
 
 ```
-     ▴♛▴             ▴♛▴             ▴♛▴    ∘        ▴♛▴    ∘
- ' ▐▙███▟▌ ·     ' ▐▙███▟▌ ·     , ▐▙███▟▌ ·     , ▐▙███▟▌ ·
+     ▙█▟             ▙█▟             ▙█▟    ∘        ▙█▟    ∘
+ ' ▐▛███▜▌ ·     ' ▐▛███▜▌ ·     , ▐▛███▜▌ ·     , ▐▛███▜▌ ·
   ▝▜█████▛▘       ▝▜█████▛▘       ▝▜█████▛▘       ▝▜█████▛▘
     ▘▘ ▝▝           ▘▘ ▝▝           ▘▘ ▝▝           ▘▘ ▝▝
 ```
@@ -1045,14 +1044,14 @@ without the pipe: "The pipe" shows them in the scene.
 ### main · stretch after a compaction
 
 ```
- ▚   ▴♛▴   ▞     ▚   ▴♛▴   ▞     ▚   ▴♛▴   ▞     ▚   ▴♛▴   ▞         ▴♛▴             ▴♛▴             ▴♛▴
-  ▚▐▬███▬▌▞       ▚▐▬███▬▌▞       ▚▐▬███▬▌▞       ▚▐▬███▬▌▞        ▐▬███▬▌         ▐▬███▬▌         ▐▛███▜▌
-   ▜█████▛         ▜█████▛         ▜█████▛         ▜█████▛        ▗▜█████▛▖       ▗▜█████▛▖       ▝▜█████▛▘
+     ▙█▟             ▙█▟             ▙█▟             ▙█▟             ▙█▟             ▙█▟             ▙█▟
+  ▐▐█████▌▌       ▐▐█████▌▌       ▐▐█████▌▌       ▐▐█████▌▌        ▐█████▌         ▐█████▌         ▐▛███▜▌
+  ▝▜█████▛▘       ▝▜█████▛▘       ▝▜█████▛▘       ▝▜█████▛▘       ▗▜█████▛▖       ▗▜█████▛▖       ▝▜█████▛▘
     ▘▘ ▝▝           ▘▘ ▝▝           ▘▘ ▝▝           ▘▘ ▝▝           ▘▘ ▝▝           ▘▘ ▝▝           ▘▘ ▝▝
 ```
 
 ```
-     ▴♛▴             ▴♛▴             ▴♛▴             ▴♛▴             ▴♛▴
+     ▙█▟             ▙█▟             ▙█▟             ▙█▟             ▙█▟
    ▐▛███▜▌         ▐▛███▜▌         ▐▛███▜▌         ▐▛███▜▌         ▐▛███▜▌
   ▝▜█████▛▘       ▝▜█████▛▘       ▝▜█████▛▘       ▝▜█████▛▘       ▝▜█████▛▘
     ▘▘ ▝▝           ▘▘ ▝▝           ▘▘ ▝▝           ▘▘ ▝▝           ▘▘ ▝▝
@@ -1061,8 +1060,8 @@ without the pipe: "The pipe" shows them in the scene.
 ### main · delegating: holds out a hand, nods at a report, glances up at a message
 
 ```
-     ▴♛▴             ▴♛▴             ▴♛▴
-   ▐█▜██▛▌         ▐▬███▬▌         ▐▙███▟▌
+     ▙█▟             ▙█▟             ▙█▟
+   ▐█▜██▛▌         ▐█████▌         ▐▛███▜▌
   ▝▜█████▛▀       ▝▜█████▛▘       ▝▜█████▛▘
     ▘▘ ▝▝           ▘▘ ▝▝           ▘▘ ▝▝
 ```
@@ -1072,8 +1071,8 @@ without the pipe: "The pipe" shows them in the scene.
 ```
 
   ▗▖      ▄▖      ▗█      ✿       ⋈       ◠       ♫       ✣
-▐▛█▜▌   ▐▛█▜▌   ▐▛█▜▌   ▐▛█▜▌   ▐▛█▜▌   ▐▛█▜▌   ▐▛█▜▌   ▐▛█▜▌
-▝▘ ▝▗   ▝▘ ▝▗   ▝▘ ▝▗   ▝▘ ▝▗   ▝▘ ▝▗   ▝▘ ▝▗   ▝▘ ▝▗   ▝▘ ▝▗
+ ▛█▜     ▛█▜     ▛█▜     ▛█▜     ▛█▜     ▛█▜     ▛█▜     ▛█▜
+▝▜▀▜▘   ▝▜▀▜▘   ▝▜▀▜▘   ▝▜▀▜▘   ▝▜▀▜▘   ▝▜▀▜▘   ▝▜▀▜▘   ▝▜▀▜▘
 ```
 
 ### child · thinking
@@ -1081,8 +1080,8 @@ without the pipe: "The pipe" shows them in the scene.
 ```
                     ∘       ∘       ○       ○
   ▗▖·     ▗▖·     ▗▖·     ▗▖·     ▗▖·     ▗▖·
-▐▛█▜▌   ▐▛█▜▌   ▐▛█▜▌   ▐▛█▜▌   ▐▛█▜▌   ▐▛█▜▌
-▝▘ ▝▘   ▝▘ ▝▘   ▝▘ ▝▘   ▝▘ ▝▘   ▝▘ ▝▘   ▝▘ ▝▘
+ ▛█▜     ▛█▜     ▛█▜     ▛█▜     ▛█▜     ▛█▜
+▝▜▀▛▘   ▝▜▀▛▘   ▝▜▀▛▘   ▝▜▀▛▘   ▝▜▀▛▘   ▝▜▀▛▘
 ```
 
 ### child · at its laptop, any tool
@@ -1090,17 +1089,17 @@ without the pipe: "The pipe" shows them in the scene.
 ```
 
   ▗▖
-▐▛█▜▌
+ ▛█▜
 ▐▒▒▒▌
 ```
 
 ### child · asking
 
 ```
-    ?
-  ▗▖▌
-▐▛█▜▌
-▝▘ ▝▘
+
+  ▗▖?
+ ▛█▜▌
+▝▜▀▛▘
 ```
 
 ### child · stalled
@@ -1108,8 +1107,8 @@ without the pipe: "The pipe" shows them in the scene.
 ```
 
   ▗▖◴     ▗▖◴     ▗▖◷     ▗▖◷     ▗▖◶     ▗▖◶     ▗▖◵     ▗▖◵
-▐▜▛█▌   ▐▜▛█▌   ▐▛█▜▌   ▐█▜▛▌   ▐█▜▛▌   ▐▛█▜▌   ▐▜▛█▌   ▐▜▛█▌
-▝▘ ▝▘   ▝▘ ▝▘   ▝▘ ▝▗   ▝▘ ▝▗   ▝▘ ▝▘   ▝▘ ▝▘   ▝▘ ▝▗   ▝▘ ▝▗
+ ▛▛█     ▛▛█     ▛█▜     █▜▜     █▜▜     ▛█▜     ▛▛█     ▛▛█
+▝▜▀▛▘   ▝▜▀▛▘   ▝▜▀▜▘   ▝▜▀▜▘   ▝▜▀▛▘   ▝▜▀▛▘   ▝▜▀▜▘   ▝▜▀▜▘
 ```
 
 ### child · idle (looking about)
@@ -1117,8 +1116,8 @@ without the pipe: "The pipe" shows them in the scene.
 ```
 
   ▗▖      ▗▖      ▗▖      ▗▖      ▗▖      ▗▖
-▐▜▛█▌   ▐▜▛█▌   ▐▛█▜▌   ▐█▜▛▌   ▐█▜▛▌   ▐▛█▜▌
-▝▘ ▝▘   ▝▘ ▝▘   ▝▘ ▝▘   ▝▘ ▝▘   ▝▘ ▝▘   ▝▘ ▝▘
+ ▛▛█     ▛▛█     ▛█▜     █▜▜     █▜▜     ▛█▜
+▝▜▀▛▘   ▝▜▀▛▘   ▝▜▀▛▘   ▝▜▀▛▘   ▝▜▀▛▘   ▝▜▀▛▘
 ```
 
 ### child · asleep, from 90 s idle
@@ -1126,8 +1125,8 @@ without the pipe: "The pipe" shows them in the scene.
 ```
                     Z       Z
   ▗▖z     ▗▖z     ▗▖      ▗▖
-▐▬█▬▌   ▐▬█▬▌   ▐▬█▬▌   ▐▬█▬▌
-▝▘ ▝▘   ▝▘ ▝▘   ▝▘ ▝▘   ▝▘ ▝▘
+ ███     ███     ███     ███
+▝▜▀▛▘   ▝▜▀▛▘   ▝▜▀▛▘   ▝▜▀▛▘
 ```
 
 ### child · knocked over
@@ -1136,7 +1135,7 @@ without the pipe: "The pipe" shows them in the scene.
 
 
   ▗▖      ▗▖✧     ▗▖✧     ▗▖✦
-▐▬█▬▌   ▐▬█▬▌   ▐▬█▬▌   ▐▬█▬▌
+▗███▖   ▗███▖   ▗███▖   ▗███▖
 ```
 
 ### child · done
@@ -1144,8 +1143,8 @@ without the pipe: "The pipe" shows them in the scene.
 ```
 
   ▗▖✓
-▐▛█▜▌
-▝▘ ▝▘
+ ▛█▜
+▝▜▀▛▘
 ```
 
 ### child · failed
@@ -1154,7 +1153,7 @@ without the pipe: "The pipe" shows them in the scene.
 
   ✗
   ▗▖
-▐▬█▬▌
+▗███▖
 ```
 
 ## State machine
@@ -1216,7 +1215,7 @@ not: a seeded agent that later finishes still cheers or sits.
   spawner). Then **the pipe takes it, done or failed**, where it stands: the
   pipe comes down over it (0.5 s; eyes up at it under its `✓`, or still
   slumped under its `✗`), sucks it up (1 s, faster and faster, stretched:
-  arms up in a V, legs long, eyes up or shut) and goes back up with it
+  arms up beside its head, legs long, eyes open or shut) and goes back up with it
   (0.5 s). It is gone after **eight leave frames (2 s,
   `FAREWELL_TICKS`)**, at every pane width, inside the twelve-frame cap
   (`EXIT_TICKS`, 3 s) that `sceneOf` keeps a finished agent for. The place
@@ -1274,10 +1273,10 @@ Arriving at 40 by 10 (a worker, its slot at column 18; columns 17 to 33):
    █████████            ███████             ███████             ███████            █████████
                        ▄███████▄           ▄███████▄           ▄███████▄
                        █████████           █████████           █████████
-                      ▚    w ◜◠◝▞
-                       ▚▐▌███▐▌▞          ▚    w ◜◠◝▞
-                        ▜█████▛            ▚▐▌███▐▌▞
-                         ▝▘ ▝▘              ▜█████▛                w ◜◠◝               w ◜◠◝
+                           w◜◠◝
+                       ▐▐▀███▀▌▌               w◜◠◝
+                       ▝▜█████▛▘           ▐▐▀███▀▌▌
+                         ▝▘ ▝▘             ▝▜█████▛▘               w◜◠◝                w◜◠◝
                                              ▝▘ ▝▘              ▐█▜██▛▌             ▐█▜██▛▌  ▗▄▄▄
                                                                ▝▜█████▛▘           ▝▜█████▛▘ ▐▒▒▒
                                                                  ▘▘ ▝▝               ▘▘ ▝▝  ▀▀▀▀▀
@@ -1289,12 +1288,12 @@ Leaving, done, and failed (still slumped under its `✗` as the pipe comes down)
 250 ms              500 ms              750 ms              1000 ms             1250 ms             1500 ms
    █████████           ▄███████▄           ▄███████▄           ▄███████▄           ▄███████▄           ▄███████▄
                        █████████           █████████           █████████           █████████           █████████
-                                                                                    ▜█████▛
-                                                              ▚▄▄▖ w    ▞            ▐▌ ▐▌
-                                          ▚▄▄▖ w    ▞          ▚▐▙███▟▌▞
-   ▄▄▖ w              ▚▄▄▖ w    ▞          ▚▐▙███▟▌▞            ▜█████▛
-    ▐▙███▟▌ ✓          ▚▐▙███▟▌▞            ▜█████▛              ▐▌ ▐▌
-   ▝▜█████▛▘            ▜█████▛              ▐▌ ▐▌
+                                                                                   ▝▜█████▛▘
+                                                                ▄▄▖w                 ▐▌ ▐▌
+                                            ▄▄▖w               ▐▐▛███▜▌▌
+    ▄▄▖w                ▄▄▖w               ▐▐▛███▜▌▌           ▝▜█████▛▘
+    ▐▛███▜▌ ✓          ▐▐▛███▜▌▌           ▝▜█████▛▘             ▐▌ ▐▌
+   ▝▜█████▛▘           ▝▜█████▛▘             ▐▌ ▐▌
      ▘▘ ▝▝               ▐▌ ▐▌
 
 ```
@@ -1304,12 +1303,12 @@ Leaving, done, and failed (still slumped under its `✗` as the pipe comes down)
    █████████            ███████             ███████             ███████
                        ▄███████▄           ▄███████▄           ▄███████▄
                        █████████           █████████           █████████
-                                                                ▜█████▛
-                                          ▚    w  ⋈ ▞            ▐▌ ▐▌
-                                           ▚▐▬███▬▌▞
-       ✗              ▚    w  ⋈ ▞           ▜█████▛
-       w  ⋈            ▚▐▬███▬▌▞             ▐▌ ▐▌
-    ▐▬███▬▌             ▜█████▛
+                                                               ▝▜█████▛▘
+                                               w ⋈               ▐▌ ▐▌
+                                           ▐▐█████▌▌
+       ✗                   w ⋈             ▝▜█████▛▘
+       w ⋈             ▐▐█████▌▌             ▐▌ ▐▌
+    ▐█████▌            ▝▜█████▛▘
    ▗▜█████▛▖             ▐▌ ▐▌
 ```
 
@@ -1363,8 +1362,8 @@ never moves; walking about, it has none. Others hop over it or turn back.
 **The walk** is four frames, the feet passing (`▘▘ ▝▝`, `▝▝ ▘▘`, `▘▝ ▘▝`,
 `▝▘ ▝▘`), the eyes the way it goes; on frames 1 and 3 the whole figure
 bobs a row up (where a row is free above it: any mascot with a row of sky
-over its floor) and its torso leans a cell the way it goes. Without a free
-row it walks on the floor, the lean kept. Walking only in depth, it walks in
+over its floor) and its torso leans half a cell the way it goes, arms and
+all. Without a free row it walks on the floor, the lean kept. Walking only in depth, it walks in
 place between its rows.
 
 **Hops.** A walker (wandering or on an errand) that would come too close to
@@ -1372,7 +1371,7 @@ someone on the ground within a row of depth hops clean over them,
 Mario-style, where the sky over its own floor has four rows or more
 (`HOP_HEIGHT`), at its own depth, in six frames whatever the
 distance: a squash on take-off (one row shorter and wider), a stretch leaving
-the ground (arms up in a V, legs long), the apex with legs tucked (2), down
+the ground (arms up, legs long), the apex with legs tucked (2), down
 again (1), and a squash on landing, clear beyond them; lifts 0 2 4 4 2 0
 (`hopLift`, `HOP_AIR`), the cells a frame growing with the distance. Only towards somewhere past them, and only where it can land
 clear; otherwise it stops short and turns for somewhere else. Now and then
@@ -1467,7 +1466,7 @@ the walker stops):
 Knocked over (12 frames): a stagger, eyes shut, arms down (1); flat on its
 back, the whole figure upside down, legs in the air, head on the floor, eyes
 shut, its hat or crown knocked off onto the floor beside its head, its letter
-and energy gone with it (1); dizzy (8): spiral eyes, `@` then `ø`, spinning
+and energy gone with it (1); dizzy (8): its eyes crossing, then rolling apart,
 a frame at a time, under three stars over it at its columns 3, 6 and 9 that
 blink in turn: frame n hides star n mod 3 and brings it back as the other
 star (`✦`, `✧`); then it gets up through a crouch, eyes back, a row lower

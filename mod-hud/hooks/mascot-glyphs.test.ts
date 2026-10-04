@@ -3,7 +3,7 @@ import { describe, expect, test } from 'claude-code/testing'
 import { boxed, cellOf, drawnAlone, figureIn, placementOf, spriteOf, windowOf } from './mascot-glyphs.fixtures'
 import { spriteSheet } from './mascot-sheet'
 import type { SheetEntry } from './mascot-sheet'
-import { ACCESSORIES, ACCESSORY_NAMES, BLANKET, CROWN, HEADS, LAPTOP_COLOUR, ROLE_LETTERS, SLOT, SQUASHED, THOUGHTS, TORSOS } from './mascot-sprites'
+import { ACCESSORIES, ACCESSORY_NAMES, BLANKET, CROWN, HAT_X, HEADS, LAPTOP_COLOUR, ROLE_LETTERS, SLOT, SQUASHED, THOUGHTS, TORSOS } from './mascot-sprites'
 import { CLASHES, KIT_COLOURS, PALETTE, SCENE_COLOURS, accessoryOf, energyOf, roleOf, sceneOf, sideOf } from './scene-model'
 import { NOW, crowd, entry, idleHud, oneAgent, working } from './scene-model.fixtures'
 import { SCENE_FRAME_MS } from './scene-phases'
@@ -27,14 +27,16 @@ describe('accessories and the crown', () => {
     for (const scene of scenes) {
       for (let tick = 0; tick < 12; tick += 1) {
         const placed = placedSprites(scene, room(72, 4, tick))!
-        const crowned = placed.sprites.filter(one => one.cells.some(row => row.some(cell => cell?.ch === '♛')))
+        const crowned = placed.sprites.filter(one => one.cells.some(row => row.some(cell => cell?.colour === CROWN.colour)))
         expect(crowned.map(one => one.id)).toEqual(['main'])
-        expect(crowned[0]?.cells.flat().find(cell => cell?.ch === '♛')).toEqual(expect.objectContaining({ ink: 'k', colour: CROWN.colour }))
+        const crown = crowned[0]?.cells.flat().filter(cell => cell?.colour === CROWN.colour) ?? []
+        expect(crown.map(cell => cell?.ch).join('')).toBe(CROWN.art)
+        for (const cell of crown) expect(cell).toEqual(expect.objectContaining({ ink: 'k', colour: CROWN.colour }))
       }
     }
     for (const { name, frames } of spriteSheet()) {
-      if (name.startsWith('main')) expect(frames.every(frame => frame.join('').includes('♛')), name).toBe(true)
-      if (name.startsWith('agent') || name.startsWith('child') || name.startsWith('workflow')) expect(frames.some(frame => frame.join('').includes('♛')), name).toBe(false)
+      if (name.startsWith('main')) expect(frames.every(frame => frame.join('').includes(CROWN.art)), name).toBe(true)
+      if (name.startsWith('agent') || name.startsWith('child') || name.startsWith('workflow')) expect(frames.some(frame => frame.join('').includes(CROWN.art)), name).toBe(false)
     }
   })
 
@@ -141,7 +143,7 @@ describe('the figure', () => {
         const at = figureIn(frame)
         if (at === undefined || at.flat) return
         const air = windowOf(frame, at.head - 1, at.x)
-        const crowned = air.slice(3, 6) === '▴♛▴'
+        const crowned = air.slice(3, 6) === CROWN.art
         const lettered = /^[rdpwfe]$/.test(air[4] ?? '')
         expect(crowned && lettered, `${name} #${index}: "${air}"`).toBe(false)
         if (name.startsWith('main')) expect(crowned, `${name} #${index}: "${air}"`).toBe(true)
@@ -154,16 +156,16 @@ describe('the figure', () => {
   test('the crown is the session\'s alone, in its fixed gold, never covered: a message bubble goes over it, or waits', () => {
     for (const background of ['#282a36', '#eff1f5']) expect(contrast(CROWN.colour, background)).toBeGreaterThanOrEqual(3)
     for (const { name, frames, cells } of spriteSheet()) {
-      if (name.startsWith('main')) for (const frame of frames) expect(frame.join('\n'), name).toContain('▴♛▴')
+      if (name.startsWith('main')) for (const frame of frames) expect(frame.join('\n'), name).toContain(CROWN.art)
       // The crown only ever on a figure in the accent: the session's.
       frames.forEach((frame, index) => {
         const at = figureIn(frame)
-        const crowned = frame.join('').includes('♛')
+        const crowned = frame.join('').includes(CROWN.art)
         if (at !== undefined) expect(crowned, `${name} #${index}`).toBe(cells[index]![at.head]![at.x + 1]?.colour === 'claude')
       })
     }
     const crown = spriteOf(oneAgent(working('a', 'thinking')), 'main').cells[1]!.slice(5, 8)
-    expect(crown.map(cell => [cell?.ch, cell?.ink, cell?.colour, cell?.hat])).toEqual(['▴', '♛', '▴'].map(ch => [ch, 'k', CROWN.colour, true]))
+    expect(crown.map(cell => [cell?.ch, cell?.ink, cell?.colour, cell?.hat])).toEqual([...CROWN.art].map(ch => [ch, 'k', CROWN.colour, true]))
     const board: MascotScene = { main: { mood: 'watching', sweating: false }, agents: [working('a', 'thinking')], events: [{ kind: 'message', from: 'a', to: 'main', tick: 0 }] }
     for (const rows of [4, 5]) {
       for (let tick = 0; tick < 24; tick += 1) {
@@ -172,7 +174,7 @@ describe('the figure', () => {
         const lines = mascotLines(board, room, plan) ?? []
         // The session at the front: its box the frame's last four rows.
         const sky = lines.length - 4
-        expect(lines[sky]?.slice(5, 8), `${rows} rows @${tick}`).toBe('▴♛▴')
+        expect(lines[sky]?.slice(5, 8), `${rows} rows @${tick}`).toBe(CROWN.art)
         const bubble = plan.marks.find(mark => mark.ch === '○')
         // Over the crown with no sky, it waits; with a sky row, it passes above.
         if (bubble !== undefined && bubble.x >= 5 && bubble.x <= 7) expect(lines.join('').includes('○'), `${rows} rows @${tick}`).toBe(rows === 5)
@@ -236,11 +238,11 @@ describe('accessories', () => {
     const before = sceneOf([first, later], idleHud, NOW).agents.find(one => one.id === 'later')?.accessory
     const after = sceneOf([{ ...first, status: 'done', endedAt: NOW - 50_000 }, later], idleHud, NOW).agents.find(one => one.id === 'later')?.accessory
     expect(after).toBe(before)
-    // Drawn at its end of the air row, in its colour; the letter centred; a mini wears its two cells over its head.
+    // Drawn on its corner of the head, in its colour; the letter centred; a mini wears its two cells over its head.
     for (const side of ['left', 'right'] as const) {
       const sprite = spriteOf(oneAgent(working('a', 'thinking', { accessory: 'tophat', side, role: 'worker', idleMs: 2 * SCENE_FRAME_MS })), 'a')
       const air = sprite.cells[1]!
-      const from = side === 'left' ? 2 : 8
+      const from = HAT_X[side]
       expect(air.slice(from, from + 3).map(cell => cell?.ch).join('')).toBe(ACCESSORIES.tophat.art)
       expect(air.slice(from, from + 3).every(cell => cell?.ink === 'k' && cell.colour === ACCESSORIES.tophat.colour && cell.hat === true)).toBe(true)
       expect(air[6]).toEqual(expect.objectContaining({ ch: 'w', ink: 'f', hat: true }))
@@ -279,14 +281,15 @@ describe('energy', () => {
   test('drawn at the end of the air row its hat leaves: ✦ for high, ✦✦ for xhigh, in the warning colour', () => {
     const air = (extra: Parameters<typeof working>[2]) => spriteOf(oneAgent(working('a', 'thinking', { idleMs: 2 * SCENE_FRAME_MS, ...extra })), 'a').cells[1]!
     const text = (cells: readonly (Cell | undefined)[]) => cells.map(cell => cell?.ch ?? ' ').join('')
-    expect(text(air({ accessory: 'beanie', side: 'left' })).trimEnd()).toBe('  ▗▄▖')
-    expect(text(air({ accessory: 'beanie', side: 'left', energy: 1 })).slice(2, 11)).toBe('▗▄▖    ✦ ')
-    expect(text(air({ accessory: 'beanie', side: 'left', energy: 2 })).slice(2, 11)).toBe('▗▄▖    ✦✦')
-    expect(text(air({ accessory: 'beanie', side: 'right', energy: 1 })).slice(2, 11)).toBe(' ✦    ▗▄▖')
-    expect(text(air({ accessory: 'beanie', side: 'right', energy: 2 })).slice(2, 11)).toBe('✦✦    ▗▄▖')
+    // The hat on the head's corner, flush with its side; the energy at the air row's other end.
+    expect(text(air({ accessory: 'beanie', side: 'left' })).trimEnd()).toBe('   ▗▄▖')
+    expect(text(air({ accessory: 'beanie', side: 'left', energy: 1 })).slice(2, 11)).toBe(' ▗▄▖   ✦ ')
+    expect(text(air({ accessory: 'beanie', side: 'left', energy: 2 })).slice(2, 11)).toBe(' ▗▄▖   ✦✦')
+    expect(text(air({ accessory: 'beanie', side: 'right', energy: 1 })).slice(2, 11)).toBe(' ✦   ▗▄▖ ')
+    expect(text(air({ accessory: 'beanie', side: 'right', energy: 2 })).slice(2, 11)).toBe('✦✦   ▗▄▖ ')
     expect(air({ energy: 2 })[9]).toEqual(expect.objectContaining({ ch: '✦', ink: 'y' }))
     const session = spriteOf({ main: { mood: 'watching', sweating: false, energy: 2 }, agents: [] }, 'main').cells[1]!
-    expect(text(session).slice(2, 11)).toBe('   ▴♛▴ ✦✦')
+    expect(text(session).slice(2, 11)).toBe(`   ${CROWN.art} ✦✦`)
   })
 })
 

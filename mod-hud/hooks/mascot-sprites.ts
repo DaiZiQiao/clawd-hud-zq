@@ -14,8 +14,8 @@
 // pane has a row to spare. A child is a mini of 5 by 4.
 //
 // The figure is drawn only from the body tables, in its own colour: no foreign
-// cell on its head, torso or legs (shut eyes are slits, dizzy ones spirals,
-// glyphs of the head in its colour). Everything else (the letter, the hat,
+// cell on its head, torso or legs, and nothing breaks its head's outline: the
+// eyes only move, widen, cross or close as notches in its lower half. Everything else (the letter, the hat,
 // the energy, the thought, the laptop, the blanket, the cigarette) has a
 // colour of its own and a fixed place off the figure.
 
@@ -51,8 +51,8 @@ export const BODY_X = 2
 export const BODY_WIDTH = 9
 /** Over the head's centre (box column 6): the role letter, or the session's crown around it. */
 export const LETTER_X = BODY_X + 4
-/** Where a hat's three cells start on the air row: an agent's at the head's left or right end, the crown centred. */
-export const HAT_X = { left: 2, centre: 5, right: 8 } as const
+/** Where a hat's three cells start on the air row: an agent's on the head's left or right corner, the crown centred. */
+export const HAT_X = { left: 3, centre: 5, right: 7 } as const
 export type HatSide = keyof typeof HAT_X
 /** A mini's cells across. */
 export const MINI = 5
@@ -60,25 +60,31 @@ export const MINI = 5
 // --- the figure ------------------------------------------------------------------
 
 /**
- * The head row (9 cells, box columns 2 to 10), by its eyes: notches, or
- * glyphs in the eye cells (shut eyes thin slits, dizzy ones spirals), all in
- * the mascot's colour.
+ * The head row (9 cells, box columns 2 to 10), by its eyes: as Claude Code
+ * draws Clawd, the eyes are notches in the lower half of the head, and every
+ * look keeps the head's outline whole: the eyes only move, widen or close.
  */
 export const HEADS = {
   open: ' ▐▛███▜▌ ',
   left: ' ▐▜██▛█▌ ',
   right: ' ▐█▜██▛▌ ',
-  /** Eyes up: at a thought, or a message going over. */
-  up: ' ▐▙███▟▌ ',
-  shut: ' ▐▬███▬▌ ',
-  /** Dizzy: spiral eyes, spinning a frame at a time. */
-  spiral: ' ▐@███@▌ ',
-  spin: ' ▐ø███ø▌ ',
+  /** Eyes up (at a thought, or a message going over): the head's top is its outline, so it looks on ahead. */
+  up: ' ▐▛███▜▌ ',
+  /** Shut: no eyes, the head whole (a blink, asleep, a stretch). */
+  shut: ' ▐█████▌ ',
+  /** Dizzy: the eyes cross, then roll apart, a frame each. */
+  spiral: ' ▐█▜█▛█▌ ',
+  spin: ' ▐▜███▛▌ ',
   /** Eyes down: scanning the floor in flight (the smooth scene). */
   down: ' ▐▀███▀▌ ',
   /** Eyes wide: held up by the pointer, or thrown (the smooth scene). */
-  wide: ' ▐▌███▐▌ ',
+  wide: ' ▐▀███▀▌ ',
 } as const
+
+/** A row turned upside down: each quadrant glyph's top and bottom swapped. */
+const FLIPPED: Readonly<Record<string, string>> = { '▛': '▙', '▙': '▛', '▜': '▟', '▟': '▜', '▀': '▄', '▄': '▀', '▘': '▖', '▖': '▘', '▝': '▗', '▗': '▝' }
+
+export const flipped = (row: string): string => [...row].map(glyph => FLIPPED[glyph] ?? glyph).join('')
 
 export type Head = keyof typeof HEADS
 
@@ -87,10 +93,10 @@ export const TORSOS = {
   rest: '▝▜█████▛▘',
   /** Arms down: a breath out, sitting, a landing. */
   low: '▗▜█████▛▖',
-  /** Arms up and out of the row: drawn beside the head (`ARMS_UP`). */
-  up: ' ▜█████▛ ',
-  /** The right arm raised beside the head with its `?`. */
-  raised: '▝▜█████▛ ',
+  /** Arms up: the shoulders as at rest, the arms going on up beside the head (`ARMS_UP`). */
+  up: '▝▜█████▛▘',
+  /** The right arm raised beside the head with its `?` (`OVERLAYS.ask`): the shoulder as at rest. */
+  raised: '▝▜█████▛▘',
   /** The right arm out: pointing, or reaching for the keys. */
   point: '▝▜█████▛▀',
 } as const
@@ -119,11 +125,14 @@ export type Legs = keyof typeof LEGS
 /** The walk's legs, frame by frame. */
 export const WALK_LEGS: readonly Legs[] = ['stand', 'step', 'pass', 'back']
 
-/** Both arms up and out from the shoulders, a V beside the head: cells in the box (row, column), in the mascot's colour. */
-export const ARMS_UP: readonly (readonly [number, number, string])[] = [[1, 2, '▚'], [0, 1, '▚'], [1, 10, '▞'], [0, 11, '▞']]
+/** Both arms up from the shoulders, a stub beside each side of the head: cells in the box (row, column), in the mascot's colour. */
+export const ARMS_UP: readonly (readonly [number, number, string])[] = [[1, 2, '▐'], [1, 10, '▌']]
 
-/** Squashed on a hop's take-off and landing: a row shorter and wider, eyes kept. Drawn on rows 2 and 3. */
-export const SQUASHED = [' █▛███▜█ ', '▀█▜▀▀▀▛█▀'] as const
+/** Walking, the torso a half cell the way it goes (its arms with it), head and feet where they are. */
+export const LEANING = { left: '▀██████▀ ', right: ' ▀██████▀' } as const
+
+/** Squashed on a hop's take-off and landing: a row shorter and wider, eyes kept, the arms out, its feet under it. Drawn on rows 2 and 3. */
+export const SQUASHED = [' █▛███▜█ ', '▀▀▛▛▀▜▜▀▀'] as const
 
 /** Knocked flat on its back: legs in the air (row 1), the body upside down (2), the head on the floor (3). */
 export const FLAT = { legs: '  ▖▖ ▗▗  ', body: '▗▟█████▙▖' } as const
@@ -131,13 +140,13 @@ export const FLAT = { legs: '  ▖▖ ▗▗  ', body: '▗▟█████▙
 /** Getting up: crouched a row lower, hands planted on the floor. */
 export const CROUCHED = '▄▟█████▙▄'
 
-/** Asleep under the blanket: the quilt over its torso (two patterns, a breath apart), the hem on the floor. */
-export const BLANKET = { colour: '#5C86B8', quilt: ['▗▞▚▞▚▞▚▞▖', '▗▚▞▚▞▚▞▚▖'], hem: ' ▀▀▀▀▀▀▀ ' } as const
+/** Asleep under the blanket: the quilt over its torso, rising a little with each breath, the hem on the floor. */
+export const BLANKET = { colour: '#5C86B8', quilt: ['▗███████▖', '▟███████▙'], hem: '▝▀▀▀▀▀▀▀▘' } as const
 
 // --- what an agent wears -----------------------------------------------------------
 
-/** The session's crown, in a fixed gold that reads on dark and light (3.88:1 and 3.24:1). */
-export const CROWN = { art: '▴♛▴', colour: '#A6801F' } as const
+/** The session's crown, three points on a band, in a fixed gold that reads on dark and light (3.88:1 and 3.24:1). */
+export const CROWN = { art: '▙█▟', colour: '#A6801F' } as const
 
 /**
  * An agent's accessory: its three cells at one end of the air row (a mini
@@ -250,7 +259,7 @@ export const OVERLAYS = {
   /** Stalled asleep under the blanket: the same clock on the floor beside it, clear of the z z Z (drawn a row lower with no sky row). */
   blanketClock: each('y', ['◴', '◷', '◶', '◵'].map(glyph => placed([3, 11, glyph])).flatMap(twice)),
   /** Asking: the right hand up beside the head (its colour), the `?` above it. */
-  ask: [{ art: placed([0, 11, '?'], [1, 11, '▌']), ink: 'b' as const, by: { '?': 'p' as const } }],
+  ask: [{ art: placed([0, 11, '?'], [1, 10, '▌']), ink: 'b' as const, by: { '?': 'p' as const } }],
   /** Done: a tick beside the head. */
   tick: each('g', [placed([1, 11, '✓'])]),
   /** Failed: a cross over the slumped head (drawn a row lower, sitting). */
@@ -295,20 +304,27 @@ export const REACH = placed([2, 11, '▖'])
 
 // --- the mini --------------------------------------------------------------------------
 
-/** The mini's head and legs rows: every frame 5 cells; shut eyes slits, as the full figure's. */
+/**
+ * The mini, Clawd at half size: its head row (the eyes notches, shut eyes
+ * none, as the full figure's) over its body row (the arms out, two legs).
+ * Every frame 5 cells.
+ */
 export const MINI_HEADS = {
-  open: '▐▛█▜▌',
-  left: '▐▜▛█▌',
-  right: '▐█▜▛▌',
-  shut: '▐▬█▬▌',
+  open: ' ▛█▜ ',
+  left: ' ▛▛█ ',
+  right: ' █▜▜ ',
+  shut: ' ███ ',
 } as const
 
 export const MINI_LEGS = {
-  stand: '▝▘ ▝▘',
-  step: '▘▝ ▘▝',
-  tap: '▝▘ ▝▗',
-  none: '     ',
+  stand: '▝▜▀▛▘',
+  step: '▝▛▀▜▘',
+  tap: '▝▜▀▜▘',
+  none: '▝▀▀▀▘',
 } as const
+
+/** The mini slumped or down: one row on the floor, head and body together, eyes shut. */
+export const MINI_SAT = '▗███▖'
 
 export type MiniHead = keyof typeof MINI_HEADS
 export type MiniLegs = keyof typeof MINI_LEGS
@@ -321,7 +337,7 @@ export const MINI_OVERLAYS = {
   thought: each('d', [mini(B5, '    ·'), mini('    ∘', '    ·'), mini('    ○', '    ·')].flatMap(twice)),
   zzz: each('d', [mini(B5, '    z'), mini('    Z')].flatMap(twice)),
   laptop: [{ art: mini(B5, B5, B5, '▐▒▒▒▌'), ink: 'k' as const, colour: LAPTOP_COLOUR, by: { '▒': 'd' as const } }],
-  ask: [{ art: mini('    ?', '    ▌'), ink: 'b' as const, by: { '?': 'p' as const } }],
+  ask: [{ art: mini(B5, '    ?', '    ▌'), ink: 'b' as const, by: { '?': 'p' as const } }],
   clock: each('y', ['◴', '◷', '◶', '◵'].map(glyph => mini(B5, `    ${glyph}`)).flatMap(twice)),
   tick: each('g', [mini(B5, '    ✓')]),
   cross: each('r', [mini('  ✗  ')]),
@@ -344,6 +360,8 @@ export const FRAME_TABLES: readonly { name: string; width: number; height: numbe
   { name: 'ENERGY_MARKS', width: 2, height: 1, frames: [...ENERGY_MARKS.right, ...ENERGY_MARKS.left].map(mark => [mark]) },
   { name: 'MINI_HEADS', width: MINI, height: 1, frames: Object.values(MINI_HEADS).map(row => [row]) },
   { name: 'MINI_LEGS', width: MINI, height: 1, frames: Object.values(MINI_LEGS).map(row => [row]) },
+  { name: 'MINI_SAT', width: MINI, height: 1, frames: [[MINI_SAT]] },
+  { name: 'LEANING', width: BODY_WIDTH, height: 1, frames: Object.values(LEANING).map(row => [row]) },
   ...Object.entries(OVERLAYS).map(([name, frames]) => ({ name: `OVERLAYS.${name}`, width: SLOT, height: GRID_ROWS, frames: frames.map(one => one.art) })),
   { name: 'LAPTOP', width: SLOT, height: GRID_ROWS, frames: LAPTOP.map(one => one.art) },
   { name: 'REACH', width: SLOT, height: GRID_ROWS, frames: [REACH] },

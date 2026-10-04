@@ -2,7 +2,7 @@ import type { JsonValue } from 'claude-code'
 import { describe, expect, test } from 'claude-code/testing'
 
 import type { HudSelection } from '../types'
-import { HEADS } from './mascot-sprites'
+import { CROWN, HEADS, flipped } from './mascot-sprites'
 import { arrange, headAt, mount, rowsOf } from './scene-client.fixtures'
 import { NOW, entry } from './scene-model.fixtures'
 import { SCENE_FRAME_MS } from './scene-phases'
@@ -18,9 +18,10 @@ import { displayWidth } from './text-width'
 // its pointer, its posts) on the terminal and the desktop.
 
 const SURFACES = ['terminal', 'desktop'] as const
-const WIDE = '▐▌███▐▌'
+const WIDE = HEADS.wide.slice(1, 8)
 
-const DIZZY = /▐[@ø]███[@ø]▌/
+// Dizzy on its back: the head upside down, its eyes crossed or rolled apart.
+const DIZZY = new RegExp([HEADS.spiral, HEADS.spin].map(row => flipped(row).slice(1, 8)).join('|'))
 
 describe('the scene is a Client', () => {
   test('on terminal and desktop: its module, the scene\'s inputs as props, the spare rows as its region; drawn a row per row', async ($, on) => {
@@ -44,7 +45,7 @@ describe('the scene is a Client', () => {
       if (surface === 'terminal') expect(await ui.find({ type: 'Svg', in: 'mascots' })).toBe(undefined)
       const rows = await rowsOf(ui)
       expect(rows).toHaveLength(props.rows)
-      expect(rows.join('\n')).toContain('▴♛▴')
+      expect(rows.join('\n')).toContain(CROWN.art)
       expect(rows.join('\n')).toContain(LAPTOP)
       for (const row of rows) expect(displayWidth(row)).toBeLessThanOrEqual(72)
       // No Box scene and no pick buttons in the hooks' own tree.
@@ -61,7 +62,7 @@ describe('the scene is a Client', () => {
       expect(await ui.find({ type: 'Client' })).toBe(undefined)
       const rows = (await ui.findAll({ type: 'Box' })).filter(box => box.key?.startsWith('mascots:') === true)
       expect(rows.length).toBeGreaterThanOrEqual(4)
-      expect(rows.map(row => row.text).join('\n')).toContain('▴♛▴')
+      expect(rows.map(row => row.text).join('\n')).toContain(CROWN.art)
       await clock.advance(4 * SCENE_FRAME_MS)
       expect(held.get('sceneTick')?.version ?? 0).toBeGreaterThan(0)
       await ui.unmount()
@@ -79,13 +80,13 @@ describe('the scene is a Client', () => {
       const rows = (await ui.findAll({ type: 'Box' })).filter(box => box.key?.startsWith('mascots:') === true)
       if (surface === 'terminal') {
         expect(svg).toBe(undefined)
-        expect(rows.map(row => row.text).join('\n')).toContain('▴♛▴')
+        expect(rows.map(row => row.text).join('\n')).toContain(CROWN.art)
       } else {
         // As many rows as the text scene would take, the region's columns wide; the pick laid over the cell between the feet.
         expect(rows).toEqual([])
         const source = String(svg?.props?.source)
         const drawn = svgRows(source)
-        expect(drawn.join('\n')).toContain('▴♛▴')
+        expect(drawn.join('\n')).toContain(CROWN.art)
         expect(drawn.join('\n')).toContain(LAPTOP)
         expect(svg?.props?.width).toBe(72 * CELL_WIDTH)
         expect(svg?.props?.height).toBe(drawn.length * CELL_HEIGHT)
@@ -217,8 +218,8 @@ describe('the pointer', () => {
       const ui = await mount($, surface)
       const rows = await rowsOf(ui)
       // The session's mascot, under its crown: a click asks the hooks to inspect `main`, the session's own.
-      const crowned = rows.findIndex(row => row.includes('▴♛▴'))
-      const crown = { x: rows[crowned]!.indexOf('▴♛▴') + 1, y: crowned + 1 }
+      const crowned = rows.findIndex(row => row.includes(CROWN.art))
+      const crown = { x: rows[crowned]!.indexOf(CROWN.art) + 1, y: crowned + 1 }
       await ui.pointer({ type: 'down', x: crown.x, y: crown.y, button: 'left' })
       await ui.pointer({ type: 'up', x: crown.x, y: crown.y, button: 'left' })
       expect(held.get('selected')?.value).toEqual({ id: 'main', kind: 'main' })

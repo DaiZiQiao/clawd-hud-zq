@@ -45,7 +45,7 @@ export const QUADRANTS: Readonly<Record<string, number>> = {
 
 /** The medium shade (the laptop's screen): its whole cell at half strength. */
 const SHADE = '▒'
-/** The black rectangle (shut eyes): a bar across the middle of its cell. */
+/** The black rectangle: a bar across the middle of its cell. */
 const BAR = '▬'
 const BAR_TOP = 6
 const BAR_HEIGHT = 4

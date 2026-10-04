@@ -116,7 +116,7 @@ describe('lifecycle', () => {
       expect(frames[tick]?.cell[3]?.trimEnd()).toBe(`  ${TORSOS.low}`)
     }
     // Then up the pipe, stretched, eyes shut.
-    expect(frames[FAIL_HOLD + 2]?.cell[1]?.slice(2, 11)).toBe(`▚${HEADS.shut.slice(1, 8)}▞`)
+    expect(frames[FAIL_HOLD + 2]?.cell[1]?.slice(2, 11)).toBe(`▐${HEADS.shut.slice(1, 8)}▌`)
     expect(frames[FAIL_HOLD + 2]?.cell[3]?.slice(2, 11)).toBe(LEGS.stretch)
   })
 

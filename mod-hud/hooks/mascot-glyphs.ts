@@ -17,12 +17,14 @@ import {
   HAT_X,
   HEADS,
   LAPTOP,
+  LEANING,
   LEGS,
   LETTER_X,
   MINI,
   MINI_HEADS,
   MINI_LEGS,
   MINI_OVERLAYS,
+  MINI_SAT,
   OVERLAYS,
   REACH,
   ROLE_LETTERS,
@@ -31,6 +33,7 @@ import {
   SQUASHED,
   THOUGHT_FRAMES,
   TORSOS,
+  flipped,
 } from './mascot-sprites'
 import type { HatSide, Ink, Overlay } from './mascot-sprites'
 import { sideOf } from './scene-model'
@@ -93,7 +96,8 @@ export const drawLook = (look: Look, wear: Wear, colour: string, above = 0): Gri
   switch (look.pose) {
     case 'stand':
       row(1, head)
-      row(2, TORSOS[look.arms], look.lean ?? 0)
+      // A lean takes the torso half a cell the way it goes, arms at rest.
+      row(2, look.lean !== undefined && look.arms === 'rest' ? LEANING[look.lean === -1 ? 'left' : 'right'] : TORSOS[look.arms])
       row(3, LEGS[look.legs])
       break
     case 'sit':
@@ -109,9 +113,10 @@ export const drawLook = (look: Look, wear: Wear, colour: string, above = 0): Gri
       row(3, SQUASHED[1])
       break
     case 'flat':
+      // On its back: the head upside down too, its eyes against the body.
       row(1, FLAT.legs)
       row(2, FLAT.body)
-      row(3, head)
+      row(3, flipped(head))
       break
     case 'blanket':
       row(1, head)
@@ -190,7 +195,9 @@ export const drawMini = (look: MiniLook, agent: Pick<MascotAgent, 'accessory'>, 
     line[column] = cell
     if (own) figure.add(key)
   }
-  const body = look.sit ? [B5, B5, B5, MINI_HEADS[look.head]] : [B5, B5, MINI_HEADS[look.head], MINI_LEGS[look.legs]]
+  // At its laptop the body row is behind it: only the head shows over the lid.
+  const atDesk = look.overlays.some(overlay => MINI_OVERLAYS.laptop.includes(overlay as (typeof MINI_OVERLAYS.laptop)[number]))
+  const body = look.sit ? [B5, B5, B5, MINI_SAT] : [B5, B5, MINI_HEADS[look.head], atDesk ? B5 : MINI_LEGS[look.legs]]
   body.forEach((text, y) => [...text].forEach((glyph, x) => {
     if (glyph !== ' ') put(y, x, { ch: glyph, ink: 'b', colour }, true)
   }))

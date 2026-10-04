@@ -48,7 +48,7 @@ describe('motion', () => {
 
   test('a newcomer comes by the red pipe: down over its slot, out of the mouth falling ever faster to its floor, the pipe back up; a finished one is sucked up it after its cheer', () => {
     const LIP = '█████████'
-    const FALLING = '▐▌███▐▌'
+    const FALLING = HEADS.wide.slice(1, 8)
     const world = createWorld(inputs([entry('n', { startedAt: NOW, currentTool: 'Edit' })]))
     const frames: { at: number; pipe: boolean; head: number; desk: boolean }[] = []
     for (let ms = FRAME_MS; ms <= PIPE_ARRIVAL_MS + 500; ms += FRAME_MS) {
@@ -106,7 +106,7 @@ describe('motion', () => {
     expect(viewOf(world).sprites.get('e')?.motion?.kind).toBe('fly')
     expect(viewOf(world).sprites.get('e')?.scanning).toBe(true)
     expect(lines.some(row => row.includes(HEADS.down.trim()))).toBe(true)
-    expect(lines.some(row => row.includes('▄▄▄ e'))).toBe(true)
+    expect(lines.some(row => row.includes('▄▄▄e'))).toBe(true)
   })
 
   test('a flier\'s loop is drawn as a circle over a second and a half', () => {

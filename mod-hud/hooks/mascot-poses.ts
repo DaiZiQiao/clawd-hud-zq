@@ -180,7 +180,7 @@ const workLook = (agent: MascotAgent, tick: number): Look => {
 
 /**
  * Knocked over: a stagger, eyes shut (1); flat on its back, its hat knocked
- * off beside it (1); dizzy, spiral eyes spinning a frame at a time under
+ * off beside it (1); dizzy, its eyes crossing and rolling apart a frame at a time under
  * three stars that blink in turn (8); crouched, hands on the floor, eyes
  * back (1); then up, at its laptop again if it was at work.
  */
@@ -259,7 +259,7 @@ const FALL_LOOK: Look = { ...STAND, head: 'wide', arms: 'up', armsUp: true, legs
 const lowerLook = (agent: MascotAgent): Look =>
   agent.status === 'failed' ? { ...STAND, head: 'shut', arms: 'low', pose: 'sit', overlays: OVERLAYS.cross } : { ...STAND, head: 'up', overlays: OVERLAYS.tick }
 
-/** Sucked up the pipe: stretched, arms up in a V and legs long, eyes up (shut, failed); nothing beside it. */
+/** Sucked up the pipe: stretched, arms up beside its head and legs long, eyes up (shut, failed); nothing beside it. */
 const suckLook = (agent: MascotAgent): Look => ({ ...STAND, head: agent.status === 'failed' ? 'shut' : 'up', arms: 'up', armsUp: true, legs: 'stretch' })
 
 /** The farewell's stage at a frame of it, where no exact time is known: the pipe coming down, then the suck. */

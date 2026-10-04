@@ -1,4 +1,4 @@
-import { BLANKET, CROUCHED, FLAT, HEADS, LEGS, SLOT, SQUASHED, TORSOS } from './mascot-sprites'
+import { BLANKET, CROUCHED, FLAT, HEADS, LEANING, LEGS, SLOT, SQUASHED, TORSOS, flipped } from './mascot-sprites'
 import { placedSprites } from './scene-placement'
 import { mascotPlan } from './scene-plan'
 import { mascotLines } from './scene-render'
@@ -39,8 +39,9 @@ export const spriteOf = (scene: MascotScene, id: string, tick = 0, rows = 4, col
 }
 export const rowsOf = (sprite: PlacedSprite): string[] => sprite.cells.map(row => row.map(cell => cell?.ch ?? ' ').join('').trimEnd())
 
-export const HEAD_INNERS = new Set<string>([...Object.values(HEADS), SQUASHED[0]].map(row => row.slice(1, 8)))
-export const TORSO_ROWS = new Set<string>([...Object.values(TORSOS), FLAT.body, CROUCHED, SQUASHED[1], ...BLANKET.quilt])
+// Flat on its back, the head is drawn upside down.
+export const HEAD_INNERS = new Set<string>([...Object.values(HEADS), ...Object.values(HEADS).map(flipped), SQUASHED[0]].map(row => row.slice(1, 8)))
+export const TORSO_ROWS = new Set<string>([...Object.values(TORSOS), ...Object.values(LEANING), FLAT.body, CROUCHED, SQUASHED[1], ...BLANKET.quilt])
 export const LEG_ROWS = new Set<string>([...Object.values(LEGS), FLAT.legs, BLANKET.hem])
 
 export type Figure = { head: number; x: number; rows: { row: number; x: number }[]; flat: boolean }

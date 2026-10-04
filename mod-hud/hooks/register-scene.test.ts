@@ -4,7 +4,7 @@ import type { Engine } from 'claude-code/testing'
 
 import type { AgentBoardEntry, HudData, HudMainFacts } from '../types'
 import { hudLines } from './hud'
-import { FRAME_TABLES, HEADS, SLOT, TORSOS } from './mascot-sprites'
+import { CROWN, FRAME_TABLES, HEADS, SLOT, TORSOS } from './mascot-sprites'
 import { register } from './register'
 import { PALETTE, SCENE_COLOURS, colourFor, sceneOf } from './scene-model'
 import { DONE_HOLD, NOW, entry, idleHud, trio, working } from './scene-model.fixtures'
@@ -262,9 +262,9 @@ describe('in the pane', () => {
       expect(rows.length).toBeLessThanOrEqual(Math.min(5, spare))
       const sky = rows.length - 4
       // The session watching, crowned, and three agents in spawn order a slot apart, thinking away from their laptops: eyes up, a thought beside.
-      expect(rows[sky]?.text.slice(5, 8)).toBe('▴♛▴')
+      expect(rows[sky]?.text.slice(5, 8)).toBe(CROWN.art)
       expect(rows[sky + 1]?.text.slice(0, 11)).toBe(`  ${HEADS.right}`)
-      expect(rows[sky + 1]?.text.match(/▐▙███▟▌/g)).toHaveLength(3)
+      expect(rows[sky + 1]?.text.match(new RegExp(HEADS.up.slice(1, 8), 'g'))).toHaveLength(3)
       expect(rows[sky + 2]?.text.match(/▝▜█████▛▘/g)).toHaveLength(4)
       expect([20, 38, 56].map(x => rows[sky + 2]?.text.slice(x, x + 9))).toEqual([TORSOS.rest, TORSOS.rest, TORSOS.rest])
       for (const id of ['sub-1', 'sub-2', 'sub-3']) {
@@ -390,9 +390,9 @@ describe('in the pane', () => {
     await $.session.compact({ trigger: 'manual', messages: [{ role: 'user', text: 'x', toolUses: [] }] } as Parameters<Engine['session']['compact']>[0])
     expect(main()?.compactedAt).toBe(clock.now())
     expect(writes()).toBe(3)
-    // The stretch: arms up in a V, eyes shut.
-    expect(await head()).toBe(`  ▚${HEADS.shut.slice(1, 8)}▞`)
-    expect((await scene()).join('\n')).toContain(' ▚   ▴♛▴   ▞')
+    // The stretch: arms up beside the head, eyes shut; the crown on its head as ever.
+    expect(await head()).toBe(`  ▐${HEADS.shut.slice(1, 8)}▌`)
+    expect((await scene()).join('\n')).toContain(`     ${CROWN.art}`)
     await ui.unmount()
   })
 
@@ -852,7 +852,7 @@ describe('workflow agents in the pane', () => {
       const rows = (await sceneRows(ui)).map(row => row.text)
       expect(rows.length).toBeGreaterThanOrEqual(4)
       // The session's crown centred over its head, at the front-left of the field.
-      expect(rows[rows.length - 4]?.slice(5, 8)).toBe('▴♛▴')
+      expect(rows[rows.length - 4]?.slice(5, 8)).toBe(CROWN.art)
       // It faces its laptop, a cell to its right: the lid on the head row, the screen on the torso row, the deck on the floor.
       const desk = `${HEADS.right.trim()}  ▗▄▄▄▖`
       const head = rows.findIndex(row => row.includes(desk))
@@ -883,7 +883,7 @@ describe('workflow agents in the pane', () => {
     const ui = await mountPane($, 'terminal', 72, 30)
     const rows = await sceneRows(ui)
     // The session alone: nothing drawn past its own slot.
-    expect(rows.some(row => row.text.includes('▴♛▴'))).toBe(true)
+    expect(rows.some(row => row.text.includes(CROWN.art))).toBe(true)
     for (const row of rows) expect(displayWidth(row.text)).toBeLessThanOrEqual(SLOT)
     expect(held.has('shadows')).toBe(false)
     await ui.unmount()
