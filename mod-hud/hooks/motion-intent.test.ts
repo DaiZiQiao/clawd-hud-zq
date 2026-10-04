@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'claude-code/testing'
 
 import { stepField } from './motion-arbitrate'
-import { AIRBORNE, FLIGHT_MIN_TICKS, GAP, LANDING_GIVE_UP, LANDING_PATIENCE, LOOP_TICKS, PROPELLER_ROWS, READING_STREAK_MS, SMOOTH_LANDING_PATIENCE } from './motion-rules'
+import { AIRBORNE, FLIGHT_MIN_TICKS, GAP, LANDING_GIVE_UP, LANDING_PATIENCE, LOOP_ROWS, LOOP_TICKS, PROPELLER_ROWS, READING_STREAK_MS, SMOOTH_LANDING_PATIENCE } from './motion-rules'
 import type { Mover } from './motion-types'
 import { working } from './scene-model.fixtures'
 import { BLANKET_AFTER_MS, IDLE_SLOT_MS, SCENE_FRAME_MS, idleBitOf } from './scene-phases'
@@ -155,6 +155,25 @@ describe('smooth flights', () => {
     expect(altitudes.size).toBeGreaterThan(2)
     expect(loops.size).toBeGreaterThan(0)
     expect(LOOP_TICKS).toBe(6)
+  })
+
+  test('a loop only where its circle fits: from a lift with LOOP_ROWS of sky over it, under the propeller\'s row, and so all through it, roaming in depth', () => {
+    const loops = new Set<string>()
+    for (const headroom of [2, 4, 6]) {
+      const fly = { from: 1000, altitude: headroom + 2 - PROPELLER_ROWS, cruise: 400, stage: 'cruise' as const, since: 1000, reason: 'idle' as const, minUntil: 1016, turnAt: 1000 }
+      let mover: Mover = { id: 'looper', width: 17, body: 13, x: 30, d: 2, lo: 0, hi: 95, dLo: 0, dHi: 4, free: true, sky: headroom + 2, memo: { x: 30, d: 2, lift: fly.altitude, target: 30, pauseUntil: 1000, fly } }
+      for (let tick = 1000; tick < 1400; tick += 1) {
+        const moved = stepField([mover], tick, { smooth: true }).get('looper')!
+        if (moved.memo.fly?.loop !== undefined) {
+          loops.add(`${headroom}:${moved.memo.fly.loop}`)
+          // The circle's top, over the shallower of the depths it is between.
+          expect(moved.lift + LOOP_ROWS, `headroom ${headroom} @${tick}`).toBeLessThanOrEqual(headroom + Math.min(mover.d ?? 0, moved.d) - PROPELLER_ROWS)
+        }
+        mover = { ...mover, x: moved.x, d: moved.d, sky: headroom + moved.d, memo: moved.memo }
+      }
+    }
+    expect(loops.size).toBeGreaterThan(2)
+    expect(LOOP_ROWS).toBe(3)
   })
 
   test('an errand over a crowded floor flies; the session flies to a newcomer far down the line and after a compaction', () => {

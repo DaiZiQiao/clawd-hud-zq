@@ -1,6 +1,6 @@
 import { BODY_WIDTH, BODY_X, BOX_ROWS, MINI } from './mascot-sprites'
 import type { Rect } from './motion-physics'
-import { KNOCKED_TICKS, LOOP_TICKS, clamp, frameAt } from './motion-rules'
+import { KNOCKED_TICKS, LOOP_ROWS, LOOP_TICKS, clamp, frameAt } from './motion-rules'
 import type { Memo, Motion } from './motion-types'
 import { sceneFromInputs } from './scene-model'
 import { SCENE_FRAME_MS } from './scene-phases'
@@ -134,7 +134,7 @@ export const viewOf = (world: World): { sprites: Map<string, SpriteView>; seen: 
         if (loop !== undefined && t - loop >= 0 && t - loop < LOOP_TICKS) {
           const angle = (2 * Math.PI * (t - loop)) / LOOP_TICKS
           x += 3 * Math.sin(angle)
-          lift += 1.5 * (1 - Math.cos(angle))
+          lift += (LOOP_ROWS / 2) * (1 - Math.cos(angle))
         }
         vy = (then?.lift ?? 0) - (one.lift ?? 0)
         motion = { kind: 'fly', step: blade, lift: Math.round(lift) }

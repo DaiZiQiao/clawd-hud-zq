@@ -111,6 +111,8 @@ export const TURN_SPAN = 13
 export const LOOP_ONE_IN = 3
 /** A loop lasts a second and a half: the renderer draws its circle. */
 export const LOOP_TICKS = 6
+/** A loop's circle rises this many rows over the flier's lift: the sky it needs over it. */
+export const LOOP_ROWS = 3
 /** A scene's errand flies over the floor when it would pass this many standing in the way. */
 export const CROWD_OBSTACLES = 2
 /** The session flies to a newcomer further than this across the field. */

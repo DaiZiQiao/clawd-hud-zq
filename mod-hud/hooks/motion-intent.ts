@@ -20,6 +20,7 @@ import {
   LANDING_PATIENCE,
   LEAP_ONE_IN,
   LOOP_ONE_IN,
+  LOOP_ROWS,
   LOOP_TICKS,
   PROPELLER_ROWS,
   SMOOTH_LANDING_PATIENCE,
@@ -133,7 +134,8 @@ const flySmooth = (mover: Mover, memo: Memo, fly: Flight, tick: number, others: 
     if (turnAt !== undefined && tick >= turnAt && reason !== 'errand' && reason !== 'compaction') {
       const heights = altitudesFor(mover, others, d)
       altitude = heights[roll(mover.id, 'altitude', tick, heights.length)] ?? altitude
-      if (roll(mover.id, 'loop', tick, LOOP_ONE_IN) === 0 && sky >= AIRBORNE + 2) loop = tick
+      // A loop only where its circle fits under the sky over the lift it is at.
+      if (roll(mover.id, 'loop', tick, LOOP_ONE_IN) === 0 && Math.max(before, AIRBORNE) + LOOP_ROWS <= sky) loop = tick
       turnAt = tick + TURN_MIN + roll(mover.id, 'turn', tick, TURN_SPAN)
     }
     // Toward its altitude a row a frame, with the cruise's bob, never down into the ground's rows.
@@ -161,11 +163,14 @@ const flySmooth = (mover: Mover, memo: Memo, fly: Flight, tick: number, others: 
     lift = before - 1
   }
   const speed = reason === 'errand' ? ERRAND_CELLS : 1
+  // Looping, it keeps its row of depth, and its circle's rows of sky over it.
+  const looping = loop !== undefined && tick - loop < LOOP_TICKS
   let next = target === undefined ? x : clamp(x + Math.max(-speed, Math.min(speed, target - x)), mover.lo, mover.hi)
-  let nextD = targetD === undefined ? d : clamp(towardDepth(d, targetD, tick), dLo, dHi)
+  let nextD = looping || targetD === undefined ? d : clamp(towardDepth(d, targetD, tick), dLo, dHi)
   // A row of depth forward is a row less sky: its room is over the shallower of the two depths.
   const room = sky + Math.min(0, nextD - d)
   lift = Math.min(lift, Math.max(1, room))
+  if (looping) lift = Math.min(lift, Math.max(1, room - LOOP_ROWS))
   let waited = fly.waited
   let gap = fly.gap
   let gapD = fly.gapD

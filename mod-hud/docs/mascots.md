@@ -1432,8 +1432,10 @@ so a quick call never makes it flicker.
 
 A long flight (10 to 30 s for a flight for fun) changes altitude every three
 to six seconds, a row a frame, and one change in three is a **loop**: a
-circle over a second and a half, drawn by the smooth scene between the
-choreography's cells. An errand or the session's little flight goes just
+circle three rows high (`LOOP_ROWS`) over a second and a half, drawn by the
+smooth scene between the choreography's cells, only where the sky over the
+flier has room for it under the propeller's row (it keeps its row of depth
+while it loops). An errand or the session's little flight goes just
 over the heads (four rows, a row a frame up); every other flight picks an
 altitude of its own, three rows from any other flier's where it can.
 After its signal ends and its four-second minimum expires, even a tall

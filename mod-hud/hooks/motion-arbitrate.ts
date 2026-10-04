@@ -8,6 +8,7 @@ import {
   KNOCKED_TICKS,
   LANDING_GIVE_UP,
   LANDING_PATIENCE,
+  LOOP_ROWS,
   PAUSE_MIN,
   PROPELLER_ROWS,
   SMOOTH_LANDING_PATIENCE,
@@ -331,9 +332,11 @@ export const stepField = (movers: readonly Mover[], tick: number, rules: Rules =
         if (fliers.length === 0) continue
         if (rules.smooth === true && fliers.length === 2) {
           const opposed = Math.sign((intentOf(one).memo.target ?? one.x) - one.x) * Math.sign((intentOf(two).memo.target ?? two.x) - two.x) < 0
+          // Up over the other where its sky has room: a looper keeps its circle's rows.
           const yielder = [one, two].sort((a, b) => a.id.localeCompare(b.id)).find(mover => {
             const other = mover === one ? two : one
-            return mover.sky - PROPELLER_ROWS >= liftBefore(other) + 2
+            const loops = intentOf(mover).memo.fly?.loop !== undefined
+            return mover.sky - PROPELLER_ROWS - (loops ? LOOP_ROWS : 0) >= liftBefore(other) + 2
           })
           if (opposed && yielder !== undefined) {
             const other = yielder === one ? two : one
