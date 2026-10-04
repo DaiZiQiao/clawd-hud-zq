@@ -358,7 +358,8 @@ export const intend = (mover: Mover, tick: number, others: readonly Other[], rul
   }
 
   // Now and then a wanderer leaps: a flight where the sky allows, else a hop;
-  // a hop that goes anywhere, or a flight, only with room to land.
+  // a hop that goes anywhere, or a flight, only with room to land. Walking
+  // only in depth, or with no room, a spring in place: up a row and down.
   const roomy = slack >= 2 * mover.width
   if (mover.goal === undefined && roll(mover.id, 'leap', tick, LEAP_ONE_IN) === 0) {
     // A flight takes an altitude of its own: three rows or more from any other flier's near it, so they pass over each other;
@@ -381,7 +382,7 @@ export const intend = (mover: Mover, tick: number, others: readonly Other[], rul
     const reach = Math.min(HOP_REACH, Math.abs(aim - x))
     const x1 = x + direction * reach
     const path = { x: Math.min(x, x1), width: Math.abs(x1 - x) + mover.width }
-    const open = roomy && mover.sky >= FLY_SKY && height >= AIRBORNE && near.every(one => one.lift >= AIRBORNE || gapBetween(path, one) >= need) && (meets || clearAbove(others, x, x1, mover.body ?? mover.width, d))
+    const open = reach > 0 && roomy && mover.sky >= FLY_SKY && height >= AIRBORNE && near.every(one => one.lift >= AIRBORNE || gapBetween(path, one) >= need) && (meets || clearAbove(others, x, x1, mover.body ?? mover.width, d))
 
     return startHop(memo, tick, x, d, open ? x1 : x, open ? height : Math.min(1, mover.sky))
   }

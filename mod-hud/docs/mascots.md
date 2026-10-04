@@ -1378,7 +1378,8 @@ again (1), and a squash on landing, clear beyond them; lifts 0 2 4 4 2 0
 clear; otherwise it stops short and turns for somewhere else. Now and then
 (one walking frame in ten) a wanderer leaps for fun: a flight (below), else a
 hop of up to ten cells over open ground (three rows of sky or more, room
-within a row of its depth), else a spring in place.
+within a row of its depth), else a spring in place, a row up and down (so
+too walking only in depth).
 
 **Flights.** One leap in three is a flight, where the sky over its own floor
 has three rows or more (`FLY_SKY`) and there is room to come down. Each

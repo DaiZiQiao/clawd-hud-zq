@@ -207,6 +207,28 @@ describe('wandering', () => {
     expect(FLY_SKY).toBe(3)
   })
 
+  test('walking only in depth, a leap is a spring in place, sky or no sky: up a row and down', () => {
+    for (const smooth of [false, true]) {
+      let springs = 0
+      for (let tick = 1000; tick < 1400; tick += 1) {
+        // Its own column, four rows of depth forward, under all the sky a hop could want, alone on the field.
+        let mover: Mover = { id: 'springer', width: 17, body: 13, x: 30, d: 0, lo: 0, hi: 83, dLo: 0, dHi: 4, free: true, sky: 12, memo: { x: 30, d: 0, target: 30, targetD: 4, pauseUntil: 0 } }
+        const lifts: number[] = []
+        for (let step = 0; step < 3; step += 1) {
+          const moved = stepField([mover], tick + step, { collisions: 'rare', ...(smooth ? { smooth } : {}) }).get('springer')!
+          if (moved.motion?.kind !== 'hop') break
+          lifts.push(moved.lift)
+          expect(moved.x).toBe(30)
+          mover = { ...mover, x: moved.x, d: moved.d, memo: moved.memo }
+        }
+        if (lifts.length === 0) continue
+        springs += 1
+        expect(lifts, `${smooth ? 'smooth' : 'classic'} @${tick}`).toEqual([0, 1, 0])
+      }
+      expect(springs, smooth ? 'smooth' : 'classic').toBeGreaterThan(10)
+    }
+  })
+
   test('walking between tools, no laptop: it is only out while a tool runs', () => {
     const { plans, lines } = run(() => oneAgent(working('w', 'thinking')), tick => room(72, 4, T0 + tick, { wander: true }), 200)
     const index = plans.findIndex(plan => plan.placements.find(one => one.id === 'w')?.motion?.kind === 'walk')
