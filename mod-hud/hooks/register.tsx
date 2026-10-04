@@ -87,6 +87,7 @@ import { mascotPlan } from './scene-plan'
 import { renderMascots, renderMascotsSvg } from './scene-render'
 import type { MascotPlan, SceneEvent, SceneInputs } from './scene-types'
 import { defined } from './state-json'
+import { printable } from './text-width'
 
 const PANE = 'hud'
 const TWIN = 'mod-hud'
@@ -155,7 +156,7 @@ const short = (tool: string): string => {
 const firstLine = (text: string): string | undefined => {
   const line = text
     .split('\n')
-    .map(one => one.trim())
+    .map(one => printable(one))
     .find(one => one !== '')
   if (line === undefined) return undefined
 
@@ -1069,10 +1070,10 @@ export const register: Register = (on, options) => {
             id,
             toolUseId: e.tool_use_id,
             parentId: e.parentAgentId,
-            type: e.subagentType,
+            type: printable(e.subagentType),
             model: spawned.model,
-            description: e.description,
-            name: e.name,
+            description: printable(e.description),
+            name: e.name === undefined ? undefined : printable(e.name),
             background: e.background,
             startedAt: now,
             lastActivityAt: now,

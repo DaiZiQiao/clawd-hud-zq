@@ -293,7 +293,9 @@ describe('the desktop draws it in pixels', () => {
     await ui.unmount()
   })
 
-  test('the terminal\'s rows are as they were: the same tree, frame for frame', async ($, on) => {
+  // Wandering off: the choreography hashes absolute frames, and the fixtures' NOW is
+  // local time, so a wanderer's first step would move with the time zone.
+  test('the terminal\'s rows are as they were: the same tree, frame for frame', { options: { wander: false } }, async ($, on) => {
     arrange(on, [TYPIST, entry('r', { type: 'reviewer', currentTool: 'Read', effort: 'xhigh', startedAt: NOW - 50_000 })])
     const ui = await mount($, 'terminal')
     const hex = async (text: string): Promise<string> =>

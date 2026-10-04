@@ -89,7 +89,7 @@
     "collisions": {
       "type": "string",
       "title": "Mascot collisions",
-      "description": "off: wanderers that meet step back; rare (default): only two moving mascots collide, falling over dizzy, at most once per pair in 30 s; normal: a moving mascot knocks over a standing one too, once per pair in 10 s.",
+      "description": "off: wanderers that meet step back; rare (default): only two moving mascots collide, falling over dizzy, at most once per pair in 30 s; normal: a moving mascot knocks over a standing one too, once per pair in 10 s. In rare and normal a thrown mascot knocks over whoever it hits.",
       "default": "rare"
     },
     "motion": {

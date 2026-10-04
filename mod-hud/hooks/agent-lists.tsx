@@ -10,6 +10,7 @@ import type { Settings } from './hud-options'
 import { colourFor } from './scene-model'
 import { clipped, fitted, renderTextRow } from './text-svg'
 import type { TextCell, TextStyle, TextSvgElements } from './text-svg'
+import { printable } from './text-width'
 
 // The lists under the HUD: the session's row, the Agents group (the board's
 // subagents, indented under their parents) and the Workflow group, each its
@@ -105,13 +106,14 @@ const agentWords = (entry: AgentBoardEntry, now: number) => {
   const running = isRunning(entry)
   const model = shortModel(entry.model)
   const elapsed = elapsedOf(entry, now)
+  const result = printable(entry.summary ?? entry.outcome)
 
   return {
     running,
     stats: statsOf(model, elapsed, entry.toolCalls),
-    detail: running ? `${entry.currentTool ?? 'thinking'}  ${titleOf(entry)}` : `${titleOf(entry)} — ${entry.summary ?? entry.outcome ?? ''}`,
+    detail: running ? `${entry.currentTool ?? 'thinking'}  ${titleOf(entry)}` : `${titleOf(entry)} — ${result}`,
     rest: [model, elapsed].filter(part => part !== undefined && part !== '').join(' · '),
-    last: running ? `${entry.toolCalls}c · ${entry.currentTool ?? 'thinking'}` : (entry.summary ?? entry.outcome ?? ''),
+    last: running ? `${entry.toolCalls}c · ${entry.currentTool ?? 'thinking'}` : result,
   }
 }
 

@@ -180,7 +180,7 @@ export type ShadowAgentEntry = {
 }
 
 /**
- * The main loop's activity, for the mascot scene (hooks/mascots.tsx): written
+ * The main loop's activity, for the mascot scene (hooks/scene-model.ts): written
  * once when a main turn starts its first request and once when it ends, and
  * at each main compaction; nothing per tick.
  */

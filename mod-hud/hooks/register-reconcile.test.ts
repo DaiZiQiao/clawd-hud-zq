@@ -1,4 +1,4 @@
-import type { Hook, Next } from 'claude-code'
+import type { AgentStatus, Hook, Next } from 'claude-code'
 import { expect, test } from 'claude-code/testing'
 import type { Engine } from 'claude-code/testing'
 
@@ -352,17 +352,39 @@ test('reconciliation retries one missed compare-and-set against fresh activity',
   expect(entryOf(held, 'sub-1')).toMatchObject({ status: 'failed', outcome: 'killed', toolCalls: 1 })
 })
 
+test('a loop not started, held or between turns is still running, at the seed and after it', STATUS_ON, async ($, on) => {
+  const { clock, world, held } = arrange(on)
+  world.agents = [{ id: 'held', description: 'Held', type: 'Explore', status: 'waiting' }]
+  await $.session.start(START)
+  expect(entryOf(held, 'held')).toMatchObject({ status: 'running' })
+  for (const status of ['pending', 'waiting', 'idle', 'running'] as const) {
+    world.agents = [
+      { id: 'held', description: 'Held', type: 'Explore', status },
+      { id: 'sub-1', description: 'Find the bug', type: 'Explore', status },
+    ]
+    if (entryOf(held, 'sub-1') === undefined) await spawn($)
+    await clock.advance(5000)
+    expect(entryOf(held, 'held'), status).toMatchObject({ status: 'running' })
+    expect(entryOf(held, 'sub-1'), status).toMatchObject({ status: 'running' })
+    expect(entryOf(held, 'sub-1')?.endedAt, status).toBeUndefined()
+  }
+  expect(lastStatus(world)).toBe('agents · 2 running · 0 done')
+})
+
+// Statuses the engine may add later: a status `AgentStatus` does not name.
+const unlisted = (status: string): AgentStatus => status as AgentStatus
+
 test('other engine terminal statuses settle entries and stop the timer', STATUS_ON, async ($, on) => {
   const { clock, world, held } = arrange(on)
   world.agents = [
-    { id: 'old', description: 'Cancelled', type: 'Explore', status: 'cancelled' },
+    { id: 'old', description: 'Cancelled', type: 'Explore', status: unlisted('cancelled') },
     { id: 'failed', description: 'Failed', type: 'Explore', status: 'failed' },
   ]
   await $.session.start(START)
   expect(entryOf(held, 'old')).toMatchObject({ status: 'failed', outcome: 'cancelled' })
   expect(entryOf(held, 'failed')).toMatchObject({ status: 'failed', outcome: 'failed' })
   await spawn($)
-  world.agents.push({ id: 'sub-1', description: 'Timed out', type: 'Explore', status: 'timed_out' })
+  world.agents.push({ id: 'sub-1', description: 'Timed out', type: 'Explore', status: unlisted('timed_out') })
   await clock.advance(5000)
   expect(entryOf(held, 'sub-1')).toMatchObject({ status: 'failed', outcome: 'timed_out' })
   expect(lastStatus(world)).toBe('agents · 0 running · 0 done · 3 failed')

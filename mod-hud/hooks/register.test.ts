@@ -4,6 +4,7 @@ import type { Engine } from 'claude-code/testing'
 
 import { register } from './register'
 import {
+  AGENTS,
   NOW,
   PANE,
   SPAWN_EVENT,
@@ -194,6 +195,28 @@ test('turn.complete settles the entry, freezes its elapsed time and updates the 
     expect(lines.some(line => line.includes('Find the bug — Found it in parser.ts'))).toBe(true)
     expect(lines.some(line => line.includes('Fix it — error'))).toBe(true)
     await ui.unmount()
+  }
+})
+
+test('control characters in a task or an answer are blanks, so the pane is still drawn', async ($, on) => {
+  const { held } = arrange(on)
+  await $.session.start(START)
+  await spawn($, { description: 'Find\tthe \u001b[1mbug\u001b[0m' })
+  await complete($, 'sub-1', { answer: 'Exit \u001b[31mred\u001b[0m\r50%\nmore' })
+  expect(entryOf(held, 'sub-1')).toMatchObject({ description: 'Find the bug', summary: 'Exit red 50%' })
+  // A board written before its text was scrubbed is scrubbed as it is drawn.
+  const written = held.get(AGENTS)
+  const entry = entryOf(held, 'sub-1')
+  if (written === undefined || entry === undefined) throw new Error('no board')
+  held.set(AGENTS, { ...written, value: { 'sub-1': { ...entry, description: 'Old\u001b[0m task', summary: 'Old\u0007 answer' } } })
+  for (const surface of SURFACES) {
+    for (const columns of [100, 50]) {
+      const ui = await mountPane($, surface, columns)
+      const lines = await linesOf(ui)
+      expect(lines.some(line => line.includes('Old task')), `${surface} ${columns}`).toBe(true)
+      expect(lines.some(line => line.includes('Old answer')), `${surface} ${columns}`).toBe(true)
+      await ui.unmount()
+    }
   }
 })
 

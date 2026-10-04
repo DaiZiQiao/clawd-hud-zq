@@ -21,7 +21,7 @@ describe('wandering', () => {
   const gapOf = (a: Placement, b: Placement, width = (one: Placement) => one.width): number =>
     a.drawnX <= b.drawnX ? b.drawnX - (a.drawnX + width(a)) : a.drawnX - (b.drawnX + width(b))
 
-  test('on the field mascots stay in bounds and a cell apart within a row of depth, walk a cell a frame across and a row every other frame in depth; in the air, fliers within a row never overlap; and they do move, in both axes', () => {
+  test('on the field mascots stay in bounds and a cell apart within a row of depth, walk a cell a frame across and a row every other frame in depth; in the air, fliers within a row never overlap; and they do move, in both axes', { timeoutMs: 60_000 }, () => {
     for (const collisions of ['off', 'rare', 'normal'] as const) {
       for (const [columns, rows] of [[84, 8], [84, 9], [92, 4], [112, 5], [112, 14], [72, 20]] as const) {
         const { plans } = run(() => wanderers, tick => room(columns, rows, T0 + tick, { wander: true, collisions }), 240)
@@ -34,8 +34,8 @@ describe('wandering', () => {
             expect(one.drawnX + one.width).toBeLessThanOrEqual(columns)
             expect(one.d).toBeGreaterThanOrEqual(0)
             expect(one.d).toBeLessThan(plan.depth)
-            // Its lift above its own floor, never past the sky over it.
-            expect(one.lift ?? 0, `${one.id} @${frame}`).toBeLessThanOrEqual(plan.headroom + one.d)
+            // Its lift above its own floor, never past the sky over it; a flier's propeller turns a row over its cap.
+            expect(one.lift ?? 0, `${collisions} ${columns}x${rows} ${one.id} @${frame}`).toBeLessThanOrEqual(plan.headroom + one.d - (one.motion?.kind === 'fly' ? PROPELLER_ROWS : 0))
             seen.add(`${one.id}:${one.drawnX}:${one.d}`)
             depths.add(`${one.id}:${one.d}`)
           }

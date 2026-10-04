@@ -32,6 +32,19 @@ const cellsOf = (char: string): number => {
   return isZeroWidth(cp) ? 0 : isWide(cp) ? 2 : 1
 }
 
+/**
+ * Text from the world (a task description, an answer's first line) as one
+ * line of printable text: a terminal's colour and cursor sequences dropped,
+ * each run of other control characters a blank. A `Text` holding an escape
+ * sequence is refused, and the whole tree with it.
+ */
+export const printable = (text: string | undefined): string =>
+  (text ?? '')
+    .replace(/\u001b\[[0-?]*[ -\/]*[@-~]/g, '')
+    .replace(/[\u0000-\u001f\u007f-\u009f\u2028\u2029]+/g, ' ')
+    .replace(/ {2,}/g, ' ')
+    .trim()
+
 /** Terminal cells the text takes: CJK and emoji two, combining marks none. */
 export const displayWidth = (text: string): number => {
   let width = 0

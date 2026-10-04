@@ -160,16 +160,18 @@ const flySmooth = (mover: Mover, memo: Memo, fly: Flight, tick: number, others: 
   } else {
     lift = before - 1
   }
-  lift = Math.min(lift, Math.max(1, sky))
   const speed = reason === 'errand' ? ERRAND_CELLS : 1
   let next = target === undefined ? x : clamp(x + Math.max(-speed, Math.min(speed, target - x)), mover.lo, mover.hi)
   let nextD = targetD === undefined ? d : clamp(towardDepth(d, targetD, tick), dLo, dHi)
+  // A row of depth forward is a row less sky: its room is over the shallower of the two depths.
+  const room = sky + Math.min(0, nextD - d)
+  lift = Math.min(lift, Math.max(1, room))
   let waited = fly.waited
   let gap = fly.gap
   let gapD = fly.gapD
   // Down into the ground's rows only where the ground is clear; out of patience, over the nearest gap its neighbours open.
   const landingGap = (fly.waited ?? 0) >= SMOOTH_LANDING_PATIENCE ? GAP : need
-  if (stage === 'descend' && lift < AIRBORNE && sky >= AIRBORNE && (fly.waited ?? 0) < LANDING_GIVE_UP && !clearOnGround(others, next, nextD, mover.width, landingGap)) {
+  if (stage === 'descend' && lift < AIRBORNE && room >= AIRBORNE && (fly.waited ?? 0) < LANDING_GIVE_UP && !clearOnGround(others, next, nextD, mover.width, landingGap)) {
     lift = AIRBORNE
     waited = (fly.waited ?? 0) + 1
     if (waited >= SMOOTH_LANDING_PATIENCE) {
@@ -284,7 +286,9 @@ export const intend = (mover: Mover, tick: number, others: readonly Other[], rul
     } else {
       lift = before - 1
     }
-    lift = Math.min(lift, sky)
+    // A row of depth forward is a row less sky: its room is over the shallower of the two depths.
+    const room = sky + Math.min(0, nextD - d)
+    lift = Math.min(lift, room)
     let target = memo.target
     let targetD = memo.targetD
     let waited = fly.waited
@@ -293,7 +297,7 @@ export const intend = (mover: Mover, tick: number, others: readonly Other[], rul
     // Coming down into the ground's rows: only where the ground is clear. Out
     // of patience it hangs over the nearest gap while its neighbours walk
     // aside a cell a frame to open it (stepField), never shoved in one jump.
-    if (stage === 'descend' && lift < AIRBORNE && sky >= AIRBORNE && (fly.waited ?? 0) < LANDING_GIVE_UP && !clearOnGround(others, next, nextD, mover.width, need)) {
+    if (stage === 'descend' && lift < AIRBORNE && room >= AIRBORNE && (fly.waited ?? 0) < LANDING_GIVE_UP && !clearOnGround(others, next, nextD, mover.width, need)) {
       lift = AIRBORNE
       waited = (fly.waited ?? 0) + 1
       if (waited >= LANDING_PATIENCE) {

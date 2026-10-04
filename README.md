@@ -62,13 +62,13 @@ Change any option from `/plugin` (select mod-hud, then its settings).
 | `showTools` | `true` | Show the main conversation's tool calls and the tool running now. |
 | `showTodos` | `true` | Show the main conversation's todo list. |
 | `showInventory` | `true` | Show how many MCP servers and skills the session has. |
-| `motto` | empty | A line drawn dim under the HUD; empty for none. |
+| `motto` | `Don't be afraid to do tedious work.` | A line drawn dim under the HUD; empty for none. |
 | `mascots` | `true` | Fill the pane's spare rows with mascots: the session's own, and one per subagent in its own colour. |
 | `showWorkflows` | `true` | Track the agents a Workflow run starts and show them under the subagents, in the summary and as mascots. |
 | `inspect` | `true` | A button on every agent row and mascot opens that agent's detail view in place of the scene. |
 | `wander` | `true` | Mascots between tools walk about their line, hop and, with a spare row above, glide. |
 | `scenes` | `true` | Mascots act out real events: handing a task over, handing a report back, messages, review and fix visits, and a workflow squad's baton. |
-| `collisions` | `rare` | `off`: wanderers that meet step back. `rare`: only two moving mascots collide, falling over dizzy, at most once per pair in 30 s. `normal`: a moving mascot knocks over a standing one too, once per pair in 10 s. |
+| `collisions` | `rare` | `off`: wanderers that meet step back. `rare`: only two moving mascots collide, falling over dizzy, at most once per pair in 30 s. `normal`: a moving mascot knocks over a standing one too, once per pair in 10 s. In `rare` and `normal` a thrown mascot knocks over whoever it hits. |
 | `motion` | `smooth` | `smooth`: on the terminal and desktop the scene runs at 20 frames a second, gliding between cells, with click, pick up, drag and throw. `classic`: the Box/Text scene at 4 frames a second everywhere, with a pick button under each mascot. |
 | `todoRows` | `6` | The TODO section lists at most this many items and counts the rest. |
 

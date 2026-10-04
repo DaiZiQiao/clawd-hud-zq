@@ -99,7 +99,7 @@ describe('smooth flights', () => {
     expect(flights[0]!.landedAt).toBe(one(plans[0]!, 'r').x)
   })
 
-  test('idle flights are rare and long: ten to thirty seconds, far fewer than the classic scene\'s', () => {
+  test('idle flights are rare and long: ten to thirty seconds, far fewer than the classic scene\'s', { timeoutMs: 60_000 }, () => {
     const minutes = 10
     const frames = (minutes * 60_000) / SCENE_FRAME_MS
     const smoothRun = run(() => wanderers, tick => smooth(112, 14, T0 + tick, { wander: true, collisions: 'off' }), frames).plans

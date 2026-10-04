@@ -4,6 +4,7 @@ import type { AgentBoardEntry, AgentBoardOutcome, ShadowAgentEntry } from '../ty
 import { shadowCounts, shownShadows } from './agent-shadows'
 import type { Shadows } from './agent-shadows'
 import { defined } from './state-json'
+import { printable } from './text-width'
 
 // The board's agents and the workflow agents as the lists, the status line
 // and the inspect view read them: pure helpers with no `$`. What
@@ -59,9 +60,14 @@ export const summarize = (list: readonly AgentBoardEntry[], workflow: readonly S
 export const workflowOf = (record: Readonly<Shadows> | undefined, all: Agents, now: number): ShadowAgentEntry[] =>
   shownShadows(record, now).filter(entry => all[entry.id] === undefined)
 
-// What `$.agent.list()` says a settled agent's status means here.
+// The statuses of a loop that has not ended: not started, in a turn, held,
+// or between turns until a message wakes it (`AgentStatus`).
+const LIVE: ReadonlySet<string> = new Set(['pending', 'running', 'waiting', 'idle'])
+
+// What `$.agent.list()` says a settled agent's status means here; any status
+// it may add later that is not live counts as ended.
 const settledAs = (status: string): { status: 'done' | 'failed'; outcome: AgentBoardOutcome } | undefined => {
-  if (status === 'running') return undefined
+  if (LIVE.has(status)) return undefined
 
   return status === 'completed' ? { status: 'done', outcome: 'answer' } : { status: 'failed', outcome: status }
 }
@@ -80,9 +86,9 @@ export const merge = (all: Agents, listed: readonly AgentInfo[], now: number, in
         [info.id]: defined<AgentBoardEntry>({
           id: info.id,
           parentId: info.parentId,
-          type: info.type,
-          description: info.description,
-          name: info.name,
+          type: printable(info.type),
+          description: printable(info.description),
+          name: info.name === undefined ? undefined : printable(info.name),
           background: false,
           startedAt: 0,
           endedAt: settled === undefined ? undefined : now,
@@ -153,4 +159,4 @@ export const workflowOrderOf = (list: readonly ShadowAgentEntry[]): ShadowAgentE
   return [...list].sort((a, b) => rank(a) - rank(b) || recent(b) - recent(a) || a.id.localeCompare(b.id))
 }
 
-export const titleOf = (entry: AgentBoardEntry): string => entry.description || entry.name || '(no description)'
+export const titleOf = (entry: AgentBoardEntry): string => printable(entry.description) || printable(entry.name) || '(no description)'

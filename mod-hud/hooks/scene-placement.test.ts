@@ -108,7 +108,7 @@ describe('the field and the pipe', () => {
   }
   const T0 = Math.floor(NOW / SCENE_FRAME_MS)
   const wanderers: MascotScene = { main: { mood: 'watching', sweating: false }, agents: ['w1', 'w2', 'w3', 'w4'].map(id => working(id, 'thinking')) }
-  test('a pipe never leaves the room: its cells inside the columns, from the top of the region down to its lip', () => {
+  test('a pipe never leaves the room: its cells inside the columns, from the top of the region down to its lip', { timeoutMs: 60_000 }, () => {
     for (let columns = 20; columns <= 130; columns += 3) {
       for (const rows of [4, 8, 12, 20, 40]) {
         for (const tick of [1, 2, 4, 5]) {

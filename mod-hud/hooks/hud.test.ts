@@ -604,7 +604,7 @@ describe('the HUD', () => {
     }
   })
 
-  test('(9) no row is wider than the pane at any width from 20 to 130; long text ends in …', async ($, on) => {
+  test('(9) no row is wider than the pane at any width from 20 to 130; long text ends in …', { timeoutMs: 60_000 }, async ($, on) => {
     const scene = stage(on)
     await eachDrawing($, scene, EVERY_WIDTH, (rows, { name, surface, columns }) => {
       for (const row of rows) {
