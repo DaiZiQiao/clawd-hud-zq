@@ -313,6 +313,31 @@ describe('flight regressions', () => {
     expect(x).toBe(40)
   })
 
+  test('a blocked hop comes down at its own depth: it makes for the clear ground nearest it there, and over a packed row comes down anyway past its patience', () => {
+    const at = (id: string, x: number): Mover => ({ ...standing(id, x), d: 2, dLo: 0, dHi: 4, memo: { x, d: 2, lift: 0, pauseUntil: 2000 } })
+    // A hop from 20 to 40 at depth 2, a frame from landing on one at its laptop there; clear ground two rows of depth nearer is nearer still, but a hop holds its depth.
+    const hop = (field: Mover[]): { x: number; d: number; frames: number } => {
+      let movers: Mover[] = [...field, { ...at('h', 36), free: true, memo: { x: 36, d: 2, lift: 2, pauseUntil: 1000, hop: { from: 995, x0: 20, x1: 40, height: 4, air: 4 } } }]
+      let frames = 0
+      while (frames < 80 && movers.at(-1)!.memo!.hop !== undefined) {
+        const moved = stepField(movers, 1000 + frames, { smooth: true, collisions: 'rare' })
+        movers = movers.map(one => ({ ...one, x: moved.get(one.id)!.x, d: moved.get(one.id)!.d, memo: moved.get(one.id)!.memo }))
+        frames += 1
+      }
+      const hopper = movers.at(-1)!
+
+      return { x: hopper.x, d: hopper.d ?? 0, frames }
+    }
+    const open = hop([at('a', 40)])
+    expect(open.d).toBe(2)
+    expect(open.x + 17 + GAP).toBeLessThanOrEqual(40)
+    expect(open.frames).toBeLessThan(20)
+    // Its whole row taken: it hangs where it is, then comes down anyway (the crowd walks apart).
+    const packed = hop([at('a', 0), at('b', 20), at('c', 40), at('d', 60), at('e', 80)])
+    expect(packed.d).toBe(2)
+    expect(packed.frames).toBeLessThanOrEqual(2 * SMOOTH_LANDING_PATIENCE + HOP_AIR + 2)
+  })
+
   test('a tall climb ends with the expired signal after its minimum flight', () => {
     let mover = flier('f', 10, 10, { free: false, sky: 80 })
     mover.memo = { x: 10, lift: 1, target: 10, pauseUntil: 1000, fly: { from: 1000, altitude: 70, cruise: 16, stage: 'climb', since: 1000, reason: 'fetch', minUntil: 1000 + FLIGHT_MIN_TICKS, home: 10 } }

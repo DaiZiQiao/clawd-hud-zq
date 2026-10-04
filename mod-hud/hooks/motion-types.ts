@@ -12,7 +12,15 @@
 export type CollisionMode = 'off' | 'rare' | 'normal'
 
 /** A hop: its first frame, where it springs from and lands, its frames in the air and its apex. Its depth holds. */
-export type Hop = { from: number; x0: number; x1: number; air: number; height: number }
+export type Hop = {
+  from: number
+  x0: number
+  x1: number
+  air: number
+  height: number
+  /** The smooth scene: how many times its landing has been taken, on the way to clear ground. */
+  blocked?: number
+}
 
 /**
  * Why a mascot flies (the smooth scene): `idle` a wanderer's rare flight for

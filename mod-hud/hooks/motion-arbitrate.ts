@@ -253,10 +253,35 @@ export const stepField = (movers: readonly Mover[], tick: number, rules: Rules =
     const before = lander.memo?.fly
     const waited = (before?.waited ?? 0) + 1
     const { dLo, dHi } = depthsOf(lander)
-    // Only on clear ground (with no row to hang in, or past all hope of a gap, it comes down anyway).
-    if (clearOnGround(standing, intent.x, intent.d, lander.width, GAP) || lander.sky < AIRBORNE || waited > LANDING_GIVE_UP) {
+    // A blocked smooth hop holds its depth: it makes for the clear ground
+    // nearest it at its own, and taken past its patience it comes down anyway.
+    const hopping = rules.smooth === true && before === undefined
+    const blocked = (lander.memo?.hop?.blocked ?? 0) + 1
+    // Only on clear ground (with no row to hang in, or past all hope of a gap, it comes down anyway; the crowd walks apart).
+    if (clearOnGround(standing, intent.x, intent.d, lander.width, GAP) || lander.sky < AIRBORNE || waited > LANDING_GIVE_UP || (hopping && blocked > patience)) {
       standing.push({ id: lander.id, x: intent.x, d: intent.d, width: lander.width, body: lander.body ?? lander.width, lift: 0 })
       ground.push(lander)
+      continue
+    }
+    // It stays where it was, on its way down.
+    const x = clamp(lander.x, lander.lo, lander.hi)
+    const d = dOf(lander)
+    const lift = Math.max(AIRBORNE, liftBefore(lander))
+    if (hopping) {
+      // A blocked hop stays a hop, tucked at its apex, on toward that ground a
+      // hop's reach at most (none clear there yet, it hangs where it is); no
+      // propeller without a reason. Its line runs on from where it was a
+      // frame ago, the same cells a frame to its landing: drawn without a
+      // jump, never across the field at once.
+      const spot = nearestClear(standing, intent.x, intent.d, lander.width, GAP, lander.lo, lander.hi) ?? { x, d }
+      const old = lander.memo?.hop
+      const air = old?.air ?? HOP_AIR
+      const step = Math.floor(air / 2)
+      const x1 = clamp(x + clamp(spot.x - x, -HOP_REACH, HOP_REACH), lander.lo, lander.hi)
+      const pace = (x1 - x) / (air + 2 - step)
+      const hop: Hop = { from: tick - step, x0: x - (step - 1) * pace, x1, air, height: lift, blocked }
+      const at = Math.round(x + pace)
+      intents.set(lander.id, { x: at, d, lift, memo: { x: at, d, lift, target: spot.x, targetD: d, pauseUntil: tick, hop }, motion: { kind: 'hop', step, lift, pose: 'apex' } })
       continue
     }
     // No clear spot yet: it circles on and looks again, a while; out of
@@ -265,25 +290,6 @@ export const stepField = (movers: readonly Mover[], tick: number, rules: Rules =
     const gap = before?.gap ?? (open === undefined && waited >= patience ? gapSpot(standing, intent.x, lander.width, lander.lo, lander.hi, intent.d) : undefined)
     const gapD = gap === undefined ? undefined : (before?.gapD ?? intent.d)
     const spot = gap !== undefined ? { x: gap, d: gapD ?? intent.d } : open ?? { x: lander.lo + roll(lander.id, 'circle', tick, lander.hi - lander.lo + 1), d: intent.d }
-    // It stays where it was, as a flight on its way down.
-    const x = clamp(lander.x, lander.lo, lander.hi)
-    const d = dOf(lander)
-    const lift = Math.max(AIRBORNE, liftBefore(lander))
-    if (rules.smooth === true && before === undefined) {
-      // A blocked hop stays a hop, tucked at its apex, on toward the spot a
-      // hop's reach at most; no propeller without a reason. Its line runs on
-      // from where it was a frame ago, the same cells a frame to its landing:
-      // drawn without a jump, never across the field at once.
-      const old = lander.memo?.hop
-      const air = old?.air ?? HOP_AIR
-      const step = Math.floor(air / 2)
-      const x1 = clamp(x + clamp(spot.x - x, -HOP_REACH, HOP_REACH), lander.lo, lander.hi)
-      const pace = (x1 - x) / (air + 2 - step)
-      const hop: Hop = { from: tick - step, x0: x - (step - 1) * pace, x1, air, height: lift }
-      const at = Math.round(x + pace)
-      intents.set(lander.id, { x: at, d, lift, memo: { x: at, d, lift, target: spot.x, targetD: spot.d, pauseUntil: tick, hop }, motion: { kind: 'hop', step, lift, pose: 'apex' } })
-      continue
-    }
     const fly: Flight = { ...(before ?? {}), from: before?.from ?? tick - 2 * (lift - 1), altitude: lift, cruise: before?.cruise ?? 0, stage: 'descend', since: tick, waited, ...(gap === undefined ? {} : { gap, gapD: gapD ?? d }) }
     intents.set(lander.id, { x, d, lift, memo: { x, d, lift, target: spot.x, targetD: spot.d, pauseUntil: tick, fly }, motion: { kind: 'fly', step: tick - fly.from, lift } })
   }

@@ -1405,8 +1405,11 @@ spot is clear. The smooth landing accepts the one-cell gap it reserved
 once its four-second patience ends, and gives up waiting after 240 frames
 (60 seconds) if no gap can open. Nobody is ever shoved in one jump. A
 blocked smooth hop stays a hop while it finds a landing, never a reasonless
-flight: it goes on toward clear ground a hop's reach at a time from where it
-is, never across the field in a frame. In the air only bodies
+flight: it goes on toward the clear ground nearest it at its own depth (a
+hop holds its depth; its row packed, it hangs where it is) a hop's reach at
+a time from where it is, never across the field in a frame; its landing
+taken more than 16 times (`SMOOTH_LANDING_PATIENCE`), it comes down anyway,
+the crowd walking apart. In the air only bodies
 count: a flier never overlaps anyone in the air within a row of it (it holds
 back: rising from a row up, it keeps its place on the ground's rows, where
 nobody walks in beside it), keeps a few cells from all a hop has still to
