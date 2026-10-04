@@ -1,0 +1,108 @@
+{
+  "name": "mod-hud",
+  "version": "1.0.0",
+  "author": {
+    "name": "Dai Zi Qiao",
+    "url": "https://github.com/DaiZiQiao"
+  },
+  "description": "A side pane, toggled by /mod-hud: a HUD of the session (session, context, limits, cost, git, tools, todos) above every subagent in it (type, model, status, elapsed time, tool calls, current tool, result), with an opt-in status line.",
+  "types": "./types/index.d.ts",
+  "userConfig": {
+    "stalledAfterSec": {
+      "type": "number",
+      "title": "Stalled after (s)",
+      "description": "A running subagent with no activity for this many seconds is drawn as stalled.",
+      "default": 240
+    },
+    "statusLine": {
+      "type": "boolean",
+      "title": "Status line summary",
+      "description": "Show the HUD and a count of running, done, failed and stalled subagents as one line in the status line.",
+      "default": false
+    },
+    "maxRows": {
+      "type": "number",
+      "title": "Most agents listed",
+      "description": "The pane lists at most this many subagents and workflow agents together and counts the rest; each group lists its running agents and its three most recent finished ones until expanded.",
+      "default": 40
+    },
+    "showGit": {
+      "type": "boolean",
+      "title": "Show git",
+      "description": "Show the branch and its changes in the HUD.",
+      "default": true
+    },
+    "showTools": {
+      "type": "boolean",
+      "title": "Show tools",
+      "description": "Show the main conversation's tool calls and the tool running now in the HUD.",
+      "default": true
+    },
+    "showTodos": {
+      "type": "boolean",
+      "title": "Show todos",
+      "description": "Show the main conversation's todo list in the HUD.",
+      "default": true
+    },
+    "showInventory": {
+      "type": "boolean",
+      "title": "Show MCP servers and skills",
+      "description": "Show how many MCP servers and skills the session has in the HUD.",
+      "default": true
+    },
+    "motto": {
+      "type": "string",
+      "title": "Motto",
+      "description": "A line drawn dim as the HUD's last row; empty for none.",
+      "default": "Don't be afraid to do tedious work."
+    },
+    "mascots": {
+      "type": "boolean",
+      "title": "Mascots",
+      "description": "Fill the pane's spare rows with Claude mascots: the session's own, and one per subagent in its own colour, which its name in the list shares.",
+      "default": true
+    },
+    "showWorkflows": {
+      "type": "boolean",
+      "title": "Show workflow agents",
+      "description": "Track the agents a Workflow run starts, which the agent list never names, and show them under the subagents, in the summary and as mascots.",
+      "default": true
+    },
+    "inspect": {
+      "type": "boolean",
+      "title": "Click to inspect",
+      "description": "A button on every agent row, on the session's row and on every mascot opens its inspect view under the HUD: an agent's task, every tool call, its last answers; the session's overview and its cost by model and agent.",
+      "default": true
+    },
+    "wander": {
+      "type": "boolean",
+      "title": "Mascots wander",
+      "description": "Mascots between tools walk about their line, hop and, with a spare row above, glide.",
+      "default": true
+    },
+    "scenes": {
+      "type": "boolean",
+      "title": "Orchestration scenes",
+      "description": "Mascots act out real events: handing a task over, handing a report back, messages, review and fix visits, and a workflow squad's baton.",
+      "default": true
+    },
+    "collisions": {
+      "type": "string",
+      "title": "Mascot collisions",
+      "description": "off: wanderers that meet step back; rare (default): only two moving mascots collide, falling over dizzy, at most once per pair in 30 s; normal: a moving mascot knocks over a standing one too, once per pair in 10 s.",
+      "default": "rare"
+    },
+    "motion": {
+      "type": "string",
+      "title": "Mascot motion",
+      "description": "smooth (default): where the surface can (terminal, desktop), the scene runs in its own module at 20 frames a second, gliding between cells, and mascots can be clicked to inspect or picked up, dragged and thrown; classic: the Box/Text scene at 4 frames a second everywhere, with a pick button under each mascot.",
+      "default": "smooth"
+    },
+    "todoRows": {
+      "type": "number",
+      "title": "Most todos listed",
+      "description": "The TODO section lists at most this many items and counts the rest.",
+      "default": 6
+    }
+  }
+}
