@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'claude-code/testing'
 
 import { stepField } from './motion-arbitrate'
-import { AIRBORNE, FLIGHT_MIN_TICKS, GAP, LANDING_GIVE_UP, LANDING_PATIENCE, LOOP_ROWS, LOOP_TICKS, PROPELLER_ROWS, READING_STREAK_MS, SMOOTH_LANDING_PATIENCE } from './motion-rules'
+import { AIRBORNE, FLIGHT_MIN_TICKS, GAP, HOP_AIR, HOP_REACH, LANDING_GIVE_UP, LANDING_PATIENCE, LOOP_ROWS, LOOP_TICKS, PROPELLER_ROWS, READING_STREAK_MS, SMOOTH_LANDING_PATIENCE } from './motion-rules'
 import type { Mover } from './motion-types'
 import { working } from './scene-model.fixtures'
 import { BLANKET_AFTER_MS, IDLE_SLOT_MS, SCENE_FRAME_MS, idleBitOf } from './scene-phases'
@@ -292,6 +292,25 @@ describe('flight regressions', () => {
     const moved = stepField([standing('a', 20), hopper], 1000, { smooth: true }).get('h')!
     expect(moved.motion?.kind).toBe('hop')
     expect(moved.memo.fly).toBe(undefined)
+  })
+
+  test('a blocked hop goes on toward clear ground a hop\'s reach at a time, its line from where it was: a few cells a frame, never across the field', () => {
+    // A hop from 2 to 22 a frame from landing on one standing at 22; the nearest clear ground is at 40, past it.
+    const hopper: Mover = { ...standing('h', 18), free: true, memo: { x: 18, lift: 2, pauseUntil: 1000, hop: { from: 995, x0: 2, x1: 22, height: 4, air: 4 } } }
+    let movers = [standing('a', 22), standing('b', 0), hopper]
+    let x = 18
+    for (let k = 1000; k < 1040 && movers[2]!.memo!.hop !== undefined; k += 1) {
+      movers = nextMovers(movers, k)
+      const { x: now, memo } = movers[2]!
+      expect(Math.abs(now - x), `@${k}`).toBeLessThanOrEqual(Math.ceil(HOP_REACH / HOP_AIR))
+      // The smooth view draws the hop along its line: a frame ago, where it was.
+      const hop = memo!.hop
+      if (hop !== undefined) expect(Math.abs(hop.x0 + ((hop.x1 - hop.x0) * (k - 1 - hop.from)) / (hop.air + 1) - x), `@${k}`).toBeLessThanOrEqual(0.5)
+      expect(Math.abs((hop?.x1 ?? now) - now), `@${k}`).toBeLessThanOrEqual(HOP_REACH)
+      x = now
+    }
+    expect(movers[2]!.memo!.hop).toBe(undefined)
+    expect(x).toBe(40)
   })
 
   test('a tall climb ends with the expired signal after its minimum flight', () => {

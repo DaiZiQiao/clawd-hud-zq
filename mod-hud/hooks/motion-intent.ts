@@ -240,7 +240,7 @@ export const intend = (mover: Mover, tick: number, others: readonly Other[], rul
     const step = tick - hop.from
     if (step >= 0 && step <= hop.air + 1) {
       const lift = Math.min(hopLift(hop, step), mover.sky)
-      const at = step > hop.air ? hop.x1 : hop.x0 + Math.round(((hop.x1 - hop.x0) * step) / (hop.air + 1))
+      const at = step > hop.air ? hop.x1 : Math.round(hop.x0 + ((hop.x1 - hop.x0) * step) / (hop.air + 1))
       const next = clamp(at, mover.lo, mover.hi)
       const pose = hopPose(hop.air, step)
       const done = step > hop.air

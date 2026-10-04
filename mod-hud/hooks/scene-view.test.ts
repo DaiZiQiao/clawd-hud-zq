@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'claude-code/testing'
 
 import { HEADS } from './mascot-sprites'
-import { LOOP_TICKS } from './motion-rules'
+import { HOP_AIR, HOP_HEIGHT, HOP_REACH, LOOP_TICKS } from './motion-rules'
 import { NOW, entry } from './scene-model.fixtures'
 import { SCENE_FRAME_MS, holdTicks } from './scene-phases'
 import { PIPE_ARRIVAL_MS, PIPE_FAREWELL_MS } from './scene-pipe'
@@ -10,7 +10,8 @@ import { FRAME_MS, createWorld, inject, tick } from './scene-world'
 import { LAPTOP, TYPIST, frameLines, inputs, memoOf, ticks } from './scene-world.fixtures'
 
 // The smooth scene between the choreography's frames: a walk glides, the
-// same frames draw the same scene, the red pipe, flights and loops.
+// same frames draw the same scene, the red pipe, flights and loops, and a hop
+// whose landing is taken.
 
 describe('motion', () => {
   test('20 frames a second: a walk glides a fifth of a cell a frame between the choreography\'s cells, drawn at the nearest', () => {
@@ -122,5 +123,28 @@ describe('motion', () => {
     }
     const rise = Math.max(...path.map(one => one.lift)) - Math.min(...path.map(one => one.lift))
     expect(rise).toBeGreaterThan(2)
+  })
+
+  test('a hop whose landing is taken glides on from where it is drawn, at a hop\'s pace at most: no jump toward clear ground', () => {
+    const world = createWorld(inputs([TYPIST, entry('w', { startedAt: NOW - 60_000 })], { wander: true, rows: 9 }))
+    ticks(world, 5)
+    while (world.sceneNow % SCENE_FRAME_MS !== 0) tick(world)
+    const typist = world.cur!.placements.find(one => one.id === 'a')!
+    // A hop a frame from landing on the typist at its laptop: clear ground is a typist's width away.
+    const at = typist.drawnX - 4
+    const hop = { from: world.cur!.tick - HOP_AIR, x0: typist.drawnX - 20, x1: typist.drawnX, height: HOP_HEIGHT, air: HOP_AIR }
+    inject(world, 'w', { x: at, d: typist.d, lift: 2, pauseUntil: world.cur!.tick, hop }, { drawnX: at, d: typist.d, lift: 2, motion: { kind: 'hop', step: HOP_AIR, lift: 2, pose: 'air' } })
+    let x = at
+    let frames = 0
+    // Half a cell a 50 ms frame at most: a hop's reach over its four frames in the air, five frames to each.
+    while (frames < 120 && memoOf(world, 'w')?.hop !== undefined) {
+      const drawn = viewOf(world).sprites.get('w')!.x!
+      expect(Math.abs(drawn - x), `${frames}`).toBeLessThanOrEqual(HOP_REACH / HOP_AIR / (SCENE_FRAME_MS / FRAME_MS) + 0.01)
+      x = drawn
+      tick(world)
+      frames += 1
+    }
+    expect(frames).toBeGreaterThan(5)
+    expect(memoOf(world, 'w')?.hop).toBe(undefined)
   })
 })
