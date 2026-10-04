@@ -1,16 +1,35 @@
 import type { HudData } from '../types'
 
-// The HUD's test fixtures. Times are built from local date parts, so a reset
-// reads `↻ 14:20` and `↻ Tue` in whatever time zone the tests run.
+// The HUD's test fixtures. NOW is one fixed instant, so the mascots'
+// choreography, which hashes absolute frames, moves the same way in every
+// time zone. A reset and a trail step are drawn on the local clock: the labels
+// below are what the zone the tests run in draws for them.
 
-/** Saturday 3 October 2026, 12:00 local time. */
-export const NOW = new Date(2026, 9, 3, 12, 0, 0).getTime()
-
-/** A local time `days` after NOW's date, as ISO 8601. */
-export const localIso = (hours: number, minutes: number, days = 0): string =>
-  new Date(2026, 9, 3 + days, hours, minutes, 0).toISOString()
+/** Saturday 3 October 2026, 12:00 UTC. */
+export const NOW = Date.UTC(2026, 9, 3, 12, 0, 0)
 
 const MINUTE = 60_000
+
+/** The 5h window resets in 2h20; the 7d one on Tuesday 6 October; the spend limit on 1 November (at noon UTC, the 1st or the 2nd in any zone). */
+export const RESET_5H = new Date(NOW + 140 * MINUTE).toISOString()
+export const RESET_7D = new Date(Date.UTC(2026, 9, 6, 9, 0, 0)).toISOString()
+export const RESET_SPEND = new Date(Date.UTC(2026, 10, 1, 12, 0, 0)).toISOString()
+
+const pad2 = (n: number): string => String(n).padStart(2, '0')
+
+/** `12:00:00`: a time on this zone's clock, as a trail step reads. */
+export const clockOf = (ms: number): string => {
+  const date = new Date(ms)
+
+  return `${pad2(date.getHours())}:${pad2(date.getMinutes())}:${pad2(date.getSeconds())}`
+}
+
+/** `↻ 14:20`: RESET_5H, under a day ahead, on this zone's clock. */
+export const AT_5H = `↻ ${clockOf(Date.parse(RESET_5H)).slice(0, 5)}`
+/** `↻ Tue`: RESET_7D, under a week ahead, as this zone's weekday. */
+export const AT_7D = `↻ ${['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][new Date(RESET_7D).getDay()] ?? ''}`
+/** `↻ Nov 1`: RESET_SPEND, past a week ahead, as this zone's date. */
+export const AT_SPEND = `↻ Nov ${new Date(RESET_SPEND).getDate()}`
 
 /** Everything known: the sketch in docs/pane-sketch.md. */
 export const full: HudData = {
@@ -27,9 +46,8 @@ export const full: HudData = {
     contextPercent: 41.2,
     window: 1_000_000,
     rateLimits: [
-      { kind: 'five_hour', percentUsed: 31, resetsAt: localIso(14, 20) },
-      // Tuesday 6 October.
-      { kind: 'seven_day', percentUsed: 12, resetsAt: localIso(9, 0, 3) },
+      { kind: 'five_hour', percentUsed: 31, resetsAt: RESET_5H },
+      { kind: 'seven_day', percentUsed: 12, resetsAt: RESET_7D },
     ],
     costUsd: 4.21,
     compactions: 3,
@@ -117,9 +135,9 @@ export const fullContext: HudData = {
     contextTokens: 1_000_000,
     contextPercent: 100,
     rateLimits: [
-      { kind: 'five_hour', percentUsed: 92, resetsAt: localIso(14, 20) },
-      { kind: 'seven_day', percentUsed: 64, resetsAt: localIso(9, 0, 3) },
-      { kind: 'spend_limit', percentUsed: 85, resetsAt: localIso(0, 0, 29) },
+      { kind: 'five_hour', percentUsed: 92, resetsAt: RESET_5H },
+      { kind: 'seven_day', percentUsed: 64, resetsAt: RESET_7D },
+      { kind: 'spend_limit', percentUsed: 85, resetsAt: RESET_SPEND },
     ],
   },
 }

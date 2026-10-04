@@ -27,7 +27,7 @@ import {
   todoRows,
 } from './hud'
 import { displayWidth, truncate } from './text-width'
-import { FIXTURES, NOW, allDone, empty, full, fullContext, localIso, longBranch, manyTools, sevenTodos, sparse } from './hud.fixtures'
+import { AT_5H, AT_7D, AT_SPEND, FIXTURES, NOW, RESET_5H, RESET_7D, RESET_SPEND, allDone, empty, full, fullContext, longBranch, manyTools, sevenTodos, sparse } from './hud.fixtures'
 import { SVG_MAX } from './scene-svg'
 import { CELL_HEIGHT, CELL_WIDTH, SCENE_THEMES } from './svg-style'
 import { rowSource, svgsOf, textLine, textPieces, textRuns, textSvgSize } from './text-svg.fixtures'
@@ -190,10 +190,12 @@ describe('formats', () => {
   })
 
   test('formatReset: the clock within a day, the weekday within a week, the date past that', () => {
-    expect(formatReset(localIso(14, 20), NOW)).toBe('↻ 14:20')
-    expect(formatReset(localIso(9, 0, 3), NOW)).toBe('↻ Tue')
-    expect(formatReset(localIso(0, 0, 29), NOW)).toBe('↻ Nov 1')
-    expect(formatReset(localIso(11, 0), NOW)).toBe('↻ now')
+    // The labels as this zone's clock reads the resets: `↻ 14:20`, `↻ Tue` and `↻ Nov 1` in UTC.
+    expect(AT_5H).toMatch(/^↻ \d\d:\d\d$/)
+    expect(formatReset(RESET_5H, NOW)).toBe(AT_5H)
+    expect(formatReset(RESET_7D, NOW)).toBe(AT_7D)
+    expect(formatReset(RESET_SPEND, NOW)).toBe(AT_SPEND)
+    expect(formatReset(new Date(NOW - 60 * 60_000).toISOString(), NOW)).toBe('↻ now')
     expect(formatReset('not a date', NOW)).toBe('')
   })
 
@@ -414,7 +416,7 @@ describe('the HUD', () => {
         }
         // The facts the wide rows carry are all there.
         const text = rows.map(row => row.text).join('\n')
-        for (const fact of ['opus 5.5', '1h 12m', '$4.21', 'main* +3 −1 ↑2', '100%', '1.0M/1.0M', '92%', '↻ 14:20', '64%', '↻ Tue', '85%', '↻ Nov 1', 'Read ×41', 'Bash ×12', 'mcp 4 · skills 12', 'ship small']) {
+        for (const fact of ['opus 5.5', '1h 12m', '$4.21', 'main* +3 −1 ↑2', '100%', '1.0M/1.0M', '92%', AT_5H, '64%', AT_7D, '85%', AT_SPEND, 'Read ×41', 'Bash ×12', 'mcp 4 · skills 12', 'ship small']) {
           expect(text, `${fact} @${columns}`).toContain(fact)
         }
         expect(rowOf(rows, 'inventory')?.text).toBe('  mcp 4 · skills 12')
@@ -439,8 +441,8 @@ describe('the HUD', () => {
       '◆ opus 5.5 · xhigh      1h 12m   $4.21',
       '  ~/.claude/mods · main* +3 −1 ↑2',
       '  ctx   ━━━─────  41%  412k/1.0M',
-      '  5h    ━━──────  31%  ↻ 14:20',
-      '  7d    ━───────  12%  ↻ Tue',
+      `  5h    ━━──────  31%  ${AT_5H}`,
+      `  7d    ━───────  12%  ${AT_7D}`,
       '  tools Read ×41 Bash ×12 Edit ×9 +2',
       '  mcp 4 · skills 12',
       '  ship small, ship often',
@@ -452,8 +454,8 @@ describe('the HUD', () => {
       '◆ opus 5.5          1h 12m   $4.21',
       '  ~/.claude/mods · main* +3 −1 ↑2',
       '  ctx    41%  412k/1.0M',
-      '  5h     31%  ↻ 14:20',
-      '  7d     12%  ↻ Tue',
+      `  5h     31%  ${AT_5H}`,
+      `  7d     12%  ${AT_7D}`,
       '  tools Read ×41 Bash ×12 Edit ×9 +2',
       '  mcp 4 · skills 12',
       '  ship small, ship often',
@@ -593,7 +595,7 @@ describe('the HUD', () => {
       const rows = await rowsOf(ui)
       for (const [id, text] of [
         ['identity', 'gateway'], ['identity', '1h 12m'], ['location', '~/.claude/mods'], ['location', 'mcp 4'],
-        ['ctx', 'ctx'], ['ctx', '─'], ['ctx', '412k / 1.0M'], ['ctx', '3 compactions'], ['five_hour', '↻ 14:20'],
+        ['ctx', 'ctx'], ['ctx', '─'], ['ctx', '412k / 1.0M'], ['ctx', '3 compactions'], ['five_hour', AT_5H],
         ['tools', 'tools'], ['tools', '×41'], ['tools', '00:04'],
       ] as const) {
         expect(piece(rowOf(rows, id), text)?.props.dimColor, `${id}: ${text}`).toBe(true)

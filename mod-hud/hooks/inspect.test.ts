@@ -3,7 +3,7 @@ import { describe, expect, test } from 'claude-code/testing'
 import type { Engine } from 'claude-code/testing'
 
 import type { HudDetailFacts, HudLedger, HudListView, HudSelection, HudTrailStep, HudUsageFacts } from '../types'
-import { full } from './hud.fixtures'
+import { AT_5H, AT_7D, clockOf, full } from './hud.fixtures'
 import {
   ARG_MAX,
   COST_ESTIMATE_NOTE,
@@ -284,10 +284,10 @@ describe('the inspect view', () => {
         expect(rows).toContain('Task   [ Trail ]  Said   Agents')
         const calls = rows.filter(row => /^\d\d:\d\d:\d\d /.test(row))
         expect(calls).toHaveLength(10)
-        expect(calls[0]).toMatch(/^12:00:00 {3}0\.0s ok {5}Read \/work\/src\/a\.ts$/)
+        expect(calls[0]).toMatch(new RegExp(`^${clockOf(NOW)} {3}0\\.0s ok {5}Read /work/src/a\\.ts$`))
         expect(calls[4]).toMatch(/ 0\.0s error {2}Bash npm test$/)
         expect(calls[5]).toMatch(/ 0\.0s denied Glob src\/\*\*\/\*\.ts$/)
-        expect(calls[9]).toMatch(/^12:00:00 {3}2\.0s now {4}Read/)
+        expect(calls[9]).toMatch(new RegExp(`^${clockOf(NOW)} {3}2\\.0s now {4}Read`))
         expect(rows.join('\n')).toContain('/work/src/lexer.ts')
         for (const row of rows) expect(displayWidth(row), `${surface} @${columns}: ${row}`).toBeLessThanOrEqual(columns)
         // The current call is drawn in the accent; a failure in the error colour, a denial in the warning one.
@@ -612,10 +612,10 @@ describe('the inspect view', () => {
     expect(promptOf([{ role: 'user', text: ' ' }, { role: 'user', text: 'go' }])).toBe('go')
     // An open call of an agent no longer running reads `?`; one never ended is never `now`.
     const trail = trailRows({ kind: 'agent', running: false, trail: [{ tool: 'Read', arg: 'a.ts', at: NOW }] }, 72, NOW + 5000)
-    expect(inspectLines(trail)).toEqual([`12:00:00${' '.repeat(8)}?${' '.repeat(6)}Read a.ts`])
+    expect(inspectLines(trail)).toEqual([`${clockOf(NOW)}${' '.repeat(8)}?${' '.repeat(6)}Read a.ts`])
     // Narrow, a call that does not fit puts its argument on rows of its own.
     const narrow = trailRows({ kind: 'agent', running: true, trail: [{ tool: 'Read', arg: '/work/hooks/scene-client.tsx', at: NOW, ms: 300, outcome: 'ok' }] }, 48, NOW)
-    expect(inspectLines(narrow)).toEqual(['12:00:00   0.3s ok     Read', '  /work/hooks/scene-client.tsx'])
+    expect(inspectLines(narrow)).toEqual([`${clockOf(NOW)}   0.3s ok     Read`, '  /work/hooks/scene-client.tsx'])
   })
 })
 
@@ -697,7 +697,7 @@ describe('the session tab', () => {
       has('context', '412k / 1.0M', '41%', '+18k/turn', 'compacts in ~30 turns')
       has('tokens', '1.2M in', '84k out', '9.8M cache read', '640k cache write', '84% cache hit')
       // 25 % at the window's start, 31 % now: 6 % in 30 minutes, 69 % to go: 5h45, after its reset.
-      has('limits', '5h 31%', 'resets before the cap', '↻ 14:20', '7d 12%', '—', '↻ Tue')
+      has('limits', '5h 31%', 'resets before the cap', AT_5H, '7d 12%', '—', AT_7D)
       has('asks', 'none waiting')
       has('failures', '1 denied', '1 error')
       has('agents', '2 spawned', '1 running', '1 done', '4 agent-min')
