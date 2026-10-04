@@ -79,7 +79,11 @@ export type MascotMain = {
 export type SceneEvent = { kind: 'message'; from: string; to: string; tick: number }
 
 /** Everything the scene draws: the session's mascot and the subagents', in spawn order. */
-export type MascotScene = { main: MascotMain; agents: MascotAgent[]; events?: SceneEvent[] }
+/** Who the mascots are: Clawd (the default), or Usagi (the `character` option). */
+export type Character = 'clawd' | 'usagi'
+
+/** The scene: the session's mascot, the agents', the messages between them, and who they all are (absent, Clawd). */
+export type MascotScene = { main: MascotMain; agents: MascotAgent[]; events?: SceneEvent[]; character?: Character }
 
 /**
  * The room the scene is drawn into: the rows the HUD and the list leave, and
@@ -115,6 +119,8 @@ export type SceneOptions = {
   events?: readonly SceneEvent[]
   /** What the agents left out of the smooth scene's props settled (`SceneHistory`): read in place of working it out again. */
   history?: SceneHistory
+  /** Who the mascots are: Usagi, else Clawd. */
+  character?: Character
 }
 
 /**
@@ -173,6 +179,8 @@ export type SceneInputs = {
    * is no grid of equal cells); absent, as rows of text (the terminal).
    */
   svg?: true
+  /** Usagi for the mascots (the `character` option); absent, Clawd. */
+  character?: 'usagi'
 }
 
 /** Where an agent is in its life, at this tick. */
@@ -207,8 +215,13 @@ export type Cue =
   | 'glance'
   | 'point'
 
-/** One drawn cell: its glyph, its ink and the colour `b` or `k` resolves to; `hat` for a crown, accessory, cap or energy cell. */
-export type Cell = { ch: string; ink: Ink; colour: string; hat?: true }
+/**
+ * One drawn cell: its glyph, its ink and the colour `b` or `k` resolves to;
+ * `bg`, a raw colour under the glyph, for a cell of two colours (Usagi's
+ * face: its every quarter drawn, the glyph's in its ink, the rest in `bg`);
+ * `hat` for a crown, accessory, cap or energy cell.
+ */
+export type Cell = { ch: string; ink: Ink; colour: string; bg?: string; hat?: true }
 export type Grid = (Cell | undefined)[][]
 
 /** One mascot, the strip or the session's own, where the layout put it. */

@@ -1,6 +1,7 @@
 import type { PluginOptions } from 'claude-code'
 
 import { TODO_ROWS } from './hud'
+import type { Character } from './scene-types'
 
 // The mod's options (`userConfig` in plugin.json) as the hooks use them:
 // every HUD part shown unless switched off, the status line opt-in, numbers
@@ -19,6 +20,8 @@ export type Settings = {
   showInventory: boolean
   motto: string
   mascots: boolean
+  /** Who the mascots are: Clawd (the default), or Usagi. */
+  character: Character
   showWorkflows: boolean
   inspect: boolean
   wander: boolean
@@ -44,6 +47,7 @@ export const settingsOf = (options: PluginOptions): Settings => ({
   // Left unset, the default motto; an empty one draws none.
   motto: typeof options.motto === 'string' ? options.motto.trim() : DEFAULT_MOTTO,
   mascots: options.mascots !== false,
+  character: options.character === 'usagi' ? 'usagi' : 'clawd',
   showWorkflows: options.showWorkflows !== false,
   inspect: options.inspect !== false,
   wander: options.wander !== false,

@@ -35,6 +35,7 @@ import type {
   SceneShadowInput,
 } from './scene-types'
 import { defined } from './state-json'
+import { USAGI_COLOURS } from './usagi-sprites'
 
 // The mascot scene drawn in the pane's spare rows, under the agent list: the
 // session's own mascot first, then one per subagent and workflow agent, all
@@ -84,7 +85,7 @@ export const KIT_COLOURS: readonly string[] = [
 ].filter(colour => colour !== '')
 
 /** Every colour the scene draws in, the palette, the kit and the red pipe included. */
-export const SCENE_COLOURS: readonly string[] = [ACCENT, GOOD, WARN, HOT, ASK, DROP, ...PALETTE, ...KIT_COLOURS, PIPE_COLOUR, PIPE_SHINE]
+export const SCENE_COLOURS: readonly string[] = [ACCENT, GOOD, WARN, HOT, ASK, DROP, ...PALETTE, ...KIT_COLOURS, PIPE_COLOUR, PIPE_SHINE, ...USAGI_COLOURS]
 
 /**
  * An agent's colour, the same for the same id every time (an FNV-1a hash into
@@ -401,6 +402,7 @@ export const sceneOf = (
     },
     agents: piped,
     ...(events.length === 0 ? {} : { events }),
+    ...(options.character === 'usagi' ? { character: 'usagi' as const } : {}),
   }
 }
 
@@ -485,5 +487,13 @@ export const sceneFromInputs = (inputs: SceneInputs, now: number): MascotScene =
     ...(inputs.hud.toolRunning === true ? { tools: { current: { name: 'tool', since: now }, counts: {} } } : {}),
   }
 
-  return sceneOf(agents, hud, now, { stalledMs: inputs.stalledMs, main: inputs.main, shadows: inputs.shadows as ShadowAgentEntry[], scenes: inputs.scenes, events: inputs.events, ...(inputs.history === undefined ? {} : { history: inputs.history }) })
+  return sceneOf(agents, hud, now, {
+    stalledMs: inputs.stalledMs,
+    main: inputs.main,
+    shadows: inputs.shadows as ShadowAgentEntry[],
+    scenes: inputs.scenes,
+    events: inputs.events,
+    ...(inputs.history === undefined ? {} : { history: inputs.history }),
+    ...(inputs.character === undefined ? {} : { character: inputs.character }),
+  })
 }

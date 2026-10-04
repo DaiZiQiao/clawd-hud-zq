@@ -44,7 +44,9 @@ name colours, no main-activity writes, no scene clock, and no `tool.check` hook.
 `wander` (on) lets mascots roam the field between tools, `scenes` (on) plays
 the orchestration scenes, and `collisions` (`rare`) sets how mascots that meet
 behave; see "Choreography". `motion` (`smooth`) picks the renderer: `classic`
-keeps the Box/Text scene on every surface.
+keeps the Box/Text scene on every surface. `character` (`clawd`) picks who
+the mascots are: Clawd, as the rest of this page draws it, or `usagi`; see
+"Usagi".
 `/clear` still removes stale `main` facts left by an earlier enabled session.
 
 ## Where it draws
@@ -285,6 +287,97 @@ farewell lifetime; stale board records do not keep crossing into the Client.
 **Style.** A workflow agent wears **no badge and no letter**: it has no role
 letter (its type is unknown), and its colour and `wf-` name in the list tell
 it. It wears an accessory as a subagent does.
+
+## Usagi
+
+With `character: usagi` every mascot is Usagi, the rabbit from Chiikawa
+(fan art, opt-in; Clawd stays the default). It lives in the same box and
+slot as Clawd, takes the same looks (`agentLook`, `mainLook`, `miniLook`)
+and goes through the same scene, plans, motion and pipe; only the drawing
+differs: `drawUsagi` and `drawUsagiMini` (`hooks/usagi-glyphs.ts`) in place
+of `drawLook` and `drawMini`, from the tables in `hooks/usagi-sprites.ts`.
+`sceneOf` puts `character: 'usagi'` on the scene (the smooth scene's props
+carry it too), and `placedSprites` picks the drawer by it.
+
+![Usagi: who wears what](usagi-figure.png)
+
+**Quarters, two colours a cell.** Clawd's tables are glyph rows; Usagi's are
+bitmaps of quarters, two a cell across and two down: the figure is 18 by 8
+quarters over box columns 2 to 10 and rows 0 to 3. `cellsOf` turns quarters
+into cells: one colour, its quarter glyph (`▘` to `█`) in it; two colours,
+only where all four quarters are drawn, as a glyph in one on a background
+of the other (`Cell.bg`). So its face holds dark eyes, a mouth and pink
+cheeks on its pale yellow whatever the terminal's theme, and nothing is a
+hole that shows the page through. The terminal draws such a cell as a
+`Text` with a `backgroundColor`; the desktop's SVG paints the whole cell in
+the background before the layer's glyphs. Clawd never draws one. A cell
+asked for three colours, or two with a quarter empty, is a clash
+(`clashesOf`); the tests sweep every head, arms, legs, pose and dress and
+find none, which is why an eye and the mouth never share a cell (the wide
+mouth turns with the eyes) and why its ears stand on whole cells.
+
+```
+    █   █        row 0: its ears
+   ▗█▄▄▄█▖       row 1: their feet, its head's top
+   ▗▝█▄█▘▖       row 2: its face, five cells of two colours (cheek, eye, mouth, eye, cheek)
+   ▝▛▀▀▀▜▘       row 3: its body, its feet
+```
+
+Bare and standing, as plain text: a two-colour cell prints only its glyph
+(here the eyes' and the mouth's quarters, the cheeks'), its background the
+body's yellow.
+
+| | colour |
+| --- | --- |
+| body (every Usagi, whatever its agent's colour) | `#F3DC8C` |
+| eyes | `#2B211C` |
+| mouth | `#6B2D2A` |
+| cheeks | `#F2A0AE` |
+
+**What it wears.** No letter, no accessory and no colour of its own: an
+agent's role is its **hat**, worn over its head with its ears through the
+brim (`ROLE_HATS`, `HATS`), each hat 3:1 or more on #282a36 and #eff1f5.
+The session's own wears the **crown**, small, tilted on the left of its head
+in front of its ear (`SIDE_CROWN`). Energy marks stand at the air row's right
+end. A child wears its role's hat as one cell between its ears.
+
+| role | hat | colour |
+| --- | --- | --- |
+| worker | construction hat | `#C8691C` |
+| Explore or researcher | fedora (dented crown, dark band) | `#9A6A3A` |
+| reviewer | mortarboard (a board over its ears, the tassel's knot) | `#4D79C4` |
+| debugger | miner's helmet, its lamp lit | `#7A828C` |
+| Plan | top hat with its band | `#9B5CB8` |
+| frontend | beret, flat and tilted | `#D05454` |
+| any other type, a workflow agent | none | |
+
+Flying, the propeller cap takes the hat's place between its ears, in the
+hat's colour (the crown's gold for the session, slate bare). Knocked down,
+its hat (or crown) lies on the floor beside it.
+
+**Its looks.** The same looks as Clawd's, drawn its own way:
+
+- Its ears stand through a hat; bare, they lower while it squats or sleeps,
+  their tips trail a walk, and they droop when it slumps, failed.
+- Its eyes move with the look (left, right, crossed, apart, wide, down,
+  shut); its mouth is small, turned with them, or wide open with its hands
+  up (a hop, the cheer, a stretch).
+- Its head never goes lower: sitting, crouched or squashed, it squats on a
+  wide seat; knocked down it lies flat, ears out either side; asleep, the
+  blanket covers its body up to its cheeks.
+- It barely talks: its thoughts are its shouts (`USAGI_THOUGHTS`: `Ura!`,
+  `Yaha!`, `Puruya`, `Haa?` and more), one a spell as Clawd's phrases are.
+- No cigarette: on each puff of that idle bit it throws its hands up and
+  shouts `Ura!`.
+- Failed, its cross stands over its head in the sky row (its head stays
+  up); with no sky row free, the cross and its shouts come a row lower,
+  beside its ears.
+
+![Usagi: its looks](usagi-poses.png)
+
+`spriteSheet('usagi')` lists every look as `spriteSheet()` does Clawd's;
+printed as plain text a two-colour cell shows only its glyph, so the
+pictures above are drawn from it instead.
 
 ## Sprite sheet
 

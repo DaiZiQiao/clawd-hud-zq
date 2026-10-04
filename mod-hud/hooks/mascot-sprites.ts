@@ -228,13 +228,15 @@ const thoughtArt = (phrase: string, step: number, width = 14): string[] => {
   return placed(...([[1, 11, '·'], [0, 12, '∘'], [-1, Math.min(11, SLOT - bubble.length), bubble]] as const).slice(0, step + 1))
 }
 
-/** The growth stays 1,1,2,2,3,3,3,3; without sky, the bubble fits beside the badge. */
-export const THOUGHT_FRAMES: readonly (readonly Overlay[])[] = THOUGHTS.map(phrase => GROWING.map(step => ({
+/** Each phrase's thought frames: the growth stays 1,1,2,2,3,3,3,3; without sky, the bubble fits beside the badge. */
+export const thoughtFrames = (phrases: readonly string[]): readonly (readonly Overlay[])[] => phrases.map(phrase => GROWING.map(step => ({
   art: thoughtArt(phrase, step),
   lowArt: thoughtArt(phrase, step, SLOT - 11),
   ink: 'd',
   by: Object.fromEntries([...phrase, '…'].filter(ch => ch !== ' ').map(ch => [ch, 'f' as const])),
 })))
+
+export const THOUGHT_FRAMES: readonly (readonly Overlay[])[] = thoughtFrames(THOUGHTS)
 
 /**
  * The mascot's overlays, laid out in its standing box (row 0 the air row,

@@ -64,6 +64,7 @@ Change any option from `/plugin` (select mod-hud, then its settings).
 | `showInventory` | `true` | Show how many MCP servers and skills the session has. |
 | `motto` | `Don't be afraid to do tedious work.` | A line drawn dim under the HUD; empty for none. |
 | `mascots` | `true` | Fill the pane's spare rows with mascots: the session's own, and one per subagent in its own colour. |
+| `character` | `clawd` | Who the mascots are. `clawd`: Claude Code's Clawd, each agent in its own colour with its role letter and an accessory. `usagi`: Usagi from Chiikawa (fan art), each agent's role shown by its hat and the session's by a crown on the side of its head. |
 | `showWorkflows` | `true` | Track the agents a Workflow run starts and show them under the subagents, in the summary and as mascots. |
 | `inspect` | `true` | A button on every agent row and mascot opens that agent's detail view in place of the scene. |
 | `wander` | `true` | Mascots between tools walk about their line, hop and, with a spare row above, glide. |
@@ -103,6 +104,7 @@ A card at the top of the pane, at most 72 cells wide, then the agent list, then 
 - Flights carry meaning: a web call sends a mascot into the sky, Explore agents scan the floor from above, a reading streak lifts off, finished agents fly out, and the session flies up on a compaction.
 - Collisions (`collisions` setting) knock mascots over, dizzy, before they get up and carry on.
 - Motion is `smooth` (20 fps, mouse grab and throw) or `classic` (4 fps, everywhere).
+- `character: usagi` swaps every mascot for Usagi (fan art): pale yellow, its role shown by its hat (worker a construction hat, Explore a fedora, reviewer a mortarboard, debugger a miner's helmet, Plan a top hat, frontend a beret), the session's by a small crown on the side of its head; it shouts `Ura!` and `Yaha!` where Clawd thinks out loud. See [the mascot docs](mod-hud/docs/mascots.md#usagi).
 
 ## Development
 

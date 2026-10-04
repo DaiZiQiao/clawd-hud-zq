@@ -1497,6 +1497,7 @@ export const register: Register = (on, options) => {
               inspect: settings.inspect,
               ...(inspecting === undefined ? {} : { paused: true }),
               ...(svg === undefined ? {} : { svg: true as const }),
+              ...(settings.character === 'usagi' ? { character: 'usagi' as const } : {}),
             })
             const { Client } = table as { Client: (props: { key: string; module: string; props?: unknown; width?: number; height?: number }) => RenderElement }
             scene = <Client key={SCENE_KEY} module="./scene-client.tsx" props={props} width={columns} height={inspecting === undefined ? spare : 0} />
@@ -1505,7 +1506,7 @@ export const register: Register = (on, options) => {
           const frame = await read($, sceneTick)
           if (bodyRows !== undefined) {
             const spare = bodyRows - (hud === undefined ? 0 : hudRows + 1) - listRows - 1
-            const mascots = sceneOf(list, hudData, now, { stalledMs: settings.stalledMs, main, shadows: workflow, scenes: settings.scenes, events: sceneEvents })
+            const mascots = sceneOf(list, hudData, now, { stalledMs: settings.stalledMs, main, shadows: workflow, scenes: settings.scenes, events: sceneEvents, character: settings.character })
             const room = { columns, rows: spare, tick: Math.max(frame, Math.floor(now / SCENE_FRAME_MS)), wander: settings.wander, scenes: settings.scenes, collisions: settings.collisions }
             const plan = mascotPlan(mascots, room, scenePlans.get(e.surface))
             const pick = settings.inspect ? { Button, onPick: (id: string) => void selectAgent($, { id, kind: kindOf(id) }) } : undefined

@@ -62,6 +62,12 @@
       "description": "Fill the pane's spare rows with Claude mascots: the session's own, and one per subagent in its own colour, which its name in the list shares.",
       "default": true
     },
+    "character": {
+      "type": "string",
+      "title": "Mascot character",
+      "description": "clawd (default): Claude Code's Clawd, each agent in its own colour with its role letter and an accessory. usagi: Usagi from Chiikawa (fan art), pale yellow, each agent's role shown by its hat (worker a construction hat, Explore or researcher a fedora, reviewer a mortarboard, debugger a miner's helmet, Plan a top hat, frontend a beret) and the session's by a crown on the side of its head.",
+      "default": "clawd"
+    },
     "showWorkflows": {
       "type": "boolean",
       "title": "Show workflow agents",

@@ -38,6 +38,7 @@ import {
 import type { HatSide, Ink, Overlay } from './mascot-sprites'
 import { sideOf } from './scene-model'
 import type { Cell, Energy, Grid, MascotAgent, MascotMain } from './scene-types'
+import { CROSS as USAGI_CROSS, SHOUT, USAGI_THOUGHT_FRAMES } from './usagi-sprites'
 
 // One mascot drawn into cells from its look (hooks/mascot-poses.ts): the
 // figure from the body tables (hooks/mascot-sprites.ts) in its colour, its air
@@ -60,8 +61,45 @@ export const wearOfMain = (main: MascotMain): Wear => ({ hat: { ...CROWN, side: 
 /** One row up on its bouncing frames, where a row is free above it. */
 export const bobOf = (look: Look, sky: number): number => (look.bob === true && sky - look.lift >= 1 ? 1 : 0)
 
-/** A thought or sleep rising beside the head: neither goes up with a hop or a flight, and a row lower without a sky row. */
-const RISING: ReadonlySet<Overlay> = new Set<Overlay>([...THOUGHT_FRAMES.flat(), ...OVERLAYS.zzz])
+/** A thought or sleep rising beside the head (Usagi's shouts and its cross too): a row lower without a sky row. */
+const RISING: ReadonlySet<Overlay> = new Set<Overlay>([...THOUGHT_FRAMES.flat(), ...USAGI_THOUGHT_FRAMES.flat(), ...OVERLAYS.zzz, SHOUT, USAGI_CROSS])
+
+/** Lays a cell of a mascot's grid at (row, column) of its box (row −1 the sky row); `own` for the figure's, which nothing laid later covers. */
+export type Put = (row: number, column: number, cell: Cell, own?: boolean) => void
+
+/**
+ * What is beside a figure, riding `dy` rows below its standing place (a
+ * thought or sleep a row lower with no sky row free), then its laptop and its
+ * near hand on the keys: Clawd's and Usagi's alike.
+ */
+export const layBeside = (look: Look, put: Put, colour: string, above: number, dy: number, overlays: readonly Overlay[] = look.overlays): void => {
+  for (const overlay of overlays) {
+    const lower = RISING.has(overlay) && above < 1 ? 1 : 0
+    const art = lower === 1 ? overlay.lowArt ?? overlay.art : overlay.art
+    art.forEach((text, y) => {
+      ;[...text].forEach((glyph, column) => {
+        if (glyph === ' ') return
+        put(y - SKY + dy + lower, column + (look.nudge ?? 0), { ch: glyph, ink: overlay.by?.[glyph] ?? overlay.ink, colour: overlay.colour ?? colour })
+      })
+    })
+  }
+  if (look.desk === true) {
+    for (const part of LAPTOP) {
+      part.art.forEach((text, y) => {
+        ;[...text].forEach((glyph, column) => {
+          if (glyph !== ' ') put(y - SKY, column, { ch: glyph, ink: part.ink, colour: part.colour ?? colour })
+        })
+      })
+    }
+    if (look.reach === true) {
+      REACH.forEach((text, y) => {
+        ;[...text].forEach((glyph, column) => {
+          if (glyph !== ' ') put(y - SKY, column, { ch: glyph, ink: 'b', colour }, true)
+        })
+      })
+    }
+  }
+}
 
 /**
  * A full mascot's grid for a look: the sky row and its box, a slot wide.
@@ -153,33 +191,7 @@ export const drawLook = (look: Look, wear: Wear, colour: string, above = 0): Gri
   }
 
   // Beside it, riding with its head; a thought or sleep a row lower with no sky row free.
-  const dy = look.pose === 'flat' ? 0 : headRow - 1
-  for (const overlay of look.overlays) {
-    const lower = RISING.has(overlay) && above < 1 ? 1 : 0
-    const art = lower === 1 ? overlay.lowArt ?? overlay.art : overlay.art
-    art.forEach((text, y) => {
-      ;[...text].forEach((glyph, column) => {
-        if (glyph === ' ') return
-        put(y - SKY + dy + lower, column + (look.nudge ?? 0), { ch: glyph, ink: overlay.by?.[glyph] ?? overlay.ink, colour: overlay.colour ?? colour })
-      })
-    })
-  }
-  if (look.desk === true) {
-    for (const part of LAPTOP) {
-      part.art.forEach((text, y) => {
-        ;[...text].forEach((glyph, column) => {
-          if (glyph !== ' ') put(y - SKY, column, { ch: glyph, ink: part.ink, colour: part.colour ?? colour })
-        })
-      })
-    }
-    if (look.reach === true) {
-      REACH.forEach((text, y) => {
-        ;[...text].forEach((glyph, column) => {
-          if (glyph !== ' ') put(y - SKY, column, { ch: glyph, ink: 'b', colour }, true)
-        })
-      })
-    }
-  }
+  layBeside(look, put, colour, above, look.pose === 'flat' ? 0 : headRow - 1)
 
   return grid
 }

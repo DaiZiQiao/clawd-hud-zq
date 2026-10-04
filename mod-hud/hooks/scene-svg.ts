@@ -143,6 +143,22 @@ export const layerSvg = (layer: SceneLayer): string => {
 
     return made
   }
+  // A two-colour cell's background first, the whole cell, under every glyph of the layer.
+  const grounds = new Map<string, Ink>()
+  layer.cells.forEach((row, y) => {
+    row.forEach((cell, x) => {
+      if (cell?.bg === undefined) return
+      const paint = colourPaint(cell.bg)
+      const ground = grounds.get(paintKey(paint)) ?? { paint, quarters: new Map(), bars: [], glyphs: [] }
+      grounds.set(paintKey(paint), ground)
+      for (const half of [y * 2, y * 2 + 1]) {
+        const set = ground.quarters.get(half) ?? new Set<number>()
+        set.add(x * 2)
+        set.add(x * 2 + 1)
+        ground.quarters.set(half, set)
+      }
+    })
+  })
   layer.cells.forEach((row, y) => {
     row.forEach((cell, x) => {
       if (cell === undefined || cell.ch.trim() === '') return
@@ -163,8 +179,8 @@ export const layerSvg = (layer: SceneLayer): string => {
       }
     })
   })
-  if (inks.size === 0) return ''
-  const groups = [...inks.values()].map(ink => {
+  if (inks.size === 0 && grounds.size === 0) return ''
+  const groups = [...grounds.values(), ...inks.values()].map(ink => {
     const { paint } = ink
     const attributes = `${paint.theme === undefined ? '' : ` class='${CLASSES[paint.theme]}'`} fill='${paint.fill}'${paint.half === true ? ` fill-opacity='.5'` : ''}`
     const shapes = [...rectsOf(ink.quarters), ...ink.bars].map(rectTag).join('')

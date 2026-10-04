@@ -8,6 +8,7 @@ import { SCENE_FRAME_MS, holdTicks, soloPipe } from './scene-phases'
 import { PIPE_SLIDE_MS, PIPE_WIDTH, PIPE_X, batchPipeAt, droppedAt, farewellAt } from './scene-pipe'
 import { SETTLED, mascotPlan } from './scene-plan'
 import type { Cell, Mark, MascotAgent, MascotLayout, MascotPlan, MascotScene, Phase, PlacedPipe, PlacedSprite, Placement, SceneView } from './scene-types'
+import { dressOfAgent, dressOfMain, drawUsagi, drawUsagiMini } from './usagi-glyphs'
 
 // The plan's frame as placed sprites, renderer-agnostic: each mascot's look
 // drawn into cells (hooks/mascot-poses.ts, hooks/mascot-glyphs.ts) where it
@@ -118,6 +119,7 @@ export const placedSprites = (scene: MascotScene, layout: MascotLayout, plan = m
   if (plan === undefined) return undefined
   const tick = Math.floor(isNumber(layout.tick) ? layout.tick : 0)
   const byId = new Map(scene.agents.map(agent => [agent.id, agent]))
+  const usagi = scene.character === 'usagi'
   const anchors = anchorsOf(scene, new Map(plan.placements.map(one => [one.id, one])))
   const marks = [...plan.marks]
 
@@ -192,20 +194,21 @@ export const placedSprites = (scene: MascotScene, layout: MascotLayout, plan = m
     let cells: (Cell | undefined)[][]
     let lift: number
     let bob = 0
+    // Drawn as the scene's character: Clawd, or Usagi.
     if (one.kind === 'main') {
       const look = lifted(mainLook(scene.main, tick, context))
       bob = bobOf(look, sky)
-      cells = drawLook(look, wearOfMain(scene.main), ACCENT, sky - look.lift - bob)
+      cells = usagi ? drawUsagi(look, dressOfMain(scene.main), sky - look.lift - bob) : drawLook(look, wearOfMain(scene.main), ACCENT, sky - look.lift - bob)
       lift = look.lift
     } else if (one.kind === 'mini') {
       const look = lifted(miniLook(agent as MascotAgent, one.phase as Phase, tick, context))
-      cells = drawMini(look, agent as MascotAgent, (agent as MascotAgent).colour)
+      cells = usagi ? drawUsagiMini(look, agent as MascotAgent) : drawMini(look, agent as MascotAgent, (agent as MascotAgent).colour)
       lift = look.lift
     } else {
       const self = agent as MascotAgent
       const look = lifted(agentLook(self, one.phase as Phase, tick, context))
       bob = bobOf(look, sky)
-      cells = drawLook(look, wearOfAgent(self), self.colour, sky - look.lift - bob)
+      cells = usagi ? drawUsagi(look, dressOfAgent(self), sky - look.lift - bob) : drawLook(look, wearOfAgent(self), self.colour, sky - look.lift - bob)
       lift = look.lift
     }
     const topExact = dExact - (liftExact ?? lift) - bob - SKY
