@@ -3,7 +3,7 @@ import { describe, expect, test } from 'claude-code/testing'
 import type { AgentBoardEntry, HudData, HudMainFacts, ShadowAgentEntry } from '../types'
 import { rowsOf, spriteOf } from './mascot-glyphs.fixtures'
 import { LAPTOP_COLOUR, OVERLAYS } from './mascot-sprites'
-import { PALETTE, SCENE_COLOURS, activityOf, colourFor, sceneOf } from './scene-model'
+import { PALETTE, SCENE_COLOURS, activityOf, colourFor, sceneFromInputs, sceneInputsOf, sceneOf } from './scene-model'
 import { DONE_HOLD, FAIL_HOLD, NOW, entry, everyState, family, hotHud, idleHud, oneAgent, trio, working } from './scene-model.fixtures'
 import { EXIT_TICKS, IDLE_AFTER_MS, LONG_IDLE_MS, PACK_TICKS, SCENE_FRAME_MS, phaseOf } from './scene-phases'
 import { mascotColours, mascotLines } from './scene-render'
@@ -194,6 +194,37 @@ describe('workflow agents', () => {
         const air = rowsOf(sprite)[1] ?? ''
         expect(air.slice(0, 11).replace('♫', '').replace(/[✗?▚▞]/g, '').trim(), `${activity} ${JSON.stringify(extra)} @${tick}: "${air}"`).toBe('')
       }
+    }
+  })
+})
+
+describe('the smooth scene\'s props', () => {
+  const MINUTE = 60_000
+  // A session of agents: five gone two minutes ago that were there when `mid` spawned; a
+  // child whose parent ended long ago; a debugger spawned just after a reviewer finished.
+  const board: AgentBoardEntry[] = [
+    ...['e1', 'e2', 'e3', 'e4', 'e5'].map((id, at) => entry(id, { startedAt: NOW - 10 * MINUTE + at * 1000, status: 'done', endedAt: NOW - 2 * MINUTE })),
+    entry('mid', { startedAt: NOW - 5 * MINUTE, currentTool: 'Edit' }),
+    entry('late', { startedAt: NOW - MINUTE, currentTool: 'Read' }),
+    entry('parent', { startedAt: NOW - 9 * MINUTE, status: 'done', endedAt: NOW - 3 * MINUTE }),
+    entry('child', { parentId: 'parent', startedAt: NOW - 8 * MINUTE, currentTool: 'Bash' }),
+    entry('builder', { type: 'worker', startedAt: NOW - 7 * MINUTE, currentTool: 'Write' }),
+    entry('critic', { type: 'reviewer', startedAt: NOW - 6 * MINUTE, status: 'done', endedAt: NOW - 4 * MINUTE }),
+    entry('fixer', { type: 'debugger', startedAt: NOW - 4 * MINUTE + 20_000, currentTool: 'Edit' }),
+  ]
+
+  test('make the hooks\' scene whatever they leave out: accessories, parents and a fix visit stay as they were', () => {
+    for (const later of [0, 3_000, 61_000, 5 * MINUTE]) {
+      const now = NOW + later
+      const props = sceneInputsOf(board, [], undefined, { now, columns: 100, rows: 20, main: {}, events: [], stalledMs: 240_000, wander: true, scenes: true, collisions: 'rare', inspect: true })
+      // Left out: the agents finished more than a minute before.
+      expect(props.agents.map(one => one.id), `+${later}`).not.toContain('e1')
+      expect(props.agents.map(one => one.id), `+${later}`).not.toContain('critic')
+      const scene = sceneOf(board, undefined, now, { stalledMs: 240_000, main: {}, scenes: true, events: [] })
+      expect(sceneFromInputs(props, now), `+${later}`).toEqual(scene)
+      const child = scene.agents.find(one => one.id === 'child')
+      expect([child?.parentId, child?.spawner], `+${later}`).toEqual(['parent', 'parent'])
+      expect(scene.agents.find(one => one.id === 'fixer')?.link, `+${later}`).toEqual({ kind: 'fix', target: 'builder' })
     }
   })
 })

@@ -29,6 +29,7 @@ import type {
   MascotScene,
   PipeShare,
   SceneActorInput,
+  SceneHistory,
   SceneInputs,
   SceneOptions,
   SceneShadowInput,
@@ -247,6 +248,28 @@ const accessoriesOf = (list: readonly Actor[]): Map<string, Accessory> => {
   return worn
 }
 
+/** A debugger spawned soon after a reviewer finished: it goes to the latest maker's desk. */
+const followsReview = (list: readonly Actor[], self: Actor): boolean =>
+  linkedBefore(list, self.startedAt, one => roleOf(one.type) === 'reviewer') !== undefined
+
+/**
+ * The scene's actors at `now`: the board's agents and the workflow agents
+ * shown, and those of them it may draw (running, or ended), in spawn order.
+ */
+const actorsOf = (board: readonly AgentBoardEntry[], held: SceneOptions['shadows'], now: number): { list: Actor[]; candidates: Actor[] } => {
+  const onBoard = new Set(board.map(entry => entry.id))
+  const shadows = held === undefined ? [] : Array.isArray(held) ? held : Object.values(held)
+  const workflow = shadows
+    .filter(entry => !onBoard.has(entry.id) && isShadowVisible(entry) && isShadowLive(entry, now))
+    .map(actorOf)
+  const list: Actor[] = [...board, ...workflow]
+  const candidates = list
+    .filter(entry => entry.status === 'running' || isNumber(entry.endedAt))
+    .sort((a, b) => a.startedAt - b.startedAt || a.id.localeCompare(b.id))
+
+  return { list, candidates }
+}
+
 /**
  * The scene at `now`: the session's mascot from the HUD's facts and the main
  * loop's, and one mascot per agent on the board or workflow agent still worth
@@ -260,20 +283,14 @@ export const sceneOf = (
   options: SceneOptions = {},
 ): MascotScene => {
   const board = Array.isArray(agents) ? agents : Object.values(agents)
-  const onBoard = new Set(board.map(entry => entry.id))
-  const shadows = options.shadows === undefined ? [] : Array.isArray(options.shadows) ? options.shadows : Object.values(options.shadows)
-  const workflow = shadows
-    .filter(entry => !onBoard.has(entry.id) && isShadowVisible(entry) && isShadowLive(entry, now))
-    .map(actorOf)
-  const list: readonly Actor[] = [...board, ...workflow]
+  const { list, candidates } = actorsOf(board, options.shadows, now)
   const stalledMs = options.stalledMs ?? STALLED_MS
   const facts = options.main ?? {}
   const scenes = options.scenes === true
+  // The smooth scene's props carry what the agents they leave out settled.
+  const history = options.history
 
-  const candidates = list
-    .filter(entry => entry.status === 'running' || isNumber(entry.endedAt))
-    .sort((a, b) => a.startedAt - b.startedAt || a.id.localeCompare(b.id))
-  const known = new Set(candidates.map(entry => entry.id))
+  const known = new Set([...candidates.map(entry => entry.id), ...(history?.known ?? [])])
   const runningFlow = candidates.filter(entry => entry.workflow === true && entry.status === 'running')
   const worn = accessoriesOf(candidates)
 
@@ -285,7 +302,7 @@ export const sceneOf = (
     const idle = entry.status === 'running' && !asking && (stalled || entry.currentTool === undefined) && quiet >= IDLE_AFTER_MS
     const role = entry.workflow === true ? undefined : roleOf(entry.type)
     const spawner = entry.workflow === true ? undefined : entry.parentId !== undefined && known.has(entry.parentId) ? entry.parentId : 'main'
-    const accessory = worn.get(entry.id)
+    const accessory = history?.worn[entry.id] ?? worn.get(entry.id)
     const energy = energyOf(entry.effort)
     // A reading streak: only reads since `readingSince`, the current call one too (or none).
     const reading = entry.status === 'running' && isNumber(entry.readingSince) && (entry.currentTool === undefined || READ_TOOLS.has(entry.currentTool))
@@ -334,7 +351,7 @@ export const sceneOf = (
       const maker = linkedBefore(list, self.startedAt, one => one.id !== agent.id && isMakerType(one.type))
       if (maker !== undefined && ids.has(maker.id)) return { ...agent, link: { kind: 'review', target: maker.id } }
     }
-    if (agent.role === 'debugger' && linkedBefore(list, self.startedAt, one => roleOf(one.type) === 'reviewer') !== undefined) {
+    if (agent.role === 'debugger' && (history === undefined ? followsReview(list, self) : history.fixes.includes(agent.id))) {
       const desk = shown
         .filter(one => one.id !== agent.id && isMakerType(one.type))
         .sort((a, b) => (a.ageMs ?? Infinity) - (b.ageMs ?? Infinity))[0]
@@ -389,6 +406,24 @@ export const sceneOf = (
 
 // --- the smooth scene's inputs: what the hooks hand its surface module -----------
 
+/** What the whole board settles for the agents `carried` (`SceneHistory`): only theirs, so the props stay small. */
+const historyOf = (agents: readonly AgentBoardEntry[], shadows: readonly ShadowAgentEntry[], now: number, carried: ReadonlySet<string>): SceneHistory => {
+  const { list, candidates } = actorsOf(agents, shadows, now)
+  const worn = accessoriesOf(candidates)
+  const known = new Set(candidates.map(entry => entry.id))
+  const kept = candidates.filter(entry => carried.has(entry.id))
+
+  return {
+    worn: Object.fromEntries(kept.flatMap(entry => {
+      const accessory = worn.get(entry.id)
+
+      return accessory === undefined ? [] : [[entry.id, accessory]]
+    })),
+    known: [...new Set(kept.flatMap(entry => (entry.parentId !== undefined && known.has(entry.parentId) && !carried.has(entry.parentId) ? [entry.parentId] : [])))],
+    fixes: kept.filter(entry => entry.workflow !== true && roleOf(entry.type) === 'debugger' && entry.startedAt > 0 && followsReview(list, entry)).map(entry => entry.id),
+  }
+}
+
 /** The smooth scene's props from what the pane reads: only the fields the scene draws from. */
 export const sceneInputsOf = (
   agents: readonly AgentBoardEntry[],
@@ -398,10 +433,14 @@ export const sceneInputsOf = (
 ): SceneInputs => {
   const percent = contextPercentOf(hud)
   const horizon = Math.max(LINK_WINDOW_MS, (holdTicks({ status: 'done', spawner: 'main', squadNext: 'next' }, room.scenes) + EXIT_TICKS) * SCENE_FRAME_MS)
+  // Agents finished longer ago than the horizon are left out; what they settled for the rest goes as the history.
+  const carried = agents.filter(entry => entry.status === 'running' || room.now - (entry.endedAt ?? entry.lastActivityAt) < horizon)
+  const flow = shadows.filter(entry => entry.status === 'running' || room.now - (entry.endedAt ?? entry.lastSeen) < horizon)
 
   return {
     ...room,
-    agents: agents.filter(entry => entry.status === 'running' || room.now - (entry.endedAt ?? entry.lastActivityAt) < horizon).map(entry => defined<SceneActorInput>({
+    history: historyOf(agents, shadows, room.now, new Set([...carried, ...flow].map(entry => entry.id))),
+    agents: carried.map(entry => defined<SceneActorInput>({
       id: entry.id,
       type: entry.type,
       startedAt: entry.startedAt,
@@ -414,7 +453,7 @@ export const sceneInputsOf = (
       effort: entry.effort,
       readingSince: entry.readingSince,
     })),
-    shadows: shadows.filter(entry => entry.status === 'running' || room.now - (entry.endedAt ?? entry.lastSeen) < horizon).map(entry => defined<SceneShadowInput>({
+    shadows: flow.map(entry => defined<SceneShadowInput>({
       id: entry.id,
       firstSeen: entry.firstSeen,
       visibleAt: entry.visibleAt,
@@ -446,5 +485,5 @@ export const sceneFromInputs = (inputs: SceneInputs, now: number): MascotScene =
     ...(inputs.hud.toolRunning === true ? { tools: { current: { name: 'tool', since: now }, counts: {} } } : {}),
   }
 
-  return sceneOf(agents, hud, now, { stalledMs: inputs.stalledMs, main: inputs.main, shadows: inputs.shadows as ShadowAgentEntry[], scenes: inputs.scenes, events: inputs.events })
+  return sceneOf(agents, hud, now, { stalledMs: inputs.stalledMs, main: inputs.main, shadows: inputs.shadows as ShadowAgentEntry[], scenes: inputs.scenes, events: inputs.events, ...(inputs.history === undefined ? {} : { history: inputs.history }) })
 }

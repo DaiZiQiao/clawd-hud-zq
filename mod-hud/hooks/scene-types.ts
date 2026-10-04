@@ -113,6 +113,24 @@ export type SceneOptions = {
   scenes?: boolean
   /** Messages sent between agents, by scene frame. */
   events?: readonly SceneEvent[]
+  /** What the agents left out of the smooth scene's props settled (`SceneHistory`): read in place of working it out again. */
+  history?: SceneHistory
+}
+
+/**
+ * What the agents before them settled for the agents the smooth scene's props
+ * carry, worked out by the hooks over the whole board: the props leave out
+ * agents finished a while ago, which still decide each one's accessory (what
+ * those present at its spawn wore), the parents it knows, and whether a
+ * debugger came after a review.
+ */
+export type SceneHistory = {
+  /** Each agent's accessory, by id. */
+  worn: Record<string, Accessory>
+  /** Parents on the board that the props leave out. */
+  known: string[]
+  /** The debuggers spawned soon after a reviewer finished. */
+  fixes: string[]
 }
 
 /** A board entry as the scene reads it: the rest (its task, its answer) stays in the hooks. */
@@ -140,6 +158,8 @@ export type SceneInputs = {
   hud: { contextPercent?: number; effort?: string; startedAt?: number; toolRunning?: boolean }
   main: HudMainFacts
   events: SceneEvent[]
+  /** What the agents left out settled for those carried. */
+  history?: SceneHistory
   stalledMs: number
   wander: boolean
   scenes: boolean
