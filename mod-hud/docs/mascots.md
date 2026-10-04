@@ -365,12 +365,14 @@ its hat (or crown) lies on the floor beside it.
 - Its head never goes lower: sitting, crouched or squashed, it squats on a
   wide seat; knocked down it lies flat, ears out either side; asleep, the
   blanket covers its body up to its cheeks.
-- It barely talks: its thoughts are its shouts (`USAGI_THOUGHTS`: `Ura!`,
-  `Yaha!`, `Puruya`, `Haa?` and more), one a spell as Clawd's phrases are.
+- It barely talks: its thoughts are its shouts and its lines
+  (`USAGI_THOUGHTS`: `Ura!`, `Yaha!`, `HUHHH?`, `UNA!`, `Puruya`, `Haa?` and
+  more), one a spell as Clawd's phrases are.
 - No cigarette: on each puff of that idle bit it throws its hands up and
-  shouts `Ura!`.
+  shouts, in turn, `Ura!`, `HUHHH?`, `UNA!` (`SHOUTS`), then takes a breath.
+- Getting up after a fall, crouched, it is dazed: `HUHHH?` (`DAZED`).
 - Failed, its cross stands over its head in the sky row (its head stays
-  up); with no sky row free, the cross and its shouts come a row lower,
+  up); with no sky row free, the cross and its lines come a row lower,
   beside its ears.
 
 ![Usagi: its looks](usagi-poses.png)

@@ -203,13 +203,19 @@ export const MINI_SAT = ['..........', '..........', '...#..#...', '..######..',
 
 // --- what it says --------------------------------------------------------------------
 
-/** Usagi barely talks: its thoughts are its shouts, one per spell as Clawd's phrases are. */
-export const USAGI_THOUGHTS = ['Ura!', 'Yaha!', 'Puruya', 'Haa?', 'Fuun', 'Ura ura', 'Yahaa!', 'Puru…', 'Ha!', 'Uraa!', 'Fu fu', 'Yaha ha', 'Hm?', 'Puruu', 'Wa!'] as const
+/** Usagi barely talks: its thoughts are its shouts and its lines (`HUHHH?`, `UNA!`), one per spell as Clawd's phrases are. */
+export const USAGI_THOUGHTS = ['Ura!', 'Yaha!', 'HUHHH?', 'UNA!', 'Puruya', 'Haa?', 'Fuun', 'Yahaa!', 'Uraa!', 'HUHHH?!', 'UNA UNA', 'Yaha ha', 'Puruu', 'Ura ura', 'Puru…'] as const
 
 export const USAGI_THOUGHT_FRAMES: readonly (readonly Overlay[])[] = thoughtFrames(USAGI_THOUGHTS)
 
-/** Instead of the cigarette, a shout: hands up, mouth wide, its `Ura!` above; a row lower, beside its ears, with no sky row free. */
-export const SHOUT: Overlay = { art: placed([-1, 11, 'Ura!']), ink: 'f' }
+/** A line shouted over its head; a row lower, beside its ears, with no sky row free. */
+const shout = (line: string): Overlay => ({ art: placed([-1, 11, line]), ink: 'f' })
+
+/** Instead of the cigarette: on each of the puff bit's three puffs, hands up and mouth wide, a shout in turn. */
+export const SHOUTS: readonly Overlay[] = ['Ura!', 'HUHHH?', 'UNA!'].map(shout)
+
+/** Up again after a fall, crouched, dazed. */
+export const DAZED: Overlay = shout('HUHHH?')
 
 /**
  * Failed, slumped: the cross over its head (its head stays up, so in the sky
@@ -217,6 +223,9 @@ export const SHOUT: Overlay = { art: placed([-1, 11, 'Ura!']), ink: 'f' }
  * laid as the sky row's, then lowered).
  */
 export const CROSS: Overlay = { art: placed([-1, 6, '✗']), lowArt: placed([-1, 11, '✗']), ink: 'r' }
+
+/** What Usagi says or shows over its head: a row lower with no sky row free. */
+export const USAGI_LINES: readonly Overlay[] = [...SHOUTS, DAZED, CROSS]
 
 // --- quarters to cells ---------------------------------------------------------------
 

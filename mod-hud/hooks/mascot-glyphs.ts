@@ -38,7 +38,7 @@ import {
 import type { HatSide, Ink, Overlay } from './mascot-sprites'
 import { sideOf } from './scene-model'
 import type { Cell, Energy, Grid, MascotAgent, MascotMain } from './scene-types'
-import { CROSS as USAGI_CROSS, SHOUT, USAGI_THOUGHT_FRAMES } from './usagi-sprites'
+import { USAGI_LINES, USAGI_THOUGHT_FRAMES } from './usagi-sprites'
 
 // One mascot drawn into cells from its look (hooks/mascot-poses.ts): the
 // figure from the body tables (hooks/mascot-sprites.ts) in its colour, its air
@@ -61,8 +61,8 @@ export const wearOfMain = (main: MascotMain): Wear => ({ hat: { ...CROWN, side: 
 /** One row up on its bouncing frames, where a row is free above it. */
 export const bobOf = (look: Look, sky: number): number => (look.bob === true && sky - look.lift >= 1 ? 1 : 0)
 
-/** A thought or sleep rising beside the head (Usagi's shouts and its cross too): a row lower without a sky row. */
-const RISING: ReadonlySet<Overlay> = new Set<Overlay>([...THOUGHT_FRAMES.flat(), ...USAGI_THOUGHT_FRAMES.flat(), ...OVERLAYS.zzz, SHOUT, USAGI_CROSS])
+/** A thought or sleep rising beside the head (Usagi's lines and its cross too): a row lower without a sky row. */
+const RISING: ReadonlySet<Overlay> = new Set<Overlay>([...THOUGHT_FRAMES.flat(), ...USAGI_THOUGHT_FRAMES.flat(), ...OVERLAYS.zzz, ...USAGI_LINES])
 
 /** Lays a cell of a mascot's grid at (row, column) of its box (row −1 the sky row); `own` for the figure's, which nothing laid later covers. */
 export type Put = (row: number, column: number, cell: Cell, own?: boolean) => void

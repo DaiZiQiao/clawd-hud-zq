@@ -12,6 +12,7 @@ import {
   CAP,
   CHEEKS,
   CROSS as USAGI_CROSS,
+  DAZED,
   DROOP_TOP,
   EARS,
   EYES,
@@ -33,7 +34,7 @@ import {
   QUILT_PALETTE,
   ROLE_HATS,
   SEAT,
-  SHOUT,
+  SHOUTS,
   SIDE_CROWN,
   TOP,
   USAGI,
@@ -58,7 +59,7 @@ export const dressOfAgent = (agent: MascotAgent): Dress => ({ ...(agent.role ===
 export const dressOfMain = (main: MascotMain): Dress => ({ crown: true, energy: main.energy ?? 0 })
 
 /** Clawd's overlays drawn Usagi's way: its thought frames with its shouts in the bubble, the cross over its head. */
-const SHOUTS: ReadonlyMap<Overlay, Overlay> = new Map([
+const SWAPS: ReadonlyMap<Overlay, Overlay> = new Map([
   ...THOUGHT_FRAMES.flatMap((frames, phrase) => frames.map((frame, step): [Overlay, Overlay] => [frame, USAGI_THOUGHT_FRAMES[phrase]?.[step] ?? frame])),
   ...OVERLAYS.cross.map((one): [Overlay, Overlay] => [one, USAGI_CROSS]),
 ])
@@ -68,15 +69,20 @@ const CROSS: ReadonlySet<Overlay> = new Set(OVERLAYS.cross)
 
 const blankRow = (width: number): string => '.'.repeat(width)
 
-/** Its overlays as Usagi's: its shouts for Clawd's thoughts, its cross; no cigarette, a shout (`Ura!`) on each puff. */
-const besideOf = (look: Look, shouting: boolean): Overlay[] => [
-  ...look.overlays.filter(one => !CIGARETTE.has(one) && !SMOKE.has(one)).map(one => SHOUTS.get(one) ?? one),
-  ...(shouting ? [SHOUT] : []),
+/** Its overlays as Usagi's: its shouts for Clawd's thoughts, its cross; no cigarette, a shout on each puff; dazed, getting up after a fall. */
+const besideOf = (look: Look, shout: Overlay | undefined): Overlay[] => [
+  ...look.overlays.filter(one => !CIGARETTE.has(one) && !SMOKE.has(one)).map(one => SWAPS.get(one) ?? one),
+  ...(shout === undefined ? [] : [shout]),
+  ...(look.pose === 'crouch' ? [DAZED] : []),
 ]
 
-/** On a puff of the cigarette's idle bit: Usagi shouts instead, hands up, mouth wide. */
-const shoutingOf = (look: Look): boolean =>
-  look.overlays.some(one => CIGARETTE.has(one)) && look.overlays.some(one => SMOKE.has(one) && one.art.some(row => row.trim() !== ''))
+/** On a puff of the cigarette's idle bit, that puff's shout (`Ura!`, `HUHHH?`, `UNA!`): Usagi throws its hands up instead of smoking. */
+const shoutOf = (look: Look): Overlay | undefined => {
+  if (!look.overlays.some(one => CIGARETTE.has(one))) return undefined
+  const puff = look.overlays.find(one => SMOKE.has(one) && one.art.some(row => row.trim() !== ''))
+
+  return puff === undefined ? undefined : SHOUTS[Math.floor(OVERLAYS.smoke.indexOf(puff) / 2)]
+}
 
 /** Its ears for a look: through its hat's brim they stand; else lowered squatting or asleep, trailing a walk, drooping slumped (bare). */
 const earsOf = (look: Look, hatted: boolean, crowned: boolean): Ears => {
@@ -113,7 +119,7 @@ const faceOf = (look: Look, shouting: boolean): [string, string] => {
 
 /** The figure's quarters for a look, its hat or crown on, with the palette they are drawn in. */
 export const usagiFigure = (look: Look, dress: Dress): { bitmap: string[]; palette: Palette } => {
-  const shouting = shoutingOf(look)
+  const shouting = shoutOf(look) !== undefined
   const capped = look.cap !== undefined
   const hat = look.hatOff === true || capped ? undefined : dress.hat === undefined ? undefined : HATS[dress.hat]
   const ears = EARS[earsOf(look, hat !== undefined, dress.crown === true)]
@@ -200,7 +206,7 @@ export const drawUsagi = (look: Look, dress: Dress, above = 0): Grid => {
     if (look.cap !== undefined) hatAt(-1, BODY_X + 4 + nudge, at(FLYING_CAP.blades, look.cap), capTone(dress))
     hatAt(0, ENERGY_X.right + nudge, ENERGY_MARKS.right[dress.energy] ?? '', '', 'y')
   }
-  layBeside(look, put, USAGI.body, above, 0, besideOf(look, shoutingOf(look)))
+  layBeside(look, put, USAGI.body, above, 0, besideOf(look, shoutOf(look)))
 
   return grid
 }
