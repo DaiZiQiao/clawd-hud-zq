@@ -110,6 +110,9 @@ export const stepField = (movers: readonly Mover[], tick: number, rules: Rules =
   // In `rare`, wanderers keep two cells between them and anyone.
   const gapFor = (left: number, right: number): number => (mode === 'rare' && (wanders(left) || wanders(right)) ? GAP + 1 : GAP)
   const gapOf = (a: number, b: number): number => gapBetween({ x: next[a] ?? 0, width: widths[a] ?? 0 }, { x: next[b] ?? 0, width: widths[b] ?? 0 })
+  /** Whether `a`'s own step brings it nearer where `b` is going: closer across, or into its row of depth. */
+  const closer = (a: number, b: number): boolean =>
+    !nearDepth(currentD[a] ?? 0, nextD[b] ?? 0) || gapBetween({ x: current[a] ?? 0, width: widths[a] ?? 0 }, { x: next[b] ?? 0, width: widths[b] ?? 0 }) > gapOf(a, b)
   /** Pairs within a row of depth at their next places, left (by where they stood) first. */
   const pairs = (): [number, number][] => {
     const out: [number, number][] = []
@@ -140,10 +143,12 @@ export const stepField = (movers: readonly Mover[], tick: number, rules: Rules =
       if (flying(right)) revert(right)
       continue
     }
-    // Inside the wider `rare` gap but not touching: the wanderers just stop short.
+    // Inside the wider `rare` gap but not touching: a wanderer coming closer
+    // stops short; one walking away walks on (stopped with it, the two would
+    // pause and set off together again, and again).
     if (gap >= GAP) {
-      if (wanders(index)) revert(index)
-      if (wanders(right)) revert(right)
+      if (wanders(index) && closer(index, right)) revert(index)
+      if (wanders(right) && closer(right, index)) revert(right)
       continue
     }
     // Nobody moved: a crowd from before, left to the walking apart below.

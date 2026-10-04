@@ -2,7 +2,7 @@ import { describe, expect, test } from 'claude-code/testing'
 
 import { CROUCHED, FLAT, HEADS, TORSOS } from './mascot-sprites'
 import { stepField } from './motion-arbitrate'
-import { AIRBORNE, AIR_MARGIN, CONTACT_COOLDOWN_MS, DEPTH_FRAMES, FLY_SKY, GAP, HOP_AIR, HOP_HEIGHT, KNOCKED_TICKS, PROPELLER_ROWS, hopLift, pairKey } from './motion-rules'
+import { AIRBORNE, AIR_MARGIN, CONTACT_COOLDOWN_MS, DEPTH_FRAMES, FLY_SKY, GAP, HOP_AIR, HOP_HEIGHT, KNOCKED_TICKS, LEAP_ONE_IN, PROPELLER_ROWS, hopLift, pairKey, roll } from './motion-rules'
 import { gapBetween } from './motion-space'
 import type { Memo, Motion, Mover } from './motion-types'
 import { oneAgent, working } from './scene-model.fixtures'
@@ -364,6 +364,29 @@ describe('collisions', () => {
     expect(rare.get('walker')?.collided).toBe(undefined)
     expect(rare.get('walker')?.x).toBeLessThanOrEqual(10)
     expect(rare.get('typist')?.x).toBe(20)
+  })
+
+  test('in rare, inside two cells of each other, the wanderer coming closer stops short and the one walking away walks on: they never set off in step again and again', () => {
+    // The session in the corner, a wanderer a cell from it with the field open beyond: both set off right on the same frame.
+    const movers: Mover[] = [
+      { id: 'main', width: 17, x: 0, lo: 0, hi: 67, free: true, sky: 0, memo: { x: 0, target: 40, pauseUntil: 0 } },
+      { id: 'w', width: 17, x: 18, lo: 0, hi: 67, free: true, sky: 0, memo: { x: 18, target: 60, pauseUntil: 0 } },
+    ]
+    let frames = 0
+    for (let tick = 1000; tick < 1040; tick += 1) {
+      // A frame where both walk (neither leaps for fun).
+      if (movers.some(one => roll(one.id, 'leap', tick, LEAP_ONE_IN) === 0)) continue
+      frames += 1
+      const moved = stepField(movers, tick, { collisions: 'rare' })
+      expect([moved.get('main')?.x, moved.get('w')?.x], `@${tick}`).toEqual([0, 19])
+      expect(moved.get('main')?.memo.pauseUntil, `@${tick}`).toBeGreaterThan(tick)
+      expect(moved.get('w')?.motion?.kind, `@${tick}`).toBe('walk')
+    }
+    expect(frames).toBeGreaterThan(20)
+    // The field that kept the session in its corner for a minute: from the frame of 22:00 UTC on 2 October 2026, it gets out.
+    const from = Date.UTC(2026, 9, 2, 22, 0, 0) / SCENE_FRAME_MS
+    const { plans } = run(() => wanderers, tick => room(84, 9, from + tick, { wander: true, collisions: 'rare' }), 240)
+    for (const id of ['main', 'w1', 'w2', 'w3']) expect(new Set(plans.map(plan => plan.placements.find(one => one.id === id)).map(one => `${one?.drawnX},${one?.d}`)).size, id).toBeGreaterThan(1)
   })
 
   test('in a plan: both knocked flat on their backs, legs in the air, then dizzy with spiral eyes under three blinking stars; a crouch, then up, a working one setting its laptop down again', () => {

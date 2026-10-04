@@ -1456,7 +1456,7 @@ the walker stops):
 | Mode | Contact | Result |
 | --- | --- | --- |
 | `off` | any | the bump: two wanderers each step back a cell and pause 4 frames; one standing is just met |
-| `rare` (default) | two moving mascots | both are knocked over; wanderers keep two cells from anyone, so a standing one is walked up to and turned from, never hit; a pair collides at most once in 30 s |
+| `rare` (default) | two moving mascots | both are knocked over; wanderers keep two cells from anyone, so a standing one is walked up to and turned from, never hit (inside two cells, the one coming closer stops short and the one walking away walks on); a pair collides at most once in 30 s |
 | `normal` | a moving mascot and any other | both are knocked over, a standing victim too; once per pair in 10 s |
 
 Knocked over (12 frames): a stagger, eyes shut, arms down (1); flat on its
