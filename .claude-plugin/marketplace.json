@@ -5,13 +5,13 @@
     "url": "https://github.com/DaiZiQiao"
   },
   "description": "clawd-hud-zq: a HUD side pane for Claude Code with session facts, subagents and animated mascots.",
-  "version": "1.0.1",
+  "version": "1.1.0",
   "plugins": [
     {
       "name": "mod-hud",
       "source": "./mod-hud",
       "description": "A side pane, toggled by /mod-hud: a HUD of the session (session, context, limits, cost, git, tools, todos) above every subagent in it (type, model, status, elapsed time, tool calls, current tool, result), with an opt-in status line.",
-      "version": "1.0.1",
+      "version": "1.1.0",
       "author": {
         "name": "Dai Zi Qiao",
         "url": "https://github.com/DaiZiQiao"
