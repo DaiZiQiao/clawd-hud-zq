@@ -1408,9 +1408,11 @@ blocked smooth hop stays a hop while it finds a landing, never a reasonless
 flight: it goes on toward clear ground a hop's reach at a time from where it
 is, never across the field in a frame. In the air only bodies
 count: a flier never overlaps anyone in the air within a row of it (it holds
-back), keeps a few cells from all a hop has still to cross wherever the
-rest of its arc comes within a row of it (low too, before it climbs: a hop
-rises and drops two rows a frame), never takes off under one, and a hop
+back: rising from a row up, it keeps its place on the ground's rows, where
+nobody walks in beside it), keeps a few cells from all a hop has still to
+cross wherever the rest of its arc comes within a row of it (low too, before
+it climbs: a hop rises and drops two rows a frame), never takes off under
+one, and a hop
 never starts across a flier's path (in the smooth scene with collisions on,
 hops and fliers may meet; see "Physics and controls").
 

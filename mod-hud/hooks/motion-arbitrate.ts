@@ -239,9 +239,14 @@ export const stepField = (movers: readonly Mover[], tick: number, rules: Rules =
     if (!changed) break
   }
 
+  // A low flier rising into the air may yet be held back where it is, a row
+  // up (in the air, below): nobody lands beside it meanwhile.
+  const rising = all.flatMap((mover): Other[] => (liftBefore(mover) > 0 && liftBefore(mover) < AIRBORNE && intentOf(mover).lift >= AIRBORNE && intentOf(mover).motion?.kind === 'fly'
+    ? [{ id: mover.id, x: clamp(mover.x, mover.lo, mover.hi), d: dOf(mover), width: mover.width, body: mover.width, lift: 0 }]
+    : []))
   // A landing only where the ground is clear: otherwise it stays a row up,
   // over everyone's heads, and makes for the nearest clear spot.
-  const standing: Other[] = order.map((mover, index) => ({ id: mover.id, x: next[index] ?? mover.x, d: nextD[index] ?? 0, width: mover.width, body: mover.body ?? mover.width, lift: 0 }))
+  const standing: Other[] = [...order.map((mover, index) => ({ id: mover.id, x: next[index] ?? mover.x, d: nextD[index] ?? 0, width: mover.width, body: mover.body ?? mover.width, lift: 0 })), ...rising]
   const ground = [...walkers]
   for (const lander of landers) {
     const intent = intentOf(lander)
@@ -409,6 +414,23 @@ export const stepField = (movers: readonly Mover[], tick: number, rules: Rules =
       }
     }
     if (!changed) break
+  }
+  // A low flier held back as it rose is on the ground's rows where it was: a
+  // walker that came in beside it goes back where it stood, and so, in turn,
+  // does one that came in beside that one.
+  const back = rising.filter(spot => (airLift.get(spot.id) ?? 0) < AIRBORNE)
+  for (let at = 0; at < back.length; at += 1) {
+    const spot = back[at] as Other
+    order.forEach((mover, index) => {
+      const was = { x: current[index] ?? 0, d: currentD[index] ?? 0 }
+      const now = placed.get(mover.id) ?? was
+      const span = { x: now.x, width: mover.width }
+      if ((now.x === was.x && now.d === was.d) || !nearDepth(spot.d, now.d) || gapBetween(span, spot) >= GAP) return
+      // Already beside it a frame ago and walking away: on it goes.
+      if (nearDepth(spot.d, was.d) && gapBetween({ x: was.x, width: mover.width }, spot) < gapBetween(span, spot)) return
+      placed.set(mover.id, was)
+      back.push({ id: mover.id, ...was, width: mover.width, body: mover.width, lift: 0 })
+    })
   }
   for (const [id, x] of airX) placed.set(id, { x, d: airD.get(id) ?? 0 })
 

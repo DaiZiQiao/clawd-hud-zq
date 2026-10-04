@@ -270,6 +270,34 @@ describe('wandering', () => {
     })
   })
 
+  test('a low flier held back as it rises keeps its place on the ground\'s rows: nobody walks in beside it', () => {
+    let held = 0
+    let stopped = 0
+    for (const smooth of [false, true]) {
+      for (let tick = 1000; tick < 1040; tick += 1) {
+        const idle = smooth ? { reason: 'idle' as const, minUntil: tick + 16, turnAt: 5000 } : {}
+        const movers: Mover[] = [
+          // Cruising a row up, over the way the climber goes.
+          { id: 'flier', width: 17, body: 13, x: 24, d: 9, lo: 0, hi: 55, dLo: 0, dHi: 11, free: true, sky: 14, memo: { x: 24, d: 9, lift: 2, target: 10, targetD: 9, pauseUntil: 1000, fly: { from: 900, altitude: 2, cruise: 400, stage: 'cruise', since: 900, ...idle } } },
+          // A row up a row of depth behind, climbing into it: held back where it is.
+          { id: 'climber', width: 17, body: 13, x: 23, d: 10, lo: 0, hi: 55, dLo: 0, dHi: 11, free: true, sky: 14, memo: { x: 23, d: 10, lift: 1, target: 18, targetD: 9, pauseUntil: 1000, fly: { from: tick - 2, altitude: 8, cruise: 400, stage: 'climb', since: tick - 2, ...idle } } },
+          // Walking left and forward, two rows of depth from the climber: a row nearer every other frame.
+          { id: 'walker', width: 17, body: 13, x: 18, d: 8, lo: 0, hi: 55, dLo: 0, dHi: 11, free: true, sky: 14, memo: { x: 18, d: 8, lift: 0, target: 0, targetD: 11, pauseUntil: 1000 } },
+        ]
+        const moved = stepField(movers, tick, { collisions: 'off', ...(smooth ? { smooth } : {}) })
+        const [climber, walker] = [moved.get('climber')!, moved.get('walker')!]
+        if (climber.lift >= AIRBORNE) continue
+        held += 1
+        if (walker.x === 18 && walker.d === 8) stopped += 1
+        if (walker.lift < AIRBORNE && Math.abs(walker.d - climber.d) <= 1) {
+          expect(gapBetween({ x: walker.x, width: 17 }, { x: climber.x, width: 17 }), `${smooth ? 'smooth' : 'classic'} @${tick}`).toBeGreaterThanOrEqual(GAP)
+        }
+      }
+    }
+    expect(held).toBeGreaterThan(40)
+    expect(stopped).toBeGreaterThan(0)
+  })
+
   test('walking between tools, no laptop: it is only out while a tool runs', () => {
     const { plans, lines } = run(() => oneAgent(working('w', 'thinking')), tick => room(72, 4, T0 + tick, { wander: true }), 200)
     const index = plans.findIndex(plan => plan.placements.find(one => one.id === 'w')?.motion?.kind === 'walk')
