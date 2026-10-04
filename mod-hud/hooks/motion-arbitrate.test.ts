@@ -2,7 +2,8 @@ import { describe, expect, test } from 'claude-code/testing'
 
 import { CROUCHED, FLAT, HEADS, TORSOS } from './mascot-sprites'
 import { stepField } from './motion-arbitrate'
-import { AIRBORNE, CONTACT_COOLDOWN_MS, DEPTH_FRAMES, FLY_SKY, GAP, HOP_AIR, HOP_HEIGHT, KNOCKED_TICKS, PROPELLER_ROWS, hopLift, pairKey } from './motion-rules'
+import { AIRBORNE, AIR_MARGIN, CONTACT_COOLDOWN_MS, DEPTH_FRAMES, FLY_SKY, GAP, HOP_AIR, HOP_HEIGHT, KNOCKED_TICKS, PROPELLER_ROWS, hopLift, pairKey } from './motion-rules'
+import { gapBetween } from './motion-space'
 import type { Memo, Motion, Mover } from './motion-types'
 import { oneAgent, working } from './scene-model.fixtures'
 import { SCENE_FRAME_MS } from './scene-phases'
@@ -227,6 +228,46 @@ describe('wandering', () => {
       }
       expect(springs, smooth ? 'smooth' : 'classic').toBeGreaterThan(10)
     }
+  })
+
+  test('in the air a flier keeps clear of all a hop has still to cross: never under or over one whose arc then drops or climbs onto it', () => {
+    // A flier cruising toward depth 2, either way across, from anywhere a few cells clear of the hop's sweep or out of its reach in depth.
+    const starts = [0, 1, 2, 3, 4].flatMap(d => [2, 3, 4, 5].flatMap(lift => Array.from({ length: 34 }, (_, cell) => [0, 66].map(target => ({ d, lift, x: 2 * cell, target })))).flat())
+    let met = 0
+    for (const smooth of [false, true]) {
+      // A hop from 20 to 30 at depth 2, one to three frames along at frame 1000 (lifts 0 2 4 4 2 0).
+      for (const from of [997, 998, 999]) {
+        const was = 999 - from
+        const hopper: Mover = { id: 'hopper', width: 17, body: 13, x: 20 + 2 * was, d: 2, lo: 0, hi: 66, dLo: 0, dHi: 4, free: true, sky: 12, memo: { x: 20 + 2 * was, d: 2, lift: hopLift({ air: HOP_AIR, height: HOP_HEIGHT }, was), target: 40, pauseUntil: 1000, hop: { from, x0: 20, x1: 30, air: HOP_AIR, height: HOP_HEIGHT } } }
+        for (const { d, lift, x, target } of starts) {
+          if (Math.abs(d - 2) <= 1 && gapBetween({ x, width: 13 }, { x: hopper.x, width: 30 - hopper.x + 13 }) < AIR_MARGIN) continue
+          const fly = { from: 900, altitude: lift, cruise: 400, stage: 'cruise' as const, since: 992, ...(smooth ? { reason: 'idle' as const, minUntil: 916, turnAt: 2000 } : {}) }
+          let movers: Mover[] = [hopper, { id: 'flier', width: 17, body: 13, x, d, lo: 0, hi: 66, dLo: 0, dHi: 4, free: true, sky: 12, memo: { x, d, lift, target, targetD: 2, pauseUntil: 1000, fly } }]
+          for (let tick = 1000; tick < 1006; tick += 1) {
+            const moved = stepField(movers, tick, { collisions: 'off', ...(smooth ? { smooth } : {}) })
+            const [hop, flier] = [moved.get('hopper')!, moved.get('flier')!]
+            if (hop.lift >= AIRBORNE && flier.lift >= AIRBORNE && Math.abs(hop.d - flier.d) <= 1 && Math.abs(hop.lift - flier.lift) <= 1) {
+              met += 1
+              expect(gapBetween({ x: hop.x, width: 13 }, { x: flier.x, width: 13 }), `${smooth ? 'smooth' : 'classic'} from ${from}: ${x},${d}^${lift} @${tick}`).toBeGreaterThanOrEqual(GAP)
+            }
+            movers = movers.map(one => ({ ...one, x: moved.get(one.id)!.x, d: moved.get(one.id)!.d, memo: moved.get(one.id)!.memo }))
+          }
+        }
+      }
+    }
+    expect(met).toBeGreaterThan(0)
+    // The field where a flier glided in depth under a hop that came down onto it: from the frame of 17:00 UTC on 3 October 2026.
+    const from = Date.UTC(2026, 9, 3, 17, 0, 0) / SCENE_FRAME_MS
+    const { plans } = run(() => wanderers, tick => room(72, 20, from + tick, { wander: true, collisions: 'off' }), 240)
+    plans.forEach((plan, frame) => {
+      const air = settledOf(plan).filter(one => (one.lift ?? 0) >= AIRBORNE)
+      for (const one of air.filter(flier => flier.motion?.kind === 'fly')) {
+        for (const other of air) {
+          if (one === other || Math.abs((one.lift ?? 0) - (other.lift ?? 0)) > 1 || Math.abs(one.d - other.d) > 1) continue
+          expect(gapOf(one, other, mascot => mascot.body), `${one.id}/${other.id} in the air @${frame}`).toBeGreaterThanOrEqual(GAP)
+        }
+      }
+    })
   })
 
   test('walking between tools, no laptop: it is only out while a tool runs', () => {

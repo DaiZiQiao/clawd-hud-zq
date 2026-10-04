@@ -15,6 +15,7 @@ import {
   SMOOTH_LANDING_PATIENCE,
   TURN_MIN,
   clamp,
+  hopLift,
   nearDepth,
   pairKey,
   roll,
@@ -117,6 +118,18 @@ export const stepField = (movers: readonly Mover[], tick: number, rules: Rules =
     }
     return out
   }
+
+  // A low flier keeps clear of all a hop has still to cross, as it does in the
+  // air (below): it holds back, never under an arc it could only climb into.
+  const arcs = meetInAir ? [] : all.flatMap(mover => {
+    const intent = intentOf(mover)
+    const hop = intent.memo.hop
+    return hop === undefined ? [] : [{ id: mover.id, d: intent.d, x: Math.min(intent.x, hop.x1), width: Math.abs(hop.x1 - intent.x) + (mover.body ?? mover.width) }]
+  })
+  order.forEach((mover, index) => {
+    const span = { x: next[index] ?? 0, width: mover.body ?? mover.width }
+    if (flying(index) && moved(index) && arcs.some(arc => arc.id !== mover.id && nearDepth(arc.d, nextD[index] ?? 0) && gapBetween(span, arc) < AIR_MARGIN)) revert(index)
+  })
 
   for (const [index, right] of pairs()) {
     const gap = gapOf(index, right)
@@ -313,12 +326,30 @@ export const stepField = (movers: readonly Mover[], tick: number, rules: Rules =
   const yields = new Map<string, number>()
   const bodyOf = (mover: Mover): number => mover.body ?? mover.width
   const flies = (mover: Mover): boolean => intentOf(mover).motion?.kind === 'fly'
-  // A flier keeps a little further from a hop, whose arc it cannot stop.
-  const clash = (one: Mover, two: Mover): boolean =>
-    !(meetInAir && !(flies(one) && flies(two)))
-    && nearDepth(airD.get(one.id) ?? 0, airD.get(two.id) ?? 0)
-    && Math.abs((airLift.get(one.id) ?? 0) - (airLift.get(two.id) ?? 0)) <= 1
-    && gapBetween({ x: airX.get(one.id) ?? 0, width: bodyOf(one) }, { x: airX.get(two.id) ?? 0, width: bodyOf(two) }) < (flies(one) && flies(two) ? GAP : AIR_MARGIN)
+  const liftOf = (mover: Mover): number => airLift.get(mover.id) ?? 0
+  const bodyAt = (mover: Mover): { x: number; width: number } => ({ x: airX.get(mover.id) ?? 0, width: bodyOf(mover) })
+  // A hop from here to its landing: the cells it has still to cross, the rows it has still to pass through.
+  const arcOf = (mover: Mover): { x: number; width: number; low: number; high: number } => {
+    const hop = intentOf(mover).memo.hop
+    if (hop === undefined) return { ...bodyAt(mover), low: liftOf(mover), high: liftOf(mover) }
+    const x = airX.get(mover.id) ?? 0
+    const step = tick - hop.from
+    const lifts = [liftOf(mover), ...Array.from({ length: Math.max(0, hop.air + 2 - step) }, (_, k) => hopLift(hop, step + k))]
+    return { x: Math.min(x, hop.x1), width: Math.abs(hop.x1 - x) + bodyOf(mover), low: Math.min(...lifts), high: Math.max(...lifts) }
+  }
+  // A flier keeps a little further from a hop, whose arc it cannot stop: from
+  // all the arc has still to cross, wherever it comes within a row of the
+  // flier's lift (a hop rises and drops two rows a frame: a flier held where
+  // it was must be clear of it). Two hops keep their arcs.
+  const clash = (one: Mover, two: Mover): boolean => {
+    if (!nearDepth(airD.get(one.id) ?? 0, airD.get(two.id) ?? 0)) return false
+    if (flies(one) && flies(two)) return Math.abs(liftOf(one) - liftOf(two)) <= 1 && gapBetween(bodyAt(one), bodyAt(two)) < GAP
+    const flier = flies(one) ? one : flies(two) ? two : undefined
+    if (flier === undefined || meetInAir) return false
+    const arc = arcOf(flier === one ? two : one)
+
+    return liftOf(flier) >= arc.low - 1 && liftOf(flier) <= arc.high + 1 && gapBetween(bodyAt(flier), arc) < AIR_MARGIN
+  }
   const hold = (mover: Mover): void => {
     airX.set(mover.id, clamp(mover.x, mover.lo, mover.hi))
     airD.set(mover.id, dOf(mover))
