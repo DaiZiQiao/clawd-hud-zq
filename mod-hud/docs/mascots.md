@@ -40,7 +40,11 @@ Two renderers draw the scene, chosen by the `motion` option and the surface:
 is its output (`spriteSheet()`).
 
 The `mascots` option (on by default) switches all of it off: no scene, no
-name colours, no main-activity writes, no scene clock, and no `tool.check` hook.
+name colours, no scene clock, no raised hands and no compaction stamp
+(`main.compactedAt`). What the HUD reads stays tracked whatever it says: the
+main loop's busy and idle times (`main.busySince`, `main.idleSince`), a
+subagent's lingering permission ask (the `tool.check` hook, for the alert
+strip's count) and the files edited (the Session tab's Overview).
 `wander` (on) lets mascots roam the field between tools, `scenes` (on) plays
 the orchestration scenes, and `collisions` (`rare`) sets how mascots that meet
 behave; see "Choreography". `motion` (`smooth`) picks the renderer: `classic`
@@ -1267,10 +1271,10 @@ The first match wins:
 Sweating goes over any of these while the context is 85 % full or more.
 
 The main loop's activity is the `mod-hud.main` state value
-(`HudMainFacts`). Activity is written only with mascots on, never per tick; `/clear` resets it:
-- `busySince`: the first main `turn.step` of a turn;
-- `idleSince`: the main `turn.complete` (only when it was busy);
-- `compactedAt`: a main `session.compact` that took place.
+(`HudMainFacts`). It is never written per tick; `/clear` resets it:
+- `busySince`: the first main `turn.step` of a turn, whatever the options (the HUD's `main` row reads it);
+- `idleSince`: the main `turn.complete` (only when it was busy), whatever the options;
+- `compactedAt`: a main `session.compact` that took place, with mascots on only (the stretch is all that reads it).
 
 A module flag skips the state read on a turn's later steps.
 
@@ -1597,9 +1601,10 @@ at a child standing right beside it, as before.
 The engine contract exposes `classic.PermissionRequest`, but it has no
 `tool_use_id`, and there is no permission-resolution event. It cannot safely
 identify which of an agent's concurrent calls owns a dialog. The fallback
-`tool.check` hook, enabled only with mascots, passes the verdict through
-unchanged and schedules a hand only after an `ask` call remains in flight
-for **at least 3 s**. Fast classifier-settled calls finish before that timer.
+`tool.check` hook, registered whatever the options, passes the verdict
+through unchanged and marks the agent waiting only after an `ask` call
+remains in flight for **at least 3 s**: that is the alert strip's count of
+permission asks, and with mascots on the agent's raised hand. Fast classifier-settled calls finish before that timer.
 Without a resolution/execution-start event, a quickly approved call that
 *runs* longer than 3 s is indistinguishable from a pending ask; it may still
 show a hand. This is a heuristic, not a confirmed-dialog indicator.

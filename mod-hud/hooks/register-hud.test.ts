@@ -614,3 +614,63 @@ test('with the status line on, a warm cache counts down and reads cold with the 
   await clock.advance(60 * 60_000)
   expect(world.statuses.length).toBe(writes)
 })
+
+// The sketch's usage with no rate-limit windows: no alert of their own.
+const QUIET_USAGE = { ...full.usage!, rateLimits: [], limitSamples: undefined }
+
+test('with the status line on, a call denied or failed redraws its ⚠ at once, and the alert leaving its window redraws it again: pane closed, cache cold', STATUS_ON, async ($, on) => {
+  const { clock, world, held } = arrange(on, true, SKETCH_NOW)
+  await $.session.start(START)
+  await clock.settle()
+  // The sketch's facts with no main request answered yet (no cache, so no cache
+  // timer) and no rate-limit windows (no alert of their own): only failures alert.
+  seedHud(held, { ...full, cache: undefined, usage: QUIET_USAGE })
+  const alertOf = () => /│ ⚠ (\d+) │/.exec(lastStatus(world) ?? '')?.[1]
+  world.tool = async () => ({ deny: 'no' }) as never
+  await callTool($, undefined)
+  // Nothing else redraws it: the failure itself does, with one more alert than before it.
+  expect(lastStatus(world)).not.toMatch(/cache/)
+  const raised = Number(alertOf())
+  expect(raised).toBe(1)
+  expect(tickOf(held)).toBe(undefined)
+  // Ten minutes on, the call still counts; a millisecond past them, the status line drops it, by its own timer.
+  await clock.advance(10 * 60_000)
+  expect(Number(alertOf())).toBe(raised)
+  await clock.advance(1)
+  expect(Number(alertOf() ?? 0)).toBe(raised - 1)
+  expect(tickOf(held)).toBe(undefined)
+  // Nothing counted and the cache cold: its timer is done.
+  const writes = world.statuses.length
+  await clock.advance(60 * 60_000)
+  expect(world.statuses.length).toBe(writes)
+})
+
+test('the status line\'s timer runs for the earlier of the cache\'s minute and the oldest failure\'s expiry, and on for the failure once the cache is cold', STATUS_ON, async ($, on) => {
+  on('session.measure', (_$, e) => ({ changed: e.changed }))
+  const { clock, world, held } = arrange(on, true, SKETCH_NOW)
+  await $.session.start(START)
+  await clock.settle()
+  // A 5-minute cache, its last request just answered.
+  seedHud(held, { ...full, cache: { ttl: '5m', lastAt: SKETCH_NOW }, usage: QUIET_USAGE })
+  world.tool = async () => ({ result: 'boom', isError: true }) as never
+  await clock.advance(30_000)
+  await callTool($, undefined)
+  const alertOf = () => Number(/│ ⚠ (\d+) │/.exec(lastStatus(world) ?? '')?.[1] ?? 0)
+  const raised = alertOf()
+  expect(raised).toBe(1)
+  expect(lastStatus(world)).toMatch(/│ cache 5m$/)
+  // The cache's minutes come first: each redraws on its own.
+  await clock.advance(30_000)
+  expect(lastStatus(world)).toMatch(/│ cache 4m$/)
+  await clock.advance(4 * 60_000)
+  expect(lastStatus(world)).toMatch(/│ cache cold$/)
+  expect(alertOf()).toBe(raised)
+  // Cold (4½ minutes after the failure), the timer runs on for it: ten minutes after it, the ⚠ drops it.
+  await clock.advance(10 * 60_000 - 270_000)
+  expect(alertOf()).toBe(raised)
+  await clock.advance(1)
+  expect(alertOf()).toBe(raised - 1)
+  const writes = world.statuses.length
+  await clock.advance(60 * 60_000)
+  expect(world.statuses.length).toBe(writes)
+})

@@ -2,7 +2,7 @@ import type { On, ProcessRunInit, SessionContextBreakdown, SessionUsage, UiPane 
 import { expect, mock, test } from 'claude-code/testing'
 import type { Engine } from 'claude-code/testing'
 
-import type { HudData, HudGitFacts, HudInventoryFacts, HudSessionFacts, HudTodoFacts, HudToolFacts, HudUsageFacts } from '../types'
+import type { HudData, HudGitFacts, HudInventoryFacts, HudRateLimitFact, HudSessionFacts, HudTodoFacts, HudToolFacts, HudUsageFacts } from '../types'
 import {
   CACHE_ENV,
   CACHE_TTL_MS,
@@ -11,6 +11,7 @@ import {
   addTokens,
   afterClear,
   afterCompaction,
+  accountAfter,
   afterMainTurn,
   applyMeasure,
   assembleHudData,
@@ -23,6 +24,7 @@ import {
   effortFromSettings,
   effortOf,
   fileEdited,
+  firmTtl,
   gitFactsOf,
   inventoryOf,
   keptLimits,
@@ -548,6 +550,8 @@ test('session start gathers who, where and what was measured, then one git readi
     // A gateway's base URL: the 5-minute prompt cache, assumed (a proxy before a subscription keeps 1h).
     cacheTtl: '5m',
     cacheTtlAssumed: true,
+    // ... but the figures read at start carry a 5-hour window: a subscription behind it (the HUD draws 1h, certain).
+    account: 'subscription',
   })
   expect(fact<HudUsageFacts>('usage')).toEqual({
     contextTokens: 40_000,
@@ -1147,6 +1151,91 @@ test('cacheTtlOf infers the main prompt cache\'s TTL the way Claude Code 2.1.292
     'CLAUDE_CODE_USE_ANTHROPIC_AWS', 'CLAUDE_CODE_USE_ANTHROPIC_GOOGLE_CLOUD', 'CLAUDE_CODE_USE_BEDROCK', 'CLAUDE_CODE_USE_FOUNDRY', 'CLAUDE_CODE_USE_MANTLE',
     'CLAUDE_CODE_USE_VERTEX', 'DISABLE_PROMPT_CACHING', 'ENABLE_PROMPT_CACHING_1H', 'ENABLE_PROMPT_CACHING_1H_BEDROCK', 'FORCE_PROMPT_CACHING_5M',
   ])
+})
+
+test('accountAfter: a response\'s 5-hour or 7-day window marks a subscription, kept; a response with none, an API login; no response, no word', () => {
+  const window = (kind: string, percentUsed = 20) => ({ kind, percentUsed })
+  const filled = { tokens: 40_000, window: 200_000, percent: 20 }
+  // Before the first response (no fill, no windows): nothing known yet.
+  expect(accountAfter(undefined, { context: { window: 200_000 }, rateLimits: [] })).toBe(undefined)
+  expect(accountAfter(undefined, {})).toBe(undefined)
+  // A plan window: a subscription, with or without a fill.
+  expect(accountAfter(undefined, { context: filled, rateLimits: [window('five_hour')] })).toBe('subscription')
+  expect(accountAfter(undefined, { rateLimits: [window('seven_day')] })).toBe('subscription')
+  expect(accountAfter('api', { rateLimits: [window('seven_day', 100)] })).toBe('subscription')
+  // A response with no window: likely a Console (API) login; a gateway's spend limit is no plan window.
+  expect(accountAfter(undefined, { context: filled, rateLimits: [] })).toBe('api')
+  expect(accountAfter(undefined, { context: { window: 200_000, percent: 3 }, rateLimits: [window('spend_limit', 40)] })).toBe('api')
+  // A subscription stays one: a later response without windows (a gateway's, or a window past its reset) says nothing against it.
+  expect(accountAfter('subscription', { context: filled, rateLimits: [] })).toBe('subscription')
+  expect(accountAfter('api', { context: { window: 200_000 }, rateLimits: [] })).toBe('api')
+})
+
+test('firmTtl: the automatic TTL firmed up by the login once a response arrived; a TTL that was no guess stands', () => {
+  const window = (kind: HudRateLimitFact['kind'], percentUsed: number): HudRateLimitFact => ({ kind, percentUsed })
+  const auto = { ttl: '1h' as const, assumed: true as const }
+  // Before the first response: still a guess.
+  expect(firmTtl(auto, undefined, [])).toEqual({ ttl: '1h', assumed: true })
+  // A subscription: 1h, certain; past a plan window's limit (at 100% or over): 5m, certain.
+  expect(firmTtl(auto, 'subscription', [window('five_hour', 31), window('seven_day', 12)])).toEqual({ ttl: '1h' })
+  expect(firmTtl(auto, 'subscription', [window('five_hour', 100), window('seven_day', 40)])).toEqual({ ttl: '5m' })
+  expect(firmTtl(auto, 'subscription', [window('five_hour', 60), window('seven_day', 100)])).toEqual({ ttl: '5m' })
+  expect(firmTtl(auto, 'subscription', [window('five_hour', 99.9), window('spend_limit', 140)])).toEqual({ ttl: '1h' })
+  // Windows gone past their reset (none held): the subscription's 1h.
+  expect(firmTtl(auto, 'subscription', [])).toEqual({ ttl: '1h' })
+  // No window after a response: 5m, still a guess (a gateway in front of a subscription looks the same).
+  expect(firmTtl(auto, 'api', [])).toEqual({ ttl: '5m', assumed: true })
+  // A gateway's base URL (5m assumed) behind which the responses carry plan windows: 1h, certain.
+  expect(firmTtl({ ttl: '5m', assumed: true }, 'subscription', [window('five_hour', 10)])).toEqual({ ttl: '1h' })
+  // What the environment or the settings decided stands: env/settings TTLs, ENABLE_PROMPT_CACHING_1H, API keys, partner clouds, off.
+  const named = [
+    cacheTtlOf({ CLAUDE_CODE_PROMPT_CACHE_TTL: '5m' }, undefined),
+    cacheTtlOf({}, { promptCacheTtl: '1h' }),
+    cacheTtlOf({ FORCE_PROMPT_CACHING_5M: '1' }, undefined),
+    cacheTtlOf({ ENABLE_PROMPT_CACHING_1H: '1' }, undefined),
+    cacheTtlOf({ ANTHROPIC_API_KEY: 'x' }, undefined),
+    cacheTtlOf({}, { apiKeyHelper: '~/bin/key.sh' }),
+    cacheTtlOf({ CLAUDE_CODE_USE_BEDROCK: '1' }, undefined),
+    cacheTtlOf({ DISABLE_PROMPT_CACHING: '1' }, undefined),
+  ]
+  for (const ttl of named) {
+    expect(firmTtl(ttl, 'subscription', [window('five_hour', 100)]), JSON.stringify(ttl)).toEqual(ttl)
+    expect(firmTtl(ttl, 'api', []), JSON.stringify(ttl)).toEqual(ttl)
+  }
+})
+
+test('the HUD\'s cache TTL: (1h?) before the first response, then firmed up by the responses\' rate limits; the option and named TTLs win', () => {
+  const at = { ...NO_FACTS.usage, mainRequestAt: NOW - 1000 }
+  const cacheOf = (session: HudSessionFacts, rateLimits: HudRateLimitFact[] = [], option: 'auto' | '5m' | '1h' = 'auto') =>
+    assembleHudData({ ...NO_FACTS, session, usage: { ...at, rateLimits } }, NOW, option).cache
+  const auto: HudSessionFacts = { cacheTtl: '1h', cacheTtlAssumed: true }
+  expect(cacheOf(auto)).toEqual({ ttl: '1h', lastAt: NOW - 1000, assumed: true })
+  expect(cacheOf({ ...auto, account: 'subscription' }, [{ kind: 'five_hour', percentUsed: 31 }])).toEqual({ ttl: '1h', lastAt: NOW - 1000 })
+  expect(cacheOf({ ...auto, account: 'subscription' }, [{ kind: 'seven_day', percentUsed: 100 }])).toEqual({ ttl: '5m', lastAt: NOW - 1000 })
+  expect(cacheOf({ ...auto, account: 'api' })).toEqual({ ttl: '5m', lastAt: NOW - 1000, assumed: true })
+  // A TTL the environment named is not a guess, so the login does not move it; the option is the person's word.
+  expect(cacheOf({ cacheTtl: '5m', account: 'subscription' }, [{ kind: 'five_hour', percentUsed: 10 }])).toEqual({ ttl: '5m', lastAt: NOW - 1000 })
+  expect(cacheOf({ ...auto, account: 'api' }, [], '1h')).toEqual({ ttl: '1h', lastAt: NOW - 1000 })
+  expect(cacheOf({ cacheTtl: 'off', account: 'subscription' })).toBe(undefined)
+})
+
+test('session.measure keeps what the responses say of the login: none before a response, a subscription once a plan window comes, kept', async ($, on) => {
+  const { clock, world, fact } = arrange(on)
+  world.usage = { startedAt: NOW, context: { window: 200_000 }, rateLimits: [] }
+  await started($, clock)
+  // Nothing measured from a response yet: the automatic TTL stays a guess.
+  expect(fact<HudSessionFacts>('session').account).toBe(undefined)
+  expect(fact<HudSessionFacts>('session').cacheTtlAssumed).toBe(true)
+  await measure($, { context: { window: 200_000 }, rateLimits: [], changed: ['context'] })
+  expect(fact<HudSessionFacts>('session').account).toBe(undefined)
+  // The first response, with no window: an API login, most likely.
+  await measure($, { context: { tokens: 9_000, window: 200_000, percent: 4.5 }, rateLimits: [], changed: ['context'] })
+  expect(fact<HudSessionFacts>('session').account).toBe('api')
+  // A response with a 5-hour window: a subscription, and one with none after it keeps that.
+  await measure($, { context: { tokens: 12_000, window: 200_000, percent: 6 }, rateLimits: [{ kind: 'five_hour', percentUsed: 8 }], changed: ['rateLimits'] })
+  expect(fact<HudSessionFacts>('session').account).toBe('subscription')
+  await measure($, { context: { tokens: 14_000, window: 200_000, percent: 7 }, rateLimits: [], changed: ['context'] })
+  expect(fact<HudSessionFacts>('session').account).toBe('subscription')
 })
 
 test('autoCompactOf: DISABLE_AUTO_COMPACT, DISABLE_COMPACT or the autoCompactEnabled setting switch auto-compaction off', () => {

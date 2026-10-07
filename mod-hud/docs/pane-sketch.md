@@ -253,7 +253,22 @@ engine's own code), once at start:
      proxy in front of a subscription keeps 1h).
    - None of these: 1h, assumed. A Console (API-key) login and a
      subscription drawing on usage credits past its limits both get 5m,
-     and neither is something a mod can read.
+     and neither can be read at start.
+
+An automatic TTL is then firmed up by the responses' rate limits (`firmTtl`
+in `hooks/facts.ts`), which the engine reports only on a subscription:
+- Before the first response: as above, still a guess.
+- A response reported a `five_hour` or `seven_day` window: a subscription,
+  1h, certain (also behind a base URL: a proxy in front of a subscription).
+  It stays a subscription when a later response reports none.
+- A subscription with a window at 100 % or more: past the plan's limit,
+  drawing on usage credits, 5m, certain, until that window resets.
+- A response arrived with no such window: most likely a Console (API-key)
+  login, 5m, still assumed (a gateway in front of a subscription that
+  passes no limits through looks the same).
+
+A TTL the environment or the settings decided (steps 1 to 4, or an API key,
+`apiKeyHelper` or partner cloud) is never moved by the rate limits.
 
 An assumed TTL is drawn as a guess: `(1h?)` on the cache row, `cache 42m?` on
 the status line. Only whether each variable is set is read; no value is
@@ -550,10 +565,12 @@ counts the alert strip's alerts, right after who, when there are any (the
 hooks leave the stalled alert out of that count when the agents summary they
 append already says `N stalled`, so it is not counted twice); the prompt
 cache's time left (`cache 42m`, `cache 42m?` on an assumed TTL, `cache cold`)
-comes last, when it fits. The caller appends its agents summary. While the
-cache is warm the hooks redraw the line where the minute shown changes and
-once more as it goes cold, from a timer of its own, so it never freezes on a
-warm value with the pane closed and nothing running. The pane is the HUD's real
+comes last, when it fits. The caller appends its agents summary. The hooks
+redraw the line as a call is denied or fails (its `⚠` counts it at once),
+and from a timer of their own: while the cache is warm where the minute shown
+changes and once more as it goes cold, and while a failed call is counted
+once more as the oldest leaves its ten minutes, whichever comes first, so it
+never freezes on a stale value with the pane closed and nothing running. The pane is the HUD's real
 surface; this line is only for a caller that opts in.
 
 ```

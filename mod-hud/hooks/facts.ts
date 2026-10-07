@@ -291,7 +291,8 @@ export type CacheTtl = { ttl: '5m' | '1h' | 'off'; assumed?: true }
  * subscription out: 5m, certain. A base URL usually means a gateway: 5m, but
  * assumed (a proxy in front of a subscription still gets 1h). With none of
  * these, 1h is assumed: a Console (API-key) login, or a subscription drawing on
- * usage credits past its limits, gets 5m, and neither is readable by a mod.
+ * usage credits past its limits, gets 5m, and neither is readable at start.
+ * Once a response arrives, its rate limits tell them apart: `firmTtl`.
  */
 export const cacheTtlOf = (env: Readonly<Record<string, string | undefined>>, stored?: CacheSettings): CacheTtl => {
   if (isOn(env.DISABLE_PROMPT_CACHING)) return { ttl: 'off' }
@@ -305,6 +306,44 @@ export const cacheTtlOf = (env: Readonly<Record<string, string | undefined>>, st
   if (viaApi) return { ttl: '5m' }
 
   return isSet(env.ANTHROPIC_BASE_URL) ? { ttl: '5m', assumed: true } : { ttl: '1h', assumed: true }
+}
+
+/** The windows a Claude subscription reports (a gateway's `spend_limit` is not one). */
+const PLAN_KINDS: readonly string[] = ['five_hour', 'seven_day']
+
+/**
+ * What a measurement says of the login, given what was held. A response that
+ * reported a `five_hour` or `seven_day` window is a subscription's, and that
+ * stays (a later response a gateway answered, or a window gone past its reset,
+ * says nothing against it). A response with none (its context fill reported,
+ * no plan window), with no subscription seen before, is likely a Console (API)
+ * login or a gateway: `api`. A measurement before any response changes nothing:
+ * `rateLimits` is empty off a subscription or before the first reading.
+ */
+export const accountAfter = (held: HudSessionFacts['account'], measured: Measured): HudSessionFacts['account'] => {
+  if (rateLimitsOf(measured.rateLimits).some(one => PLAN_KINDS.includes(one.kind))) return 'subscription'
+  if (held === 'subscription') return held
+  const responded = finite(measured.context?.tokens) !== undefined || finite(measured.context?.percent) !== undefined
+
+  return responded ? 'api' : held
+}
+
+/**
+ * The automatic TTL (`cacheTtlOf`'s guess, `assumed`) firmed up by what the
+ * responses said of the login (`accountAfter`): a subscription's is 1h, certain,
+ * unless one of its windows is used up (at 100% or past it: the plan's limit
+ * reached, usage credits draw at 5m), 5m then, certain; no window after a
+ * response, 5m, still a guess (a Console login most likely, but a gateway in
+ * front of a subscription that passes no limits through cannot be told apart).
+ * Before the first response, and for a TTL that was not a guess (the
+ * environment or settings named one, or an API key or partner cloud decided
+ * it), the TTL stands as it was.
+ */
+export const firmTtl = (ttl: CacheTtl, account: HudSessionFacts['account'], limits: readonly HudRateLimitFact[]): CacheTtl => {
+  if (ttl.assumed !== true || account === undefined) return ttl
+  if (account === 'api') return { ttl: '5m', assumed: true }
+
+  return { ttl: limits.some(one => PLAN_KINDS.includes(one.kind) && one.percentUsed >= 100) ? '5m' : '1h' }
 }
 
 /** The environment variables that switch auto-compaction off (DISABLE_COMPACT turns off `/compact` too). */
@@ -679,20 +718,25 @@ export const inventoryOf = (breakdown: SessionContextBreakdown | undefined, now:
 /**
  * What the renderer draws, from the facts as held and the time now. The
  * prompt cache's TTL is `cacheTtl` (the option) unless that is `auto`, when
- * the one inferred at start stands; the cache is drawn once a main request
+ * the one inferred at start stands, firmed up by what the responses said of
+ * the login (`firmTtl`); the cache is drawn once a main request
  * answered under a TTL that is not `off`.
  */
 export const assembleHudData = (facts: HudFacts, now: number, cacheTtl: 'auto' | '5m' | '1h' = 'auto'): HudData => {
   const { at: _gitAt, ...git } = facts.git
-  const { cacheTtl: _ttl, cacheTtlAssumed: _assumed, autoCompact: sessionCompact, ...session } = facts.session
+  const { cacheTtl: _ttl, cacheTtlAssumed: _assumed, account: _account, autoCompact: sessionCompact, ...session } = facts.session
   const current = facts.tools.current
   // The Session tab's counts are not the HUD's to draw; the samples are: the
   // context's for the ctx row's runway, the limits' for the alert strip's ETA.
   const { turns: _turns, busyMs: _busyMs, mainRequestAt: _at, turnTokens: _turnTokens, costAtTurnEnd: _costAt, contextSamples, limitSamples, lastTurn, ...usage } = facts.usage
   const edited = facts.tools.edited?.length ?? 0
-  const ttl = cacheTtl === 'auto' ? facts.session.cacheTtl : cacheTtl
+  // The inferred TTL, firmed up by what the responses said of the login (`firmTtl`).
+  const inferred = facts.session.cacheTtl === undefined
+    ? undefined
+    : firmTtl(defined({ ttl: facts.session.cacheTtl, assumed: facts.session.cacheTtlAssumed }), facts.session.account, facts.usage.rateLimits)
+  const ttl = cacheTtl === 'auto' ? inferred?.ttl : cacheTtl
   // Only the inferred TTL can be a guess; one the option names is the person's word.
-  const assumed = cacheTtl === 'auto' && facts.session.cacheTtlAssumed === true
+  const assumed = cacheTtl === 'auto' && inferred?.assumed === true
   const cacheAt = facts.usage.mainRequestAt
   // Auto-compaction off (the environment, the settings, or the breakdown): no threshold, no runway.
   const compactOff = sessionCompact === false || facts.inventory.autoCompact === false

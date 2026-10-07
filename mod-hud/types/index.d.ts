@@ -221,8 +221,18 @@ export type HudSessionFacts = {
    * `cacheTtlOf`): `off` with prompt caching disabled; absent before it is read.
    */
   cacheTtl?: '5m' | '1h' | 'off'
-  /** The TTL above is a guess (automatic, where what decides it cannot be read): drawn `(1h?)`. */
+  /**
+   * The TTL above is a guess (automatic, where what decides it cannot be read
+   * at start): drawn `(1h?)` until `account` firms it up (hooks/facts.ts `firmTtl`).
+   */
   cacheTtlAssumed?: true
+  /**
+   * What the responses' rate limits say of the login (hooks/facts.ts
+   * `accountAfter`): `subscription` once a response reported a `five_hour` or
+   * `seven_day` window (kept from then on); `api` when a response arrived and
+   * none had; absent before the first response. Kept across `/clear`.
+   */
+  account?: 'subscription' | 'api'
   /** False when the environment (DISABLE_AUTO_COMPACT, DISABLE_COMPACT) or the `autoCompactEnabled` setting switch auto-compaction off, read at start. */
   autoCompact?: false
 }

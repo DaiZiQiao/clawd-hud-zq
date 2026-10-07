@@ -39,6 +39,7 @@ import {
   addTokens,
   afterClear,
   afterCompaction,
+  accountAfter,
   afterMainTurn,
   applyMeasure,
   assembleHudData,
@@ -68,7 +69,7 @@ import {
 } from './facts'
 import type { CacheSettings } from './facts'
 import { cacheStateOf, renderHudBlock, renderTodos, statusLineText } from './hud'
-import { NO_LEDGER, agentShareOf, costTree, ledgerBooked, ledgerEnded, ledgerFailed, ledgerSummary, recentFailures } from './hud-ledger'
+import { FAILURE_WINDOW_MS, NO_LEDGER, agentShareOf, costTree, ledgerBooked, ledgerEnded, ledgerFailed, ledgerSummary, recentFailures } from './hud-ledger'
 import type { LedgerWho } from './hud-ledger'
 import { settingsOf } from './hud-options'
 import type { Settings } from './hud-options'
@@ -177,8 +178,10 @@ const firstLine = (text: string): string | undefined => {
 // The status line, when switched on: the HUD's line, then the agents' summary.
 // A HUD that cannot be read leaves the summary alone. The summary counts the
 // stalled agents itself, so the HUD's `⚠ n` then leaves that alert out. With
-// it, how long the prompt cache stays warm, for the status line's own timer.
-const statusOf = async ($: EngineInterface, settings: Settings, all: Agents, now: number): Promise<{ text: string | null; cacheLeftMs?: number }> => {
+// it, how long the prompt cache stays warm and how long until the oldest
+// failure the `⚠` counts leaves its window, for the status line's own timer.
+type StatusShown = { text: string | null; cacheLeftMs?: number; failureLeftMs?: number }
+const statusOf = async ($: EngineInterface, settings: Settings, all: Agents, now: number): Promise<StatusShown> => {
   if (!settings.statusLine) return { text: null }
   const data = await attempt(() => hudDataOf($, settings, now))
   const held = settings.showWorkflows ? await attempt(() => read($, shadows)) : undefined
@@ -186,17 +189,29 @@ const statusOf = async ($: EngineInterface, settings: Settings, all: Agents, now
   const skip = /\d+ stalled/.test(summary) ? ['stalled'] : []
   const parts = [data === undefined ? '' : statusLineText(data, skip), summary].filter(part => part !== '')
   const cache = data === undefined ? undefined : cacheStateOf(data)
+  const failureLeftMs = settings.inspect ? await attempt(async () => failureLeftOf(await read($, ledger), now)) : undefined
 
-  return { text: parts.length === 0 ? null : parts.join(' │ '), cacheLeftMs: cache?.leftMs }
+  return { text: parts.length === 0 ? null : parts.join(' │ '), cacheLeftMs: cache?.leftMs, failureLeftMs }
+}
+
+// How long until the oldest failure still counted leaves the alert's window
+// (`recentFailures` keeps one for FAILURE_WINDOW_MS, to the millisecond, then
+// drops it); undefined with none counted.
+const failureLeftOf = (held: HudLedger, now: number): number | undefined => {
+  const recent = recentFailures(held.failures?.recent, now)
+
+  return recent.length === 0 ? undefined : Math.min(...recent) + FAILURE_WINDOW_MS + 1 - now
 }
 
 const statusTextOf = async ($: EngineInterface, settings: Settings, all: Agents, now: number): Promise<string | null> =>
   (await statusOf($, settings, all, now)).text
 
 // The status line's own timer: while the prompt cache is warm, its countdown
-// is redrawn each minute and once more as it goes cold, even with the pane
-// closed and nothing running (when the tick is stopped). One timer at a time,
-// re-armed by each redraw; none once the cache is cold or the line is off.
+// is redrawn each minute and once more as it goes cold, and while the `⚠`
+// counts a failed call, once more as the oldest one leaves its window, even
+// with the pane closed and nothing running (when the tick is stopped). One
+// timer at a time, due at the earlier of the two, re-armed by each redraw;
+// none once the cache is cold and no failure is counted, or the line is off.
 let statusTimer: Timer | undefined
 let statusDueAt: number | undefined
 const STATUS_CACHE_EVERY_MS = 60_000
@@ -207,11 +222,15 @@ const stopStatusTimer = (): void => {
   statusDueAt = undefined
 }
 
-const armStatusTimer = ($: EngineInterface, settings: Settings, now: number, leftMs: number | undefined): void => {
-  if (!settings.statusLine || leftMs === undefined || leftMs <= 0) return stopStatusTimer()
+const armStatusTimer = ($: EngineInterface, settings: Settings, now: number, leftMs: number | undefined, failureLeftMs?: number): void => {
   // The countdown reads in whole minutes (rounded up) until its last one, in
   // seconds then: the next redraw is where the minute shown changes, else at the cold mark.
-  const wait = leftMs <= STATUS_CACHE_EVERY_MS ? leftMs : leftMs % STATUS_CACHE_EVERY_MS || STATUS_CACHE_EVERY_MS
+  const cacheWait = leftMs === undefined || leftMs <= 0
+    ? undefined
+    : leftMs <= STATUS_CACHE_EVERY_MS ? leftMs : leftMs % STATUS_CACHE_EVERY_MS || STATUS_CACHE_EVERY_MS
+  const waits = [cacheWait, failureLeftMs].filter((one): one is number => one !== undefined && one > 0)
+  if (!settings.statusLine || waits.length === 0) return stopStatusTimer()
+  const wait = Math.min(...waits)
   const dueAt = now + wait
   if (statusTimer !== undefined && statusDueAt === dueAt) return
   stopStatusTimer()
@@ -226,8 +245,8 @@ const armStatusTimer = ($: EngineInterface, settings: Settings, now: number, lef
 }
 
 const showStatus = async ($: EngineInterface, settings: Settings, all: Agents, now: number, mine?: Timer): Promise<void> => {
-  const { text, cacheLeftMs } = await statusOf($, settings, all, now)
-  if (mine === undefined || timer === mine) armStatusTimer($, settings, now, cacheLeftMs)
+  const { text, cacheLeftMs, failureLeftMs } = await statusOf($, settings, all, now)
+  if (mine === undefined || timer === mine) armStatusTimer($, settings, now, cacheLeftMs, failureLeftMs)
   const held = await $.state.get(STATUS_TEXT)
   if ((held.value ?? null) === text || (mine !== undefined && timer !== mine)) return
   const written = await $.state.set(STATUS_TEXT, text, { ifVersion: held.version })
@@ -687,6 +706,8 @@ const startHud = async ($: EngineInterface, settings: Settings, startCwd: string
     provider: providerOf(baseUrl),
     cacheTtl: ttl?.ttl,
     cacheTtlAssumed: ttl?.assumed,
+    // What the figures read now say of the login (a load mid-session may hold a response's).
+    account: usage === undefined ? held.account : accountAfter(held.account, usage),
     autoCompact: autoCompactOf(compactEnv, settingsRead),
     startedAt: usage?.startedAt ?? held.startedAt,
     cwd: cwd ?? startCwd,
@@ -1311,9 +1332,11 @@ export const register: Register = (on, options) => {
       // Its trail step ends; a call denied or failed, in any loop, counts.
       const ended = outcomeOf(outcome)
       if (trailAt !== undefined && loop !== undefined) await quietly($, () => endTrail($, loop, label, trailAt, ended))
+      // The status line's `⚠` counts it: redrawn now (nothing else may redraw it), and its timer re-armed for when it expires.
       if (settings.inspect && ended !== 'ok') await quietly($, async () => {
         const now = await $.clock.now()
         await reviseLedger($, held => ledgerFailed(held, ended, now))
+        await refreshStatus($, settings)
       })
       await quietly($, async () => {
         const isDone = outcome !== undefined && outcome.deny === undefined && outcome.isError !== true
@@ -1408,6 +1431,8 @@ export const register: Register = (on, options) => {
     await quietly($, async () => {
       const now = await $.clock.now()
       await reviseUsage($, held => applyMeasure(held, e, now))
+      // What its rate limits say of the login firms up the automatic cache TTL.
+      await reviseSession($, held => defined({ ...held, account: accountAfter(held.account, e) }))
       await refreshStatus($, settings)
     })
 
