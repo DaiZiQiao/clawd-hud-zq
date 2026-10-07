@@ -399,22 +399,34 @@ on the desktop the pane is dimmed under it.
 
 **The figure** (`hooks/tv-figure.ts`) is quarters, as Usagi's is, so the
 terminal draws it as quadrant glyphs and the desktop the same quarters in
-pixels. Clawd: its body in its own colour, the TV a row under its top, its
-notch eyes under the TV, its arms out of its torso (two rows under the
-eyes, their tips a quarter high as the torso's `▝` and `▘`), its four legs
-where the scene's stand, and its accessory or crown blown up on its head
-(`GIANT_WEAR`). Usagi: its round head the casing, its ears up through its
-role's hat (the scene's hat quarters blown up over the ears and the head's
-top), the session's side crown over its left ear, its eyes, cheeks and mouth
-under the TV, its arms out at its face, its feet.
+pixels. It wears what the mascot wears in the scene, in the same colour,
+blown up as its head is: the rows the glass leaves go over the head, up to
+the scene's proportions. Clawd: its body in its own colour, the TV a row
+under its top, its notch eyes under the TV, its arms out of its torso (two
+rows under the eyes, their tips a quarter high as the torso's `▝` and `▘`),
+its four legs where the scene's stand, and on its head the scene's three
+cells of crown or accessory (`WEAR`: the block glyphs quarter for quarter,
+the symbols `✿ ⋈ ◜◠◝ ♫ ✣` as shapes traced from the font), half its head
+wide, over the corner it is worn at or, the crown, in the middle. Usagi:
+its round head the casing, its face's 14 quarters its width; its ears up
+through its role's hat (the scene's hat, its four rows from the ears' tips
+to the head's top), the session's crown in front of its left ear, its eyes,
+cheeks and mouth under the TV, its arms out at its face, its feet. Pressed
+in flight (an Explore agent at work flies), it keeps the scene's propeller
+cap on in its hat's place and colour, the blade turning over it (Usagi's hat
+off, the cap between its ears): the scene's click says it was flying. What
+it wears flies and grows with it (the sprite is drawn at 8 quarters to the
+scene's one).
 
-**The TV** (`hooks/tv-model.ts`) is the glass between two panels of the
-same width, so the casing shows as much left of it as right. The glass keeps
-the inspect view's title (one row, clear of the channel's number), its tabs
-and a blank row pinned, and scrolls the tab's rows under them, a thumb on its
-right. The left panel changes channel: its knob goes on a tab, `◀ ▶` back
-and on, round the tabs. The right panel scrolls: its knob a glassful up (its
-top) or down, `▲ ▼` a row, repeating while held. Keys, once the TV has been
+**The TV** (`hooks/tv-model.ts`) is the glass with one panel of controls on
+its right, the casing showing as much left of the TV as right. The glass
+keeps the inspect view's title (one row, clear of the channel's number), its
+tabs and a blank row pinned, and scrolls the tab's rows under them, a thumb
+on its right. The panel, top down: the channel dial, which goes on a tab,
+with `CH` and `◀ ▶` (back and on, round the tabs) under it; the scroll knob,
+a glassful up (its top) or down, with `▲ ▼` under it, a row, repeating while
+held; a grille. A short glass keeps `◀ ▶` and `▲ ▼` first, then the dial,
+`CH` and the knob. Keys, once the TV has been
 clicked: `← →` change channel, `↑ ↓` a row, Page Up and Down a glassful,
 Home and End, `q` or `x` close; the pane's wheel and its scroll keys move the
 glass while the TV is up. The `✕` on the casing's top right, or a click

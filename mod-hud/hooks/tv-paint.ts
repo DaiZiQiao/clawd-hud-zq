@@ -2,19 +2,19 @@ import { CELL_HEIGHT, CELL_WIDTH, escapeText, num } from './svg-style'
 import { textRowSvg } from './text-svg'
 import type { TextSpan } from './text-svg'
 import { displayWidth, truncate } from './text-width'
-import { figureCells, giantOf, scaled } from './tv-figure'
+import { SPRITE_RES, figureCells, giantOf, scaled } from './tv-figure'
 import type { Box, Figure, Shape } from './tv-figure'
-import { cellText, channelPanelOf, isPress, scrollPanelOf, shownRows, thumbOf } from './tv-model'
+import { cellText, isPress, panelOf, shownRows, thumbOf } from './tv-model'
 import type { Glass, PanelPart, TvInputs, TvLayout, TvLook, TvRow } from './tv-model'
 
 // A frame of the TV drawn: on the terminal as cells over the region (the
-// mascot's quadrant glyphs, the glass's text, the panels' controls; every
+// mascot's quadrant glyphs, the glass's text, the panel's controls; every
 // cell the TV does not draw left to show the pane through), on the desktop
 // as one document the region's size (a dim over the pane, the mascot's
-// quarters in pixels, the glass, the panels, the ✕). The glass keeps its own
+// quarters in pixels, the glass, the panel, the ✕). The glass keeps its own
 // colours whatever the theme: light text on dark glass, as a screen is.
 
-/** The TV's own colours: the glass, its text (theme keys as a lit screen shows them), the panels, the ✕. */
+/** The TV's own colours: the glass, its text (theme keys as a lit screen shows them), the panel, the ✕. */
 export const TV_COLOURS = {
   glass: '#0F2224',
   bezel: '#0A1617',
@@ -48,11 +48,11 @@ const noise = (seed: number, x: number, y: number): number => {
   return (h ^ (h >>> 16)) / 4294967296
 }
 
-/** The sprite at a frame: its quarters `scale` of the way to the giant's box, and its top-left in cells, `travel` of the way from where it stood to the centre. */
+/** The sprite at a frame: its quarters `scale` of the way from its own size (its bitmap's, SPRITE_RES to a quarter) to the giant's box, and its top-left in cells, `travel` of the way from where it stood to the centre. */
 export const spriteFrame = (sprite: Figure, inputs: Pick<TvInputs, 'layout' | 'from'>, travel: number, scale: number): { figure: Figure; x: number; y: number; w: number; h: number } => {
   const { layout } = inputs
-  const ownW = Math.max(0, ...sprite.bitmap.map(row => row.length))
-  const ownH = sprite.bitmap.length
+  const ownW = Math.max(0, ...sprite.bitmap.map(row => row.length)) / SPRITE_RES
+  const ownH = sprite.bitmap.length / SPRITE_RES
   const w = Math.max(1, Math.round(ownW + (layout.width * 2 - ownW) * scale))
   const h = Math.max(1, Math.round(ownH + (layout.height * 2 - ownH) * scale))
   const centre = { x: layout.left + layout.width / 2, y: layout.top + layout.height / 2 }
@@ -117,8 +117,8 @@ const rowCells = (row: TvRow, width: number): { text: string; look: Omit<Exclude
   return out
 }
 
-/** The parts of a panel as glyphs, centred in its width. */
-const PANEL_GLYPHS: Readonly<Record<Exclude<PanelPart, 'blank' | 'label' | 'arrows'>, string>> = { 'knob-top': '▟█▙', 'knob-bottom': '▜█▛', up: '▲', down: '▼', grille: '═══' }
+/** The parts of the panel as glyphs, centred in its width (the grille cut to it). */
+const PANEL_GLYPHS: Readonly<Record<Exclude<PanelPart, 'blank' | 'label' | 'arrows'>, string>> = { 'dial-top': '▟█▙', 'dial-bottom': '▜█▛', 'knob-top': '▟█▙', 'knob-bottom': '▜█▛', up: '▲', down: '▼', grille: '═════' }
 
 const panelCells = (grid: Grid, box: Box, parts: readonly PanelPart[], label: string): void => {
   roundRow(grid, box, box.y, true, TV_COLOURS.panel)
@@ -213,14 +213,13 @@ export const paintCells = (inputs: TvInputs, look: TvLook | undefined, scroll: n
   }
   const { layout } = inputs
   const shifted = (box: Box): Box => ({ ...box, x: box.x + layout.left, y: box.y + layout.top })
-  lay(giantOf(inputs.who, shapeOf(layout), look.eyes), layout.left, layout.top)
+  lay(giantOf(inputs.who, shapeOf(layout), look.eyes, look.spin ?? 0), layout.left, layout.top)
   const placed: TvInputs = { ...inputs, layout: { ...layout, glass: shifted(layout.glass) } }
-  // The panels' round rows and the glass's sit on the body's colour.
+  // The panel's round rows and the glass's sit on the body's colour.
   const bodyColour = inputs.who.colour
   glassCells(grid, placed, look.glass, scroll, osd)
-  panelCells(grid, shifted(layout.channel), channelPanelOf(layout.screen), 'CH')
-  panelCells(grid, shifted(layout.scroll), scrollPanelOf(layout.screen), '')
-  for (const box of [layout.glass, layout.channel, layout.scroll]) {
+  panelCells(grid, shifted(layout.panel), panelOf(layout.screen), 'CH')
+  for (const box of [layout.glass, layout.panel]) {
     for (const y of [box.y, box.y + box.h - 1]) {
       for (let x = box.x; x < box.x + box.w; x += 1) {
         const cell = grid[layout.top + y]?.[layout.left + x]
@@ -271,7 +270,7 @@ const rowDocument = (row: TvRow, width: number, x: number, y: number): string =>
 const CW = CELL_WIDTH
 const CH = CELL_HEIGHT
 
-/** A panel in pixels: cream, round, its controls. */
+/** The panel in pixels: cream, round, its controls (the dial drawn as the knob is). */
 const panelSvg = (box: Box, parts: readonly PanelPart[], label: string): string => {
   const x = box.x * CW
   const y = box.y * CH + CH / 2
@@ -283,6 +282,7 @@ const panelSvg = (box: Box, parts: readonly PanelPart[], label: string): string 
     const top = (box.y + 1 + row) * CH
     const mid = top + CH / 2
     switch (part) {
+      case 'dial-top':
       case 'knob-top':
         items.push(`<circle cx='${num(cx)}' cy='${num(top + CH)}' r='${num(Math.min(w / 2 - 4, 13))}' fill='${TV_COLOURS.knob}'/><circle cx='${num(cx - 3)}' cy='${num(top + CH - 3)}' r='${num(Math.min(w / 2 - 4, 13) / 3)}' fill='#FFFFFF' opacity='.18'/><line x1='${num(cx)}' y1='${num(top + CH)}' x2='${num(cx + 6)}' y2='${num(top + CH - 7)}' stroke='${TV_COLOURS.panel}' stroke-width='2.5' stroke-linecap='round'/>`)
         break
@@ -392,10 +392,9 @@ export const paintSvg = (inputs: TvInputs, look: TvLook | undefined, scroll: num
     } else {
       const { layout } = inputs
       const placed = (box: Box): Box => ({ ...box, x: box.x + layout.left, y: box.y + layout.top })
-      body.push(figureRects(giantOf(inputs.who, shapeOf(layout), look.eyes), layout.left * CW, layout.top * CH, CW / 2, CH / 2))
+      body.push(figureRects(giantOf(inputs.who, shapeOf(layout), look.eyes, look.spin ?? 0), layout.left * CW, layout.top * CH, CW / 2, CH / 2))
       body.push(glassSvg(inputs, placed(layout.glass), look.glass, scroll, osd))
-      body.push(panelSvg(placed(layout.channel), channelPanelOf(layout.screen), 'CH'))
-      body.push(panelSvg(placed(layout.scroll), scrollPanelOf(layout.screen), ''))
+      body.push(panelSvg(placed(layout.panel), panelOf(layout.screen), 'CH'))
       const cx = (layout.left + layout.close.x + 1.5) * CW
       const cy = (layout.top + layout.close.y + 0.5) * CH
       body.push(`<circle cx='${num(cx)}' cy='${num(cy)}' r='10' fill='${TV_COLOURS.close}' stroke='#FFFFFF' stroke-opacity='.85' stroke-width='2'/><path d='M${num(cx - 4)} ${num(cy - 4)} L${num(cx + 4)} ${num(cy + 4)} M${num(cx + 4)} ${num(cy - 4)} L${num(cx - 4)} ${num(cy + 4)}' stroke='#FFFFFF' stroke-width='2.6' stroke-linecap='round'/>`)

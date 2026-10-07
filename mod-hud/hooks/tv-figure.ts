@@ -1,12 +1,12 @@
-import { blankGrid, drawLook, wearOfAgent, wearOfMain } from './mascot-glyphs'
+import { blankGrid, drawLook } from './mascot-glyphs'
 import type { Look } from './mascot-poses'
-import { ACCESSORIES, CROWN } from './mascot-sprites'
+import { ACCESSORIES, CROWN, FLYING_CAP, HAT_X } from './mascot-sprites'
 import type { Accessory } from './mascot-sprites'
 import { ACCENT } from './scene-model'
 import type { Grid, MascotAgent } from './scene-types'
 import { dressOfAgent, usagiFigure } from './usagi-glyphs'
 import type { Dress } from './usagi-glyphs'
-import { HATS, SIDE_CROWN, USAGI, cellsOf } from './usagi-sprites'
+import { CAP, FIGURE_W, HATS, SIDE_CROWN, USAGI, cellsOf } from './usagi-sprites'
 import type { HatName, Palette } from './usagi-sprites'
 
 // The pressed mascot as the TV (hooks/tv-model.ts): the scene's own sprite,
@@ -17,7 +17,7 @@ import type { HatName, Palette } from './usagi-sprites'
 // Usagi's figure is (hooks/usagi-sprites.ts): the terminal draws it as
 // quadrant glyphs (`cellsOf`), the desktop as the same quarters in pixels.
 
-/** Who is in the TV: its character, its colour, and what it wears (Clawd an accessory or the crown; Usagi its role's hat or the crown). */
+/** Who is in the TV: its character, its colour, and what it wears (Clawd an accessory or the crown; Usagi its role's hat or the crown); pressed in flight, its propeller cap in its hat's place. */
 export type Who = {
   character: 'clawd' | 'usagi'
   colour: string
@@ -25,6 +25,7 @@ export type Who = {
   side?: 'left' | 'right'
   hat?: HatName
   crown?: true
+  cap?: true
 }
 
 /** A bitmap of quarters (`.` none) and the colour each key is drawn in; `#` is the body. */
@@ -36,7 +37,7 @@ export type Box = { x: number; y: number; w: number; h: number }
 /** How the giant looks this frame: eyes open, wide (scared) or shut (a blink). */
 export type Eyes = 'open' | 'wide' | 'shut'
 
-/** The giant's frame: its box in cells, where its body stands in it, and the TV on its forehead (its glass and both panels). */
+/** The giant's frame: its box in cells, where its body stands in it, and the TV on its forehead (its glass and its panel). */
 export type Shape = { width: number; height: number; body: Box; tv: Box }
 
 /** The eyes' ink, the cheeks' and the mouth's: dark on any body colour. */
@@ -146,27 +147,58 @@ export const figureCells = (figure: Figure): Grid => (figure.bitmap.length === 0
 
 const STANDING: Look = { head: 'open', arms: 'rest', legs: 'stand', pose: 'stand', overlays: [], lift: 0 }
 
+/** The sprite's quarters to the scene's one: fine enough for what Clawd wears to grow with it, a flower as a flower. */
+export const SPRITE_RES = 8
+
+/** A figure blown up `times`, each quarter `times` by `times`. */
+const blownUp = (figure: Figure, times: number): Figure => ({
+  bitmap: figure.bitmap.flatMap(row => {
+    const line = [...row].map(key => key.repeat(times)).join('')
+
+    return Array.from({ length: times }, () => line)
+  }),
+  palette: figure.palette,
+})
+
 /**
  * The mascot as the scene draws it standing, eyes wide (it knows where it is
- * going): its figure and what it wears, cut to the quarters drawn. What flies
- * to the centre and grows.
+ * going), at SPRITE_RES: its figure (its holes filled), and what it wears
+ * blown up with it from the scene's three cells over its head (Clawd's, laid
+ * after, so a flower's or a bow's middle stays clear as the scene's glyph's
+ * does; Usagi's hat or crown is in its figure), cut to the cells drawn. What
+ * flies to the centre and grows.
  */
 export const spriteOf = (who: Who, eyes: Eyes = 'wide'): Figure => {
   const look: Look = { ...STANDING, head: eyes === 'shut' ? 'shut' : eyes === 'wide' ? 'wide' : 'open' }
   let figure: Figure
   if (who.character === 'usagi') {
     const dress: Dress = { ...(who.hat === undefined ? {} : { hat: who.hat }), ...(who.crown === true ? { crown: true as const } : {}), energy: 0 }
-    figure = usagiFigure(look, dress)
+    // In flight its figure wears the cap (its hat off); the blade turns in the sky row over its middle. Its eyes are its own quarters, no holes to fill (the gap under a cap is the sky's).
+    const sky = who.cap === true ? ['.'.repeat(FIGURE_W), '.'.repeat(FIGURE_W)] : []
+    const own = usagiFigure(who.cap === true ? { ...look, cap: 0 } : look, dress)
+    figure = blownUp({ ...own, bitmap: [...sky, ...own.bitmap] }, SPRITE_RES)
+    if (who.cap === true) {
+      const canvas: Canvas = { rows: figure.bitmap.map(row => [...row]), palette: { ...figure.palette } }
+      lay(canvas, sampled(BLADES[0] as Stencil, { x: 8, y: 0, w: 8, h: 16 }, 2 * SPRITE_RES, 2 * SPRITE_RES), { W: capOf(who) }, 8 * SPRITE_RES, 0)
+      figure = figureOf(canvas)
+    }
   } else {
-    const wear = who.crown === true
-      ? wearOfMain({ mood: 'watching', sweating: false })
-      : wearOfAgent({ id: '', colour: who.colour, activity: 'thinking', status: 'running', ...(who.accessory === undefined ? {} : { accessory: who.accessory }), ...(who.side === undefined ? {} : { side: who.side }) })
-    // The box's four rows (the sky row is the first of the grid's five).
-    figure = quartersOf(drawLook(look, { ...wear, energy: 0 }, who.colour, 0).slice(1), who.colour)
+    // The box's four rows, with the sky row over them for a propeller's blade (the first of the grid's five); its wear laid after, as the giant's is.
+    const worn = wornBy(who)
+    figure = holesFilled(blownUp(quartersOf(drawLook(look, { energy: 0 }, who.colour, 0).slice(worn?.rows === 2 ? 0 : 1), who.colour), SPRITE_RES))
+    if (worn !== undefined) {
+      const canvas: Canvas = { rows: figure.bitmap.map(row => [...row]), palette: { ...figure.palette } }
+      lay(canvas, wornAt(worn.stencil, SPRITE_RES, worn.rows), { W: worn.colour }, HAT_X[worn.side] * 2 * SPRITE_RES, 0)
+      figure = figureOf(canvas)
+    }
   }
   const extent = extentOf(figure)
+  if (extent === undefined) return figure
+  // Cut on the scene's quarters, so it is drawn at its own size as the scene draws it.
+  const x = Math.floor(extent.x / SPRITE_RES) * SPRITE_RES
+  const y = Math.floor(extent.y / SPRITE_RES) * SPRITE_RES
 
-  return holesFilled(extent === undefined ? figure : cropped(figure, extent.x, extent.y, extent.w, extent.h))
+  return cropped(figure, x, y, Math.ceil((extent.x + extent.w) / SPRITE_RES) * SPRITE_RES - x, Math.ceil((extent.y + extent.h) / SPRITE_RES) * SPRITE_RES - y)
 }
 
 /**
@@ -254,50 +286,109 @@ const figureOf = (canvas: Canvas): Figure => {
   return { bitmap: canvas.rows.map(row => row.map(key => (key === '.' ? '.' : rename.get(key) ?? key)).join('')), palette }
 }
 
-/**
- * Clawd's accessories and crown at the giant's size, as quarters: what the
- * scene's three cells (or one glyph) stand for, drawn big enough to read over
- * a head of sixty cells. Each sits on the head (its last row on the body's
- * top), Clawd's crown centred, an accessory over the corner it is worn at.
- */
-export const GIANT_WEAR: Readonly<Record<Accessory | 'crown', { art: readonly string[]; palette: Palette }>> = {
-  crown: {
-    art: ['##........RR........##', '###......####......###', '####....######....####', '######################', '######################'],
-    palette: { '#': CROWN.colour, R: '#D05454' },
-  },
-  beanie: {
-    art: ['......####......', '.....######.....', '...##########...', '.##############.', '################', 'DDDDDDDDDDDDDDDD'],
-    palette: { '#': ACCESSORIES.beanie.colour, D: '#A33E3E' },
-  },
-  cap: {
-    art: ['....########........', '..############......', '.##############.....', '####################'],
-    palette: { '#': ACCESSORIES.cap.colour },
-  },
-  tophat: {
-    art: ['...##########...', '...##########...', '...##########...', '...RRRRRRRRRR...', '################'],
-    palette: { '#': ACCESSORIES.tophat.colour, R: '#D05454' },
-  },
-  flower: {
-    art: ['.....####.....', '.##..####..##.', '.####.YY.####.', '..###YYYY###..', '.####.YY.####.', '.##..####..##.'],
-    palette: { '#': ACCESSORIES.flower.colour, Y: '#FFE27A' },
-  },
-  bow: {
-    art: ['##..........##', '####......####', '######NN######', '######NN######', '####......####', '##..........##'],
-    palette: { '#': ACCESSORIES.bow.colour, N: '#8A3A2E' },
-  },
-  halo: {
-    art: ['....########....', '.###........###.', '.###........###.', '....########....'],
-    palette: { '#': ACCESSORIES.halo.colour },
-  },
-  note: {
-    art: ['....##########', '....##......##', '....##......##', '....##......##', '..####....####', '..####....####'],
-    palette: { '#': ACCESSORIES.note.colour },
-  },
-  propeller: {
-    art: ['######..######', '......##......', '.....####.....', '...########...', '.############.', '##############'],
-    palette: { '#': ACCESSORIES.propeller.colour },
-  },
+// --- what Clawd wears, blown up ------------------------------------------------------
+
+/** A shape over the scene's three cells above a head, in its pixels (a cell 8 across and 16 down): whether a point is in it. */
+type Stencil = (x: number, y: number) => boolean
+
+const disc = (cx: number, cy: number, r: number): Stencil => (x, y) => (x - cx) ** 2 + (y - cy) ** 2 <= r * r
+const oval = (cx: number, cy: number, rx: number, ry: number): Stencil => (x, y) => ((x - cx) / rx) ** 2 + ((y - cy) / ry) ** 2 <= 1
+const stroke = (x1: number, y1: number, x2: number, y2: number, width: number): Stencil => (x, y) => {
+  const dx = x2 - x1
+  const dy = y2 - y1
+  const t = Math.max(0, Math.min(1, ((x - x1) * dx + (y - y1) * dy) / (dx * dx + dy * dy)))
+
+  return Math.hypot(x - x1 - t * dx, y - y1 - t * dy) <= width / 2
 }
+/** An arc of a circle from one angle to another (screen angles: −π/2 straight up). */
+const bend = (cx: number, cy: number, r: number, from: number, to: number, width: number): Stencil => (x, y) => {
+  const angle = Math.atan2(y - cy, x - cx)
+
+  return Math.abs(Math.hypot(x - cx, y - cy) - r) <= width / 2 && angle >= from && angle <= to
+}
+const any = (...parts: Stencil[]): Stencil => (x, y) => parts.some(part => part(x, y))
+const but = (part: Stencil, hole: Stencil): Stencil => (x, y) => part(x, y) && !hole(x, y)
+const lowered = (part: Stencil, by: number): Stencil => (x, y) => part(x, y - by)
+
+/** Quadrant glyphs as a stencil: each glyph's quarters, 4 pixels across and 8 down. */
+const blocks = (glyphs: string): Stencil => {
+  const cells = [...glyphs]
+
+  return (x, y) => {
+    if (x < 0 || y < 0 || y >= 16) return false
+    const mask = MASKS[cells[Math.floor(x / 8)] ?? ''] ?? 0
+
+    return (mask & (1 << ((y >= 8 ? 2 : 0) + (x % 8 >= 4 ? 1 : 0)))) !== 0
+  }
+}
+
+/** Five petals round a hole, the first straight up. */
+const PETALS = [0, 1, 2, 3, 4].map(at => -Math.PI / 2 + (at * 2 * Math.PI) / 5)
+
+/**
+ * What Clawd wears over its head as the scene's three cells show it (the
+ * crown and the hats' block glyphs quarter for quarter; the symbols as the
+ * font draws them in the middle cell: a florette of five petals round a hole,
+ * a bowtie's two bars crossed, the halo's three arcs, two notes on a beam,
+ * four balloons on a cross), each in the one colour the scene draws it in.
+ */
+export const WEAR: Readonly<Record<Accessory | 'crown', Stencil>> = {
+  crown: blocks(CROWN.art),
+  beanie: blocks(ACCESSORIES.beanie.art),
+  cap: blocks(ACCESSORIES.cap.art),
+  tophat: blocks(ACCESSORIES.tophat.art),
+  flower: but(any(...PETALS.map(angle => disc(12 + 3 * Math.cos(angle), 8.8 + 3 * Math.sin(angle), 1.5))), disc(12, 8.8, 1.1)),
+  bow: any(stroke(7.2, 4.6, 7.2, 12.4, 1.3), stroke(16.8, 4.6, 16.8, 12.4, 1.3), stroke(7.2, 4.6, 16.8, 12.4, 1.3), stroke(7.2, 12.4, 16.8, 4.6, 1.3)),
+  halo: any(bend(6, 9, 4, -Math.PI, -Math.PI / 2, 1.3), bend(12, 9, 3.8, -Math.PI, 0, 1.3), bend(18, 9, 4, -Math.PI / 2, 0, 1.3)),
+  note: any(oval(10.2, 11.2, 1.7, 1.15), oval(13.8, 12.9, 1.7, 1.15), stroke(11.5, 3.5, 11.5, 11, 0.9), stroke(15.1, 4.9, 15.1, 12.7, 0.9), stroke(11.5, 3.7, 15.1, 5, 1.7)),
+  propeller: any(disc(12, 6, 1.25), disc(9.2, 9, 1.25), disc(14.8, 9, 1.25), disc(12, 12, 1.25), stroke(12, 6, 12, 12, 0.8), stroke(9.2, 9, 14.8, 9, 0.8)),
+}
+
+/** The propeller's blade, turning a frame at a time: `+` then `x`, as the font draws them in a cell's middle (its pixels 8 to 16 across). */
+export const BLADES: readonly Stencil[] = [
+  any(stroke(12, 5.2, 12, 12.2, 1.3), stroke(8.6, 8.7, 15.4, 8.7, 1.3)),
+  any(stroke(9.3, 5.7, 14.7, 12.3, 1.3), stroke(14.7, 5.7, 9.3, 12.3, 1.3)),
+]
+
+/** The propeller cap Clawd flies under: the scene's `▄▄▄` on the air row, its blade a row above it in the sky row (two rows: the sky's pixels 0 to 16, the air's 16 to 32). */
+const CAP_WEAR: readonly Stencil[] = BLADES.map(blade => any(blade, lowered(blocks(FLYING_CAP.art), 16)))
+
+/** The propeller cap's colour, as the scene's: its hat's, the crown's gold, or (Usagi bare-headed) its own. */
+export const capOf = (who: Who): string =>
+  who.character === 'usagi'
+    ? who.hat !== undefined ? HATS[who.hat].colour : who.crown === true ? CROWN.colour : CAP.colour
+    : who.crown === true ? CROWN.colour : who.accessory !== undefined ? ACCESSORIES[who.accessory].colour : CROWN.colour
+
+/**
+ * What Clawd wears and where: the crown centred, an accessory at the head's
+ * corner it is worn at; in flight, the propeller cap in its place and colour
+ * (a bare head's on the left, in the crown's gold), its blade turned `spin`
+ * frames, over the sky row too. Its stencil, colour, side and rows.
+ */
+export const wornBy = (who: Who, spin = 0): { stencil: Stencil; colour: string; side: 'left' | 'centre' | 'right'; rows: 1 | 2 } | undefined => {
+  if (who.character !== 'clawd') return undefined
+  const side = who.crown === true ? 'centre' : who.accessory === undefined ? 'left' : who.side ?? 'left'
+  if (who.cap === true) return { stencil: CAP_WEAR[spin % CAP_WEAR.length] as Stencil, colour: capOf(who), side, rows: 2 }
+  if (who.crown === true) return { stencil: WEAR.crown, colour: CROWN.colour, side, rows: 1 }
+
+  return who.accessory === undefined ? undefined : { stencil: WEAR[who.accessory], colour: ACCESSORIES[who.accessory].colour, side, rows: 1 }
+}
+
+/**
+ * A stencil's pixels in `from` drawn as `w` by `h` quarters (`W`), each drawn
+ * where a third or more of a 3 by 3 sampling of it is in the stencil, so a
+ * stroke thinner than a quarter still shows.
+ */
+const sampled = (stencil: Stencil, from: Box, w: number, h: number): string[] =>
+  Array.from({ length: h }, (_, y) => Array.from({ length: w }, (_, x) => {
+    let inside = 0
+    for (let i = 0; i < 3; i += 1) for (let j = 0; j < 3; j += 1) if (stencil(from.x + ((x + (i + 0.5) / 3) * from.w) / w, from.y + ((y + (j + 0.5) / 3) * from.h) / h)) inside += 1
+
+    return inside >= 3 ? 'W' : '.'
+  }).join(''))
+
+/** A stencil over the scene's three cells (and `rows` of them) drawn `k` quarters to the scene's one: 6k by 2k quarters a row. */
+export const wornAt = (stencil: Stencil, k: number, rows: 1 | 2 = 1): string[] => sampled(stencil, { x: 0, y: 0, w: 24, h: 16 * rows }, 6 * k, 2 * k * rows)
 
 /**
  * Clawd's eyes on the giant, in quarters across and down: the scene's
@@ -325,9 +416,12 @@ const USAGI_CHEEKS = [0.2, 0.8] as const
  * them, its torso (the last two rows) with its arms out of its top (their
  * tips a quarter high, as the torso's `▝` and `▘`), its four legs under it where the
  * scene's stand (at 1, 3, 8 and 10 twelfths of its width), and its crown or
- * accessory on its head.
+ * accessory on its head: the scene's, blown up as the head is (its three
+ * cells half the head's width) where the rows over the head allow, centred
+ * where the scene wears it (the crown in the middle, an accessory over the
+ * corner it is worn at).
  */
-const giantClawd = (who: Who, shape: Shape, eyes: Eyes): Figure => {
+const giantClawd = (who: Who, shape: Shape, eyes: Eyes, spin: number): Figure => {
   const width = shape.width * 2
   const height = shape.height * 2
   const canvas: Canvas = { rows: blank(width, height), palette: { '#': who.colour, K: EYE } }
@@ -351,14 +445,13 @@ const giantClawd = (who: Who, shape: Shape, eyes: Eyes): Figure => {
     const top = (shape.tv.y + shape.tv.h + 1) * 2 - (eyes === 'wide' ? 1 : 0)
     for (const at of CLAWD_EYES) fill(canvas, even(x0 + bw * at - eye.w / 2), top, eye.w, eye.h, 'K')
   }
-  // What it wears, its last row on the body's top.
-  const worn = who.crown === true ? GIANT_WEAR.crown : who.accessory === undefined ? undefined : GIANT_WEAR[who.accessory]
+  // What it wears, its last row on the body's top: the scene's head is 12 quarters across, so `k` is the body's twelfth at most (and its rows, the propeller's two, fit over the head).
+  const worn = wornBy(who, spin)
   if (worn !== undefined) {
-    const artW = Math.max(0, ...worn.art.map(line => line.length))
-    const centre = who.crown === true ? x0 + bw / 2 : who.side === 'right' ? x0 + bw * 0.8 : x0 + bw * 0.2
-    const flip = who.accessory === 'cap' && who.side !== 'right'
-    const art = flip ? worn.art.map(line => [...line].reverse().join('')) : worn.art
-    lay(canvas, art, worn.palette, even(centre - artW / 2), y0 - worn.art.length)
+    const k = Math.max(1, Math.min(Math.floor(shape.body.y / worn.rows), Math.floor(bw / 12)))
+    // Centred where the scene's three cells are over its head (quarters 6, 10 or 14 of the head's 7 to 19).
+    const centre = x0 + ((worn.side === 'centre' ? 13 : worn.side === 'right' ? 17 : 9) - 7) * (bw / 12)
+    lay(canvas, wornAt(worn.stencil, k, worn.rows), { W: worn.colour }, Math.max(0, Math.min(width - 6 * k, Math.round(centre - 3 * k))), y0 - 2 * k * worn.rows)
   }
 
   return figureOf(canvas)
@@ -366,13 +459,15 @@ const giantClawd = (who: Who, shape: Shape, eyes: Eyes): Figure => {
 
 /**
  * Usagi as the TV: its round body (the casing), the TV on its forehead
- * (`shape.tv`), its ears up out of its head through its role's hat (the
- * scene's hat, its quarters blown up over the ears and the head's top); under
- * the TV its face, its small dark eyes, its cheeks out from them and its
- * mouth between, as the scene's face has them; its arms out at its sides by
- * its face, and its feet; the session's wears its crown over its left ear.
+ * (`shape.tv`), its ears up out of its head through its role's hat, blown up
+ * from the scene's figure as its face is (the face's 14 quarters the body's
+ * width; the ears and the hat's crown over the rows above the head, the
+ * brim on the head's top); under the TV its face, its small dark eyes, its
+ * cheeks out from them and its mouth between, as the scene's face has them;
+ * its arms out at its sides by its face, and its feet; the session's wears
+ * its crown in front of its left ear, as the scene's does.
  */
-const giantUsagi = (who: Who, shape: Shape, eyes: Eyes): Figure => {
+const giantUsagi = (who: Who, shape: Shape, eyes: Eyes, spin: number): Figure => {
   const width = shape.width * 2
   const height = shape.height * 2
   const canvas: Canvas = { rows: blank(width, height), palette: { '#': USAGI.body, K: USAGI.eye, P: USAGI.blush, M: USAGI.mouth } }
@@ -389,13 +484,19 @@ const giantUsagi = (who: Who, shape: Shape, eyes: Eyes): Figure => {
       if (dx * dx + dy * dy <= radius * radius) (canvas.rows[y0 + y] as string[])[x0 + x] = '#'
     }
   }
-  // The ears, from the box's top into the head, their tips round.
-  const earW = Math.max(4, Math.min(12, even(bw / 9)))
-  const ears = [x0 + bw / 6, x0 + (bw * 5) / 6].map(centre => even(centre - earW / 2))
+  // The scene's face is 14 quarters across (its columns 2 to 15): the body's width, a quarter of it `kx` across.
+  const kx = bw / 14
+  const across = (column: number): number => x0 + (column - 2) * kx
+  // The ears (the scene's columns 4 and 5, 12 and 13), from the box's top into the head, their tips round.
+  const earW = Math.max(4, even(2 * kx))
+  const leftEar = even(across(4))
+  const ears = [leftEar, x0 + bw - (leftEar - x0) - earW]
   for (const x of ears) {
     fill(canvas, x, 0, earW, y0 + 2, '#')
-    ;(canvas.rows[0] as string[])[x] = '.'
-    ;(canvas.rows[0] as string[])[x + earW - 1] = '.'
+    ;[earW / 4, earW / 8, earW / 16].forEach((inset, y) => {
+      fill(canvas, x, y, Math.round(inset), 1, '.')
+      fill(canvas, x + earW - Math.round(inset), y, Math.round(inset), 1, '.')
+    })
   }
   // The face, under the TV: the eyes a row under it, the cheeks and the mouth a row under them.
   const eyesRow = (shape.tv.y + shape.tv.h + 1) * 2
@@ -417,29 +518,29 @@ const giantUsagi = (who: Who, shape: Shape, eyes: Eyes): Figure => {
   }
   for (const at of USAGI_CHEEKS) fill(canvas, even(x0 + bw * at - 2), eyesRow + 2, 4, 2, 'P')
   fill(canvas, even(x0 + bw / 2 - 2), eyesRow + 2, 4, 2, 'M')
-  // Its hat, blown up from the scene's: the head's top (the art's last row) on its top, the rest over its ears.
-  if (who.hat !== undefined) {
-    const hat = HATS[who.hat]
+  // What it wears, blown up from the scene's figure as the ears are: the art's four rows (the ears' three and the head's top) over the ears from their tips to the head's top, so the brim is as thick as the rest and the ears come up through it.
+  const wear = (art: readonly string[], palette: Palette, from: number, shift = 0): void => {
     for (let y = 0; y < y0 + 2; y += 1) {
-      const artY = y >= y0 ? 3 : Math.floor((y * 3) / y0)
-      const line = hat.art[artY] ?? ''
+      const line = art[Math.floor((y * 4) / (y0 + 2)) - from] ?? ''
       for (let x = 0; x < width; x += 1) {
-        const artX = Math.floor(3 + ((x - x0 + 0.5) * 12) / bw)
-        const key = line[artX]
-        if (key === undefined || key === '.' || hat.palette[key as keyof typeof hat.palette] === undefined) continue
-        lay(canvas, [key], hat.palette, x, y)
+        const key = line[Math.floor(2 + (x - shift + 0.5 - x0) / kx)]
+        if (key !== undefined && key !== '.' && palette[key] !== undefined) lay(canvas, [key], palette, x, y)
       }
     }
   }
-  if (who.crown === true) {
-    const art = SIDE_CROWN.art.flatMap(line => [line, line]).map(line => [...line].flatMap(key => [key, key, key]).join(''))
-    const artW = art[0]?.length ?? 0
-    lay(canvas, art, SIDE_CROWN.palette, even((ears[0] ?? x0) + earW / 2 - artW / 2), y0 + 2 - art.length)
-  }
+  if (who.cap === true) {
+    // In flight: its hat off, the propeller cap between its ears (the scene's row 1), its blade turning over it in the row above.
+    wear(CAP.art, { C: capOf(who) }, 1)
+    const band = Math.max(1, Math.floor((y0 + 2) / 4))
+    const left = Math.round(across(8))
+    lay(canvas, sampled(BLADES[spin % BLADES.length] as Stencil, { x: 8, y: 4, w: 8, h: 9 }, Math.max(1, Math.round(across(10)) - left), band), { W: capOf(who) }, left, 0)
+  } else if (who.hat !== undefined) wear(HATS[who.hat].art, HATS[who.hat].palette, 0)
+  // The session's crown (the scene's columns 0 to 4 on rows 2 and 3, its band on the head's top), in front of its left ear, moved in to stay within the figure.
+  if (who.crown === true) wear(SIDE_CROWN.art, SIDE_CROWN.palette, 2, Math.max(0, -Math.round(across(0))))
 
   return figureOf(canvas)
 }
 
-/** The giant for a frame: Clawd's or Usagi's, eyes as asked. */
-export const giantOf = (who: Who, shape: Shape, eyes: Eyes = 'open'): Figure =>
-  who.character === 'usagi' ? giantUsagi(who, shape, eyes) : giantClawd(who, shape, eyes)
+/** The giant for a frame: Clawd's or Usagi's, eyes as asked, a propeller's blade turned `spin` frames. */
+export const giantOf = (who: Who, shape: Shape, eyes: Eyes = 'open', spin = 0): Figure =>
+  who.character === 'usagi' ? giantUsagi(who, shape, eyes, spin) : giantClawd(who, shape, eyes, spin)

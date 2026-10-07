@@ -41,6 +41,8 @@ type Grip = {
   lifted: boolean
   /** The pointer's place on the sprite: from its left column, and from its box's top row. */
   offset: { x: number; y: number }
+  /** In flight as it was pressed: under its propeller cap. */
+  flying: boolean
 }
 
 /** A mascot out of the choreography: in the person's hand, thrown, falling, or riding a flier. */
@@ -453,7 +455,7 @@ export const pointer = (world: World, event: ClientPointerEvent, post: (data: Js
       const where = viewOf(world).seen.get(id)
       const x = where?.x ?? one.drawnX
       const top = floorTop(plan, world.carried.get(id)?.d ?? where?.d ?? one.d) - (where?.lift ?? 0)
-      world.grip = { id, downMs: world.ms, movedMs: world.ms, start: { x: px, y: py }, samples: [{ ms: world.ms, x: px, y: py }], lifted: false, offset: { x: px - x, y: py - top } }
+      world.grip = { id, downMs: world.ms, movedMs: world.ms, start: { x: px, y: py }, samples: [{ ms: world.ms, x: px, y: py }], lifted: false, offset: { x: px - x, y: py - top }, flying: where?.motion === 'fly' }
 
       return released
     }
@@ -474,9 +476,9 @@ export const pointer = (world: World, event: ClientPointerEvent, post: (data: Js
       world.grip = undefined
       if (!grip.lifted) {
         const one = plan?.placements.find(placement => placement.id === grip.id)
-        // An agent's mascot, or the session's (its id `main`): the hooks inspect it.
+        // An agent's mascot, or the session's (its id `main`): the hooks inspect it, told where it stood and whether it was flying (under its propeller cap).
         const mascot = one !== undefined && (one.kind === 'full' || one.kind === 'mini' || one.kind === 'main')
-        if (mascot && world.props.inspect && isClick(grip.downMs, world.ms, px - grip.start.x, py - grip.start.y)) post({ kind: 'inspect', id: grip.id, at: { x: Math.round(grip.start.x - grip.offset.x) + BODY_X, y: Math.round(grip.start.y - grip.offset.y) } })
+        if (mascot && world.props.inspect && isClick(grip.downMs, world.ms, px - grip.start.x, py - grip.start.y)) post({ kind: 'inspect', id: grip.id, at: { x: Math.round(grip.start.x - grip.offset.x) + BODY_X, y: Math.round(grip.start.y - grip.offset.y) }, ...(grip.flying ? { cap: true } : {}) })
 
         return false
       }

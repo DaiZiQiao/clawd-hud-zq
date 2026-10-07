@@ -25,6 +25,8 @@ export const REPEAT_MS = 80
 /** The giant blinks every BLINK_EVERY_MS, for BLINK_MS. */
 export const BLINK_EVERY_MS = 4300
 export const BLINK_MS = 120
+/** Pressed in flight, its propeller cap's blade turns a frame every BLADE_MS. */
+export const BLADE_MS = 100
 
 /** What the module posts to the hooks. */
 export type TvPost = { kind: 'tv'; close: true } | { kind: 'tv'; tab: string } | { kind: 'tv'; press: string }
@@ -104,8 +106,15 @@ export const receiveTv = (tv: TvWorld, inputs: TvInputs): void => {
 /** The eyes shut this frame: a blink now and then while it is on. */
 const blinking = (tv: TvWorld): boolean => tv.phase === 'on' && tv.ms % BLINK_EVERY_MS < BLINK_MS
 
+/** The propeller's blade, wearing its cap: `+` or `x` this frame. */
+const spinOf = (tv: TvWorld): number => (tv.inputs.who.cap === true ? Math.floor(tv.ms / BLADE_MS) % 2 : 0)
+
 /** The frame's look. */
-export const lookOf = (tv: TvWorld): TvLook | undefined => tvLookAt(tv.phase, tv.frame, tv.flicker, blinking(tv))
+export const lookOf = (tv: TvWorld): TvLook | undefined => {
+  const look = tvLookAt(tv.phase, tv.frame, tv.flicker, blinking(tv))
+
+  return look?.form === 'giant' && tv.inputs.who.cap === true ? { ...look, spin: spinOf(tv) } : look
+}
 
 /** The channel's number on the glass, a moment after it opens or changes: `CH 2`. */
 export const osdOf = (tv: TvWorld): string | undefined => (tv.phase === 'on' && tv.ms < tv.osdUntil ? `CH ${Math.max(0, tv.inputs.tabs.indexOf(tv.inputs.tab)) + 1}` : undefined)
@@ -114,11 +123,12 @@ const NEXT: Readonly<Partial<Record<TvPhase, TvPhase>>> = { travel: 'grow', grow
 
 /**
  * A tick of the module's clock: the animations step, a held ▲ or ▼ repeats,
- * the static runs out, the channel's number goes, the giant blinks. Gone, the
- * hooks are told it closed. Whether the drawing changes.
+ * the static runs out, the channel's number goes, the giant blinks, a
+ * propeller's blade turns. Gone, the hooks are told it closed. Whether the
+ * drawing changes.
  */
 export const tickTv = (tv: TvWorld, post: (data: TvPost) => void): boolean => {
-  const before = { blink: blinking(tv), osd: osdOf(tv) }
+  const before = { blink: blinking(tv), osd: osdOf(tv), spin: spinOf(tv) }
   tv.ms += TV_FRAME_MS
   let changed = false
   if (tv.phase !== 'on' && tv.phase !== 'gone') {
@@ -149,7 +159,7 @@ export const tickTv = (tv: TvWorld, post: (data: TvPost) => void): boolean => {
     }
   }
 
-  return changed || blinking(tv) !== before.blink || osdOf(tv) !== before.osd
+  return changed || blinking(tv) !== before.blink || osdOf(tv) !== before.osd || (tv.phase === 'on' && spinOf(tv) !== before.spin)
 }
 
 /**

@@ -2,26 +2,26 @@ import { describe, expect, test } from 'claude-code/testing'
 
 import type { HudSelection } from '../types'
 import { SHAKE_MS, SHAKE_STEP_MS, STARTLED_MS, startledLook } from './mascot-poses'
-import { OVERLAYS } from './mascot-sprites'
+import { ACCESSORIES, ACCESSORY_NAMES, CROWN, OVERLAYS } from './mascot-sprites'
 import { arrange, mount } from './scene-client.fixtures'
 import { idleHud } from './scene-model.fixtures'
 import { mascotLines } from './scene-render'
 import { sceneOf } from './scene-model'
 import type { SceneInputs } from './scene-types'
-import { TYPIST, inputs as sceneInputs } from './scene-world.fixtures'
-import { FRAME_MS, createWorld, receive, tick } from './scene-world'
+import { TYPIST, inputs as sceneInputs, press as pressOn, ticks } from './scene-world.fixtures'
+import { FRAME_MS, createWorld, pointer, receive, tick } from './scene-world'
 import { layoutAt } from './scene-view'
-import { NOW } from './scene-model.fixtures'
+import { NOW, entry } from './scene-model.fixtures'
 import { displayWidth } from './text-width'
-import { extentOf, giantOf, holesFilled, spriteOf, whoOfMain } from './tv-figure'
+import { SPRITE_RES, extentOf, giantOf, holesFilled, spriteOf, whoOfMain } from './tv-figure'
 import type { Figure, Who } from './tv-figure'
-import { TV_FRAMES, TV_FRAME_MS, channelOf, maxScrollOf, scrolledBy, shownRows, thumbOf, tvHitAt, tvKeyOf, tvLayoutOf, tvLookAt } from './tv-model'
+import { TV_FRAMES, TV_FRAME_MS, channelOf, maxScrollOf, panelOf, scrolledBy, shownRows, thumbOf, tvHitAt, tvKeyOf, tvLayoutOf, tvLookAt } from './tv-model'
 import type { TvInputs, TvRow } from './tv-model'
 import { paintCells, paintSvg, shapeOf, TV_COLOURS } from './tv-paint'
 import type { TvOut } from './tv-paint'
-import { FLICKER_FRAMES, REPEAT_DELAY_MS, REPEAT_MS, createTv, keyTv, lookOf, osdOf, pointerTv, receiveTv, tickTv, tvPostOf } from './tv-world'
+import { BLADE_MS, FLICKER_FRAMES, REPEAT_DELAY_MS, REPEAT_MS, createTv, keyTv, lookOf, osdOf, pointerTv, receiveTv, tickTv, tvPostOf } from './tv-world'
 import type { TvPost, TvWorld } from './tv-world'
-import { STARTLED } from './usagi-sprites'
+import { HATS, STARTLED } from './usagi-sprites'
 import { TV_ROWS_BUDGET, budgeted } from './tv-rows'
 import { drawUsagi, dressOfAgent } from './usagi-glyphs'
 
@@ -71,7 +71,7 @@ const quartersWith = (figure: Figure, key: string): { x: number; y: number }[] =
   figure.bitmap.flatMap((row, y) => [...row].flatMap((one, x) => (one === key ? [{ x, y }] : [])))
 
 describe('the layout', () => {
-  test('centred, the casing as wide left of the TV as right of it, a panel the same width either side of the glass, the TV on the forehead; both mascots at 100, 72 and 48 columns', () => {
+  test('centred, the casing as wide left of the TV as right of it, the glass on the TV\'s left and its controls in one panel on its right, the TV on the forehead; both mascots at 100, 72 and 48 columns', () => {
     for (const character of ['clawd', 'usagi'] as const) {
       for (const columns of [100, 72, 48]) {
         const layout = tvLayoutOf(character, columns, 36)
@@ -82,9 +82,11 @@ describe('the layout', () => {
         expect(layout.top + layout.height).toBeLessThanOrEqual(36)
         // Equal borders: the body's casing either side of the TV.
         expect(layout.tv.x - layout.body.x).toBe(layout.body.x + layout.body.w - (layout.tv.x + layout.tv.w))
-        expect(layout.channel.w).toBe(layout.scroll.w)
-        expect(layout.glass.x).toBe(layout.channel.x + layout.channel.w + 1)
-        expect(layout.scroll.x).toBe(layout.glass.x + layout.glass.w + 1)
+        // The glass at the TV's left; the panel a cell right of it, at the TV's right, as tall.
+        expect(layout.glass.x).toBe(layout.tv.x)
+        expect(layout.panel.x).toBe(layout.glass.x + layout.glass.w + 1)
+        expect(layout.panel.x + layout.panel.w).toBe(layout.tv.x + layout.tv.w)
+        expect([layout.panel.y, layout.panel.h]).toEqual([layout.glass.y, layout.glass.h])
         expect(layout.content).toBe(layout.glass.w - 2)
         expect(layout.screen).toBe(layout.glass.h - 2)
         // The TV at the body's top; the face under it, within the body.
@@ -103,9 +105,38 @@ describe('the layout', () => {
     expect(tvLayoutOf('clawd', 72, 19)).toBe(undefined)
     expect(tvLayoutOf('usagi', 72, 19)?.screen).toBe(5)
     expect(tvLayoutOf('usagi', 72, 18)).toBe(undefined)
-    expect(tvLayoutOf('clawd', 46, 36)?.content).toBe(22)
-    expect(tvLayoutOf('clawd', 44, 36)).toBe(undefined)
+    expect(tvLayoutOf('clawd', 42, 36)?.content).toBe(22)
+    expect(tvLayoutOf('clawd', 41, 36)).toBe(undefined)
+    expect(tvLayoutOf('usagi', 44, 36)?.content).toBe(22)
+    expect(tvLayoutOf('usagi', 43, 36)).toBe(undefined)
     expect(tvLayoutOf('clawd', Number.NaN, 36)).toBe(undefined)
+  })
+
+  test('the rows the glass leaves go over the head, up to the scene\'s proportions: Clawd\'s hat as tall as a sixth of its body is wide, Usagi\'s ears three fourteenths', () => {
+    // 72 columns: Clawd's body 62 across, Usagi's 64.
+    expect(tvLayoutOf('clawd', 72, 29)?.body.y).toBe(3)
+    expect(tvLayoutOf('clawd', 72, 32)?.body.y).toBe(6)
+    expect(tvLayoutOf('clawd', 72, 36)?.body.y).toBe(10)
+    expect(tvLayoutOf('clawd', 72, 60)?.body.y).toBe(10)
+    expect(tvLayoutOf('usagi', 72, 28)?.body.y).toBe(4)
+    expect(tvLayoutOf('usagi', 72, 36)?.body.y).toBe(12)
+    expect(tvLayoutOf('usagi', 72, 60)?.body.y).toBe(13)
+    for (const [character, rows] of [['clawd', 36], ['usagi', 36], ['clawd', 60], ['usagi', 60]] as const) {
+      const layout = tvLayoutOf(character, 72, rows)!
+      expect(layout.screen).toBe(14)
+      expect(layout.top + layout.height).toBeLessThanOrEqual(rows)
+      expect(layout.height).toBe(layout.body.y + layout.body.h + (character === 'usagi' ? 1 : 2))
+    }
+  })
+
+  test('the panel, top down: the channel dial, CH and ◀ ▶, then the scroll knob, ▲ and ▼, then a grille; a short glass keeps ◀ ▶, ▲ and ▼ first, then the dial, CH, the knob and the blank rows', () => {
+    expect(panelOf(14)).toEqual(['blank', 'dial-top', 'dial-bottom', 'label', 'arrows', 'blank', 'knob-top', 'knob-bottom', 'up', 'down', 'blank', 'grille', 'blank', 'grille'])
+    expect(panelOf(10)).toEqual(['blank', 'dial-top', 'dial-bottom', 'label', 'arrows', 'blank', 'knob-top', 'knob-bottom', 'up', 'down'])
+    expect(panelOf(9)).toEqual(['dial-top', 'dial-bottom', 'label', 'arrows', 'blank', 'knob-top', 'knob-bottom', 'up', 'down'])
+    expect(panelOf(8)).toEqual(['dial-top', 'dial-bottom', 'label', 'arrows', 'knob-top', 'knob-bottom', 'up', 'down'])
+    expect(panelOf(7)).toEqual(['dial-top', 'dial-bottom', 'label', 'arrows', 'blank', 'up', 'down'])
+    expect(panelOf(6)).toEqual(['dial-top', 'dial-bottom', 'label', 'arrows', 'up', 'down'])
+    expect(panelOf(5)).toEqual(['dial-top', 'dial-bottom', 'arrows', 'up', 'down'])
   })
 })
 
@@ -140,6 +171,44 @@ describe('the giant', () => {
     expect(Math.abs(centre - (layout.body.x * 2 + layout.body.w))).toBeLessThanOrEqual(1)
   })
 
+  test('Clawd wears the scene\'s own: each accessory and the crown in its one colour, its three cells blown up as the head is (half the head\'s width), on its head over the corner it is worn at, the crown in the middle', () => {
+    const layout = tvLayoutOf('clawd', 72, 36)!
+    const x0 = layout.body.x * 2
+    const bw = layout.body.w * 2
+    const y0 = layout.body.y * 2
+    // The head 12 of the scene's quarters across: 124 quarters here, so 10 to the scene's one.
+    const k = 10
+    for (const accessory of ACCESSORY_NAMES) {
+      for (const side of ['left', 'right'] as const) {
+        const giant = giantOf({ ...CLAWD, accessory, side }, shapeOf(layout))
+        // Its colours: the body's, the eyes' and the accessory's alone.
+        expect(new Set(Object.values(giant.palette)), accessory).toEqual(new Set([CLAWD.colour, '#1E1E1E', ACCESSORIES[accessory].colour]))
+        const key = Object.entries(giant.palette).find(([, colour]) => colour === ACCESSORIES[accessory].colour)?.[0] ?? '?'
+        const worn = quartersWith(giant, key)
+        expect(worn.length, accessory).toBeGreaterThan(0)
+        const xs = worn.map(one => one.x)
+        const ys = worn.map(one => one.y)
+        // Within its three cells, 6k by 2k, on the head's top.
+        expect(Math.max(...xs) - Math.min(...xs), accessory).toBeLessThan(6 * k)
+        expect(Math.min(...ys), accessory).toBeGreaterThanOrEqual(y0 - 2 * k)
+        expect(Math.max(...ys), accessory).toBeLessThan(y0)
+        const centre = (Math.min(...xs) + Math.max(...xs) + 1) / 2
+        if (side === 'left') expect(centre, accessory).toBeLessThan(x0 + bw / 3)
+        else expect(centre, accessory).toBeGreaterThan(x0 + (2 * bw) / 3)
+      }
+    }
+    // The cap as the scene's `▄▄▖`: five quarters across its cells' lower half, blown up 5k by k, its last row on the head.
+    const cap = quartersWith(giantOf(CLAWD, shapeOf(layout)), Object.entries(giantOf(CLAWD, shapeOf(layout)).palette).find(([, colour]) => colour === ACCESSORIES.cap.colour)?.[0] ?? '?')
+    expect(new Set(cap.map(one => one.y))).toEqual(new Set(Array.from({ length: k }, (_, at) => y0 - k + at)))
+    expect(Math.max(...cap.map(one => one.x)) - Math.min(...cap.map(one => one.x)) + 1).toBe(5 * k)
+    // The crown as the scene's `▙█▟`, centred: 6k by 2k.
+    const crowned = giantOf(whoOfMain('clawd'), shapeOf(layout))
+    const crown = quartersWith(crowned, Object.entries(crowned.palette).find(([, colour]) => colour === CROWN.colour)?.[0] ?? '?')
+    expect(Math.max(...crown.map(one => one.x)) - Math.min(...crown.map(one => one.x)) + 1).toBe(6 * k)
+    expect(new Set(crown.map(one => one.y)).size).toBe(2 * k)
+    expect(new Set(Object.values(crowned.palette))).toEqual(new Set([whoOfMain('clawd').colour, '#1E1E1E', CROWN.colour]))
+  })
+
   test('Usagi: its ears and hat over its head; under the TV its eyes, then its cheeks and mouth; shut, no eyes; scared, wider ones', () => {
     const layout = tvLayoutOf('usagi', 72, 36)!
     const giant = giantOf(USAGI, shapeOf(layout))
@@ -153,45 +222,103 @@ describe('the giant', () => {
     const eyeRow = Math.min(...quartersWith(giant, keyOf('#2B211C')).map(one => one.y))
     const cheekRow = Math.min(...quartersWith(giant, keyOf('#F2A0AE')).map(one => one.y))
     expect(cheekRow).toBeGreaterThan(eyeRow)
-    // The fedora's colours over the head's top.
+    // The fedora's colours over the head's top, blown up as the face is (its 14 quarters the body's width): the brim the body's width, as thick as the crown's rows.
     const hat = quartersWith(giant, keyOf('#9A6A3A'))
     expect(hat.length).toBeGreaterThan(0)
     for (const one of hat) expect(one.y).toBeLessThan(layout.body.y * 2 + 2)
+    const x0 = layout.body.x * 2
+    const bw = layout.body.w * 2
+    const brim = hat.filter(one => one.y === layout.body.y * 2 + 1)
+    expect(Math.min(...brim.map(one => one.x))).toBe(x0)
+    expect(Math.max(...brim.map(one => one.x))).toBe(x0 + bw - 1)
+    expect(new Set(hat.filter(one => one.x === x0).map(one => one.y)).size).toBeGreaterThanOrEqual(Math.floor((layout.body.y * 2 + 2) / 4))
+    for (const colour of Object.values(HATS.fedora.palette)) expect(quartersWith(giant, keyOf(colour)).length, colour).toBeGreaterThan(0)
+    // Its ears, each two of the face's 14 quarters across, standing clear of the fedora's first row (empty in the scene's too).
+    expect([...(giant.bitmap[3] ?? '')].filter(key => key === '#').length).toBe(2 * 2 * Math.round(bw / 14))
     expect(quartersWith(giantOf(USAGI, shapeOf(layout), 'shut'), keyOf('#2B211C'))).toHaveLength(0)
     expect(quartersWith(giantOf(USAGI, shapeOf(layout), 'wide'), keyOf('#2B211C')).length).toBeGreaterThan(quartersWith(giant, keyOf('#2B211C')).length)
+  })
+
+  test('pressed in flight, it wears its propeller cap as the scene draws it: in its hat\'s colour and place, the blade a row over it turning, Usagi\'s hat off', () => {
+    const layout = tvLayoutOf('clawd', 72, 36)!
+    const x0 = layout.body.x * 2
+    const y0 = layout.body.y * 2
+    const flier: Who = { character: 'clawd', colour: '#3FA796', accessory: 'halo', side: 'right', cap: true }
+    const keyOf = (figure: Figure, colour: string): string => Object.entries(figure.palette).find(([, one]) => one === colour)?.[0] ?? '?'
+    const still = giantOf(flier, shapeOf(layout), 'open', 0)
+    const turned = giantOf(flier, shapeOf(layout), 'open', 1)
+    const cap = quartersWith(still, keyOf(still, ACCESSORIES.halo.colour))
+    // Two rows of the scene's over the head (its rows 10, so `k` 5): the cap `▄▄▄` on the head, 6k across, k down, over the head's right; the blade over it.
+    const k = 5
+    const bar = cap.filter(one => one.y >= y0 - k)
+    expect(new Set(bar.map(one => one.y)).size).toBe(k)
+    expect(Math.max(...bar.map(one => one.x)) - Math.min(...bar.map(one => one.x)) + 1).toBe(6 * k)
+    expect(Math.min(...bar.map(one => one.x))).toBeGreaterThan(x0 + layout.body.w)
+    const blade = cap.filter(one => one.y < y0 - 2 * k)
+    expect(blade.length).toBeGreaterThan(0)
+    for (const one of blade) expect(one.y).toBeGreaterThanOrEqual(y0 - 4 * k)
+    expect(turned.bitmap).not.toEqual(still.bitmap)
+    expect(giantOf({ ...flier, cap: undefined }, shapeOf(layout)).bitmap).not.toEqual(still.bitmap)
+    // Its sprite too: the cap and the blade, over its head's right.
+    const sprite = spriteOf(flier, 'open')
+    expect(quartersWith(sprite, keyOf(sprite, ACCESSORIES.halo.colour)).length).toBeGreaterThan(0)
+    // Usagi: the fedora off, the cap between its ears in its brown, the blade over it; nothing of the hat's dark band.
+    const usagiLayout = tvLayoutOf('usagi', 72, 36)!
+    const flying = giantOf({ ...USAGI, cap: true }, shapeOf(usagiLayout), 'open', 0)
+    const brown = quartersWith(flying, keyOf(flying, HATS.fedora.palette.B))
+    expect(brown.length).toBeGreaterThan(0)
+    for (const one of brown) expect(one.y).toBeLessThan((usagiLayout.body.y * 2 + 2) / 2)
+    expect(Object.values(flying.palette)).not.toContain(HATS.fedora.palette.D)
+    expect(giantOf({ ...USAGI, cap: true }, shapeOf(usagiLayout), 'open', 1).bitmap).not.toEqual(flying.bitmap)
+    expect(quartersWith(spriteOf({ ...USAGI, cap: true }, 'open'), 'K').length).toBe(quartersWith(spriteOf(USAGI, 'open'), 'K').length)
   })
 
   test('the sprite: the scene\'s mascot cut to what is drawn; its eye notches filled dark so the pane never shows through; the gaps between its legs left clear', () => {
     const sprite = spriteOf(CLAWD, 'open')
     const extent = extentOf(sprite)
     expect(extent).toEqual({ x: 0, y: 0, w: sprite.bitmap[0]?.length, h: sprite.bitmap.length })
-    // Clawd's eyes: two quarters, now dark; under its body the legs' gaps still clear.
-    expect(quartersWith(sprite, 'K')).toHaveLength(2)
+    // Clawd's eyes: two of the scene's quarters, now dark; under its body the legs' gaps still clear.
+    expect(quartersWith(sprite, 'K')).toHaveLength(2 * SPRITE_RES * SPRITE_RES)
     const legs = sprite.bitmap.at(-1) ?? ''
     expect(legs.includes('.')).toBe(true)
     expect(holesFilled({ bitmap: ['###', '#.#', '###'], palette: { '#': '#000000' } }).bitmap).toEqual(['###', '#K#', '###'])
     expect(holesFilled({ bitmap: ['###', '#.#', '#.#'], palette: { '#': '#000000' } }).bitmap).toEqual(['###', '#.#', '#.#'])
     // Usagi keeps its own eyes.
     expect(quartersWith(spriteOf(USAGI, 'open'), 'K').length).toBeGreaterThan(0)
+    // What it wears flies and grows with it, the scene's symbols too: a flower is there, in its colour, over its head.
+    for (const accessory of ACCESSORY_NAMES) {
+      const flying = spriteOf({ ...CLAWD, accessory }, 'open')
+      const key = Object.entries(flying.palette).find(([, colour]) => colour === ACCESSORIES[accessory].colour)?.[0] ?? '?'
+      const worn = quartersWith(flying, key)
+      expect(worn.length, accessory).toBeGreaterThan(0)
+      for (const one of worn) expect(one.y, accessory).toBeLessThan(2 * SPRITE_RES)
+    }
+    // A bow's middle stays clear, as the scene's `⋈` does: only the body's holes are filled.
+    const bow = spriteOf({ ...CLAWD, accessory: 'bow', side: 'left' }, 'open')
+    expect(quartersWith(bow, 'K')).toHaveLength(2 * SPRITE_RES * SPRITE_RES)
   })
 })
 
 describe('presses and keys', () => {
-  test('on the TV: the ✕ closes; the channel panel\'s knob and ▶ go on a channel, its ◀ back; the scroll panel\'s ▲ and ▼ a row, its knob a glassful; a tab on the glass presses it; the mascot itself is inside; anywhere else outside', () => {
+  test('on the TV: the ✕ closes; on its panel the dial and ▶ go on a channel, ◀ back, ▲ and ▼ a row, the knob a glassful; a tab on the glass presses it; the mascot itself is inside; anywhere else outside', () => {
     const inputs = inputsOf()
     const { layout } = inputs
     const at = (fx: number, fy: number) => tvHitAt(inputs, 0, layout.left + fx, layout.top + fy)
     const text = (row: number) => layout.glass.y + 1 + row
     expect(at(layout.close.x + 1, layout.close.y)).toEqual({ kind: 'close' })
-    // The channel panel (screen 14: a blank, the knob, CH, ◀ ▶).
-    expect(at(layout.channel.x + 1, text(1))).toEqual({ kind: 'channel', by: 1 })
-    expect(at(layout.channel.x, text(4))).toEqual({ kind: 'channel', by: -1 })
-    expect(at(layout.channel.x + layout.channel.w - 1, text(4))).toEqual({ kind: 'channel', by: 1 })
-    // The scroll panel: its knob, then ▲ and ▼.
-    expect(at(layout.scroll.x + 1, text(1))).toEqual({ kind: 'page', by: -1 })
-    expect(at(layout.scroll.x + 1, text(2))).toEqual({ kind: 'page', by: 1 })
-    expect(at(layout.scroll.x + 1, text(3))).toEqual({ kind: 'scroll', by: -1 })
-    expect(at(layout.scroll.x + 1, text(4))).toEqual({ kind: 'scroll', by: 1 })
+    // The panel (screen 14): a blank, the dial, CH, ◀ ▶; a blank, the knob, ▲, ▼; the grille.
+    expect(at(layout.panel.x + 1, text(0))).toEqual({ kind: 'inside' })
+    expect(at(layout.panel.x + 1, text(1))).toEqual({ kind: 'channel', by: 1 })
+    expect(at(layout.panel.x + 3, text(2))).toEqual({ kind: 'channel', by: 1 })
+    expect(at(layout.panel.x, text(4))).toEqual({ kind: 'channel', by: -1 })
+    expect(at(layout.panel.x + layout.panel.w - 1, text(4))).toEqual({ kind: 'channel', by: 1 })
+    expect(at(layout.panel.x + 1, text(6))).toEqual({ kind: 'page', by: -1 })
+    expect(at(layout.panel.x + 1, text(7))).toEqual({ kind: 'page', by: 1 })
+    expect(at(layout.panel.x + 1, text(8))).toEqual({ kind: 'scroll', by: -1 })
+    expect(at(layout.panel.x + 1, text(9))).toEqual({ kind: 'scroll', by: 1 })
+    expect(at(layout.panel.x + 3, text(11))).toEqual({ kind: 'inside' })
+    // Between the glass and the panel: the casing.
+    expect(at(layout.panel.x - 1, text(4))).toEqual({ kind: 'inside' })
     // The tabs on the glass's second row: `Task   [ Trail ]  Said   Agents`.
     expect(at(layout.glass.x + 1, text(1))).toEqual({ kind: 'press', key: 'tab:task' })
     expect(at(layout.glass.x + 1 + 'Task   [ Trail ]  '.length, text(1))).toEqual({ kind: 'press', key: 'tab:said' })
@@ -310,10 +437,10 @@ describe('its life', () => {
     const { layout } = inputs
     const tv = createTv(inputs)
     const posts: TvPost[] = []
-    click(tv, layout.left + layout.channel.x + 1, layout.top + layout.glass.y + 2, posts)
+    click(tv, layout.left + layout.panel.x + 1, layout.top + layout.glass.y + 2, posts)
     expect(posts).toEqual([])
     switchedOn(tv)
-    click(tv, layout.left + layout.channel.x + 1, layout.top + layout.glass.y + 2, posts)
+    click(tv, layout.left + layout.panel.x + 1, layout.top + layout.glass.y + 2, posts)
     keyTv(tv, { key: 'left' }, post => posts.push(post))
     click(tv, layout.left + layout.glass.x + 1, layout.top + layout.glass.y + 2, posts)
     expect(posts).toEqual([{ kind: 'tv', tab: 'said' }, { kind: 'tv', tab: 'task' }, { kind: 'tv', press: 'tab:task' }])
@@ -328,7 +455,7 @@ describe('its life', () => {
     const { layout } = inputs
     const tv = createTv(inputs)
     switchedOn(tv)
-    const down = { x: layout.left + layout.scroll.x + 1, y: layout.top + layout.glass.y + 1 + 4 }
+    const down = { x: layout.left + layout.panel.x + 1, y: layout.top + layout.glass.y + 1 + panelOf(layout.screen).indexOf('down') }
     pointerTv(tv, { type: 'down', ...down, button: 'left' }, () => {})
     expect(tv.scroll).toBe(1)
     for (let ms = 0; ms < REPEAT_DELAY_MS + 2 * REPEAT_MS; ms += TV_FRAME_MS) tickTv(tv, () => {})
@@ -374,6 +501,46 @@ describe('its life', () => {
     expect(tvPostOf({ kind: 'tv', tab: 'said' })).toEqual({ kind: 'tv', tab: 'said' })
     expect(tvPostOf({ kind: 'tv', press: 'cost:opus-5-5' })).toEqual({ kind: 'tv', press: 'cost:opus-5-5' })
     for (const data of [null, 'tv', { kind: 'inspect', id: 'a' }, { kind: 'tv' }, { kind: 'tv', tab: '' }, { kind: 'tv', press: 'x'.repeat(301) }, { kind: 'tv', close: 'yes' }]) expect(tvPostOf(data)).toBe(undefined)
+  })
+})
+
+describe('pressed in flight', () => {
+  test('the scene says a mascot was flying as it was pressed (an Explore agent at work flies), not one on the ground', () => {
+    const world = createWorld(sceneInputs([entry('e', { type: 'Explore', currentTool: 'Read', startedAt: NOW - 60_000 })], { rows: 14 }))
+    ticks(world, 30)
+    const at = pressOn(world, 'e')
+    const posts: unknown[] = []
+    pointer(world, { type: 'down', x: at.x, y: at.y, button: 'left' }, data => posts.push(data))
+    pointer(world, { type: 'up', x: at.x, y: at.y, button: 'left' }, data => posts.push(data))
+    expect(posts).toEqual([expect.objectContaining({ kind: 'inspect', id: 'e', cap: true })])
+    const ground = createWorld(sceneInputs([TYPIST]))
+    ticks(ground, 30)
+    const typist = pressOn(ground, 'a')
+    const heard: unknown[] = []
+    pointer(ground, { type: 'down', x: typist.x, y: typist.y, button: 'left' }, data => heard.push(data))
+    pointer(ground, { type: 'up', x: typist.x, y: typist.y, button: 'left' }, data => heard.push(data))
+    expect(heard).toHaveLength(1)
+    expect((heard[0] as { cap?: unknown }).cap).toBe(undefined)
+  })
+
+  test('its blade turns on the TV\'s clock while it is on, a redraw each turn', () => {
+    const tv = createTv(inputsOf({ ...CLAWD, cap: true }))
+    switchedOn(tv)
+    const spins = new Set<number>()
+    let redraws = 0
+    for (let ms = 0; ms < 4 * BLADE_MS; ms += TV_FRAME_MS) {
+      if (tickTv(tv, () => {})) redraws += 1
+      const look = lookOf(tv)
+      if (look?.form === 'giant') spins.add(look.spin ?? -1)
+    }
+    expect([...spins].sort()).toEqual([0, 1])
+    expect(redraws).toBeGreaterThanOrEqual(3)
+    // On the ground, no blade: nothing turns.
+    const still = createTv(inputsOf())
+    switchedOn(still)
+    for (let frame = 0; frame < 6; frame += 1) tickTv(still, () => {})
+    expect(lookOf(still)).toMatchObject({ form: 'giant' })
+    expect((lookOf(still) as { spin?: number }).spin).toBe(undefined)
   })
 })
 
@@ -553,6 +720,22 @@ describe('in the pane', () => {
     const scene = clients.mascots?.props.props as SceneInputs
     expect(scene.away).toBe(undefined)
     expect(scene.startled?.id).toBe('a')
+    await ui.unmount()
+  })
+
+  test('pressed in flight, the TV wears its propeller cap; another agent from the Agents channel does not', async ($, on) => {
+    arrange(on, [TYPIST])
+    const ui = await mount($, 'terminal', 72, 36)
+    await ui.post({ kind: 'inspect', id: 'a', at: { x: 10, y: 1 }, cap: true }, { in: 'mascots' })
+    expect(((await clientsOf(ui)).tv?.props.props as TvInputs).who.cap).toBe(true)
+    await ui.post({ kind: 'tv', tab: 'agents' }, { in: 'tv' })
+    await ui.redraw()
+    await ui.post({ kind: 'tv', press: 'inspect:main' }, { in: 'tv' })
+    const main = (await clientsOf(ui)).tv?.props.props as TvInputs
+    expect(main.who.crown).toBe(true)
+    expect(main.who.cap).toBe(undefined)
+    await ui.post({ kind: 'inspect', id: 'a', at: { x: 10, y: 1 } }, { in: 'mascots' })
+    expect(((await clientsOf(ui)).tv?.props.props as TvInputs).who.cap).toBe(undefined)
     await ui.unmount()
   })
 

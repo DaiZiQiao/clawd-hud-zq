@@ -46,7 +46,7 @@ export CLAUDE_CODE_PLUGIN_DIRS="$PWD/clawd-hud-zq/mod-hud"
 | `/mod-hud clear` | Drop finished agents from the board. |
 | `/mod-hud facts` | Print the data the HUD draws from, as JSON, and whether rate limits have been seen. |
 
-- Click a mascot (or an agent row) to inspect it: the mascot walks to the pane's centre and grows into a TV of itself, the screen on its forehead showing its tabs (Task, Trail, Said, Agents; the crowned session's Overview, Cost, Agents). The left panel's knob and `◀ ▶` change channel (tab), the right panel's knob and `▲ ▼` scroll (hold `▲ ▼` to keep scrolling), as do the arrow keys and the wheel. Its `✕`, `q` or a click anywhere else switches the screen off and sends it home, shaken for three seconds. Where a surface cannot draw the TV (VS Code, mobile) or the pane is too small, the inspect view takes the scene's place instead; use Back to return.
+- Click a mascot (or an agent row) to inspect it: the mascot walks to the pane's centre and grows into a TV of itself, the screen on its forehead showing its tabs (Task, Trail, Said, Agents; the crowned session's Overview, Cost, Agents). On the panel right of the screen, the dial and `◀ ▶` change channel (tab), and the knob and `▲ ▼` scroll (hold `▲ ▼` to keep scrolling), as do the arrow keys and the wheel. Its `✕`, `q` or a click anywhere else switches the screen off and sends it home, shaken for three seconds. Where a surface cannot draw the TV (VS Code, mobile) or the pane is too small, the inspect view takes the scene's place instead; use Back to return.
 - Grab a mascot by pressing and moving the mouse (or holding for 300 ms), drag it around, and let go to throw it. It flies on with the speed of your pointer, bounces, and lands.
 
 ## Configuration
@@ -67,7 +67,7 @@ Change any option from `/plugin` (select mod-hud, then its settings).
 | `character` | `clawd` | Who the mascots are. `clawd`: Claude Code's Clawd, each agent in its own colour with its role letter and an accessory. `usagi`: Usagi from Chiikawa (fan art), each agent's role shown by its hat and the session's by a crown on the side of its head. |
 | `showWorkflows` | `true` | Track the agents a Workflow run starts and show them under the subagents, in the summary and as mascots. |
 | `inspect` | `true` | A button on every agent row and mascot opens that agent's detail view (the TV, or in place of the scene). |
-| `inspectView` | `tv` | `tv`: an inspected mascot grows into a TV of itself over the pane (terminal and desktop, in a pane of at least 46 columns and 20 rows for Clawd, 48 and 19 for Usagi). `pane`: the inspect view in place of the scene, as before 1.3.0. |
+| `inspectView` | `tv` | `tv`: an inspected mascot grows into a TV of itself over the pane (terminal and desktop, in a pane of at least 42 columns and 20 rows for Clawd, 44 and 19 for Usagi). `pane`: the inspect view in place of the scene, as before 1.3.0. |
 | `wander` | `true` | Mascots between tools walk about their line, hop and, with a spare row above, glide. |
 | `scenes` | `true` | Mascots act out real events: handing a task over, handing a report back, messages, review and fix visits, and a workflow squad's baton. |
 | `collisions` | `rare` | `off`: wanderers that meet step back. `rare`: only two moving mascots collide, falling over dizzy, at most once per pair in 30 s. `normal`: a moving mascot knocks over a standing one too, once per pair in 10 s. In `rare` and `normal` a thrown mascot knocks over whoever it hits. |
@@ -120,7 +120,7 @@ A card at the top of the pane, at most 72 cells wide, then the TODO section, the
 - Flights carry meaning: a web call sends a mascot into the sky, Explore agents scan the floor from above, a reading streak lifts off, finished agents fly out, and the session flies up on a compaction.
 - Collisions (`collisions` setting) knock mascots over, dizzy, before they get up and carry on.
 - Motion is `smooth` (20 fps, mouse grab and throw) or `classic` (4 fps, everywhere).
-- Pressed, a mascot becomes a TV of itself: Clawd's body or Usagi's round head the casing, the screen on its forehead, its eyes (and Usagi's cheeks and mouth) under it, its arms, legs and hat or crown around it. See [the TV](mod-hud/docs/mascots.md#the-tv).
+- Pressed, a mascot becomes a TV of itself, in its own colour and wearing its own accessory, hat or crown (pressed in flight, its propeller cap): Clawd's body or Usagi's round head the casing, the screen on its forehead, its eyes (and Usagi's cheeks and mouth) under it, its arms, legs and what it wears around it. See [the TV](mod-hud/docs/mascots.md#the-tv).
 - `character: usagi` swaps every mascot for Usagi (fan art): pale yellow, its role shown by its hat (worker a construction hat, Explore a fedora, reviewer a mortarboard, debugger a miner's helmet, Plan a top hat, frontend a beret), the session's by a small crown on the side of its head; it shouts `Ura!`, `Yaha!`, `HUHHH?` and `UNA!` where Clawd thinks out loud. See [the mascot docs](mod-hud/docs/mascots.md#usagi).
 
 ## Development

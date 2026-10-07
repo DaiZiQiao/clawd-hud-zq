@@ -1008,12 +1008,13 @@ const SCENE_KEY = 'mascots'
 
 // The TV (hooks/tv-client.tsx): its `Client`'s key, which its posts' `ui.message` names. Module
 // memory, never state, for what only its drawing reads: where the pressed mascot stood (the
-// scene's click says, in the scene's cells) for it to fly from; what each surface's glass can
+// scene's click says, in the scene's cells) for it to fly from, and whether it was flying (its
+// propeller cap on, the TV wearing it too); what each surface's glass can
 // press, by key, from its last drawing; the surfaces it is up on and the pane's last scroll
 // handed to it; the surfaces it failed on (the pane's own view there); and the mascot back
 // from it, shaken till STARTLED_MS after.
 const TV_KEY = 'tv'
-let tvFrom: { id: string; x: number; y: number } | undefined
+let tvFrom: { id: string; x: number; y: number; cap?: true } | undefined
 const tvPresses = new Map<string, Map<string, () => void>>()
 const tvUp = new Set<string>()
 let tvWheel: { seq: number; by: number; page?: true } = { seq: 0, by: 0 }
@@ -1022,15 +1023,15 @@ let startled: { id: string; at: number } | undefined
 // Where the smooth scene's region starts in each surface's pane, from its last drawing: a click's cells from there.
 const sceneTops = new Map<string, number>()
 
-/** A click's post from the scene's surface module: `{ kind: 'inspect', id, at }` (where the mascot stood, in its region's cells), or undefined for anything else. */
-const inspectAsk = (data: unknown): { id: string; at?: { x: number; y: number } } | undefined => {
+/** A click's post from the scene's surface module: `{ kind: 'inspect', id, at, cap }` (where the mascot stood, in its region's cells; whether it was flying), or undefined for anything else. */
+const inspectAsk = (data: unknown): { id: string; at?: { x: number; y: number }; cap?: true } | undefined => {
   if (typeof data !== 'object' || data === null) return undefined
-  const { kind, id, at } = data as { kind?: unknown; id?: unknown; at?: unknown }
+  const { kind, id, at, cap } = data as { kind?: unknown; id?: unknown; at?: unknown; cap?: unknown }
   if (kind !== 'inspect' || typeof id !== 'string' || id === '' || id.length > 200) return undefined
   const { x, y } = (typeof at === 'object' && at !== null ? at : {}) as { x?: unknown; y?: unknown }
   const placed = typeof x === 'number' && typeof y === 'number' && Number.isFinite(x) && Number.isFinite(y) && Math.abs(x) < 10_000 && Math.abs(y) < 10_000
 
-  return placed ? { id, at: { x: Math.round(x), y: Math.round(y) } } : { id }
+  return { id, ...(placed ? { at: { x: Math.round(x), y: Math.round(y) } } : {}), ...(cap === true ? { cap: true as const } : {}) }
 }
 
 const HUD_TABS: readonly HudTab[] = ['task', 'trail', 'said', 'agents', 'overview', 'cost']
@@ -1608,7 +1609,7 @@ export const register: Register = (on, options) => {
     const ask = inspectAsk(e.data)
     if (settings.inspect && settings.mascots && e.element === SCENE_KEY && ask !== undefined) {
       const asked = ask.id
-      tvFrom = ask.at === undefined ? undefined : { id: asked, ...ask.at }
+      tvFrom = ask.at === undefined ? undefined : { id: asked, ...ask.at, ...(ask.cap === true ? { cap: true as const } : {}) }
       await quietly($, async () => {
         // The crowned mascot is the session's own.
         if (asked === 'main') return selectAgent($, { id: 'main', kind: 'main' })
@@ -1887,12 +1888,14 @@ export const register: Register = (on, options) => {
       const offset = e.props.scroll.offset
       const top = sceneTops.get(e.surface)
       const from = tvFrom?.id === choice.id && top !== undefined ? { x: tvFrom.x, y: top + tvFrom.y - offset } : undefined
+      // Pressed in flight, it wears its propeller cap in the TV too.
+      const flying = tvFrom?.id === choice.id && tvFrom.cap === true
       const mascots = settings.mascots ? sceneOf(list, hudData, now, { stalledMs: settings.stalledMs, main, shadows: workflow, scenes: settings.scenes, character: settings.character }) : undefined
       const inputs: TvInputs = {
         columns,
         rows: bodyRows,
         layout: tvRoom,
-        who: tvWhoOf(choice, mascots, settings.character),
+        who: { ...tvWhoOf(choice, mascots, settings.character), ...(flying ? { cap: true as const } : {}) },
         head,
         body: budgeted(head, body),
         tabs: [...tabs],

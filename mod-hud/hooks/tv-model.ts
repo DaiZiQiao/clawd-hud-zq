@@ -3,10 +3,10 @@ import { displayWidth } from './text-width'
 import type { Box, Eyes, Who } from './tv-figure'
 
 // The TV a pressed mascot becomes (hooks/tv-figure.ts draws the mascot): its
-// room in the pane, the TV on its forehead (the glass and a panel either
-// side, the same width, so the casing shows as much left as right), what a
-// press or a key does there, how far the glass scrolls, and how it all looks
-// through the animations, frame by frame. Its surface module
+// room in the pane, the TV on its forehead (the glass, and its controls in
+// one panel on its right; the casing shows as much left of the TV as right),
+// what a press or a key does there, how far the glass scrolls, and how it all
+// looks through the animations, frame by frame. Its surface module
 // (hooks/tv-client.tsx) runs them on its own frame clock; the hooks hand it
 // the rows to show and hear back a press, a channel or a close.
 
@@ -24,9 +24,9 @@ export const TV_MAX_WIDTH = 76
 /**
  * Where the TV stands: the figure's box in the region (the pane's body as
  * shown), and in the figure its body (the casing), the TV on its forehead
- * (the glass and both panels), the glass (a rounded row above and below its
- * text), each panel, and the ✕'s three cells; the glass's text columns (a
- * scrollbar right of them) and rows.
+ * (the glass and its panel), the glass (a rounded row above and below its
+ * text), the panel of controls right of it, and the ✕'s three cells; the
+ * glass's text columns (a scrollbar right of them) and rows.
  */
 export type TvLayout = {
   character: 'clawd' | 'usagi'
@@ -37,8 +37,7 @@ export type TvLayout = {
   body: Box
   tv: Box
   glass: Box
-  channel: Box
-  scroll: Box
+  panel: Box
   close: { x: number; y: number }
   content: number
   screen: number
@@ -47,18 +46,22 @@ export type TvLayout = {
 /**
  * The TV for a region of `columns` by `rows`, centred: undefined when the
  * glass would hold fewer than TV_MIN_SCREEN rows or TV_MIN_CONTENT columns.
- * Clawd: its crown or accessory over three rows, its body (a row, the TV,
- * a row, its eyes over three, its torso over two, its arms out of it), its
- * legs over two. Usagi: its ears and hat over four rows, its round body (a
- * round row, a row, the TV, a row, its eyes, its cheeks and mouth, a round
- * row), its feet. The TV is the glass with a panel either side, a cell apart.
+ * Clawd: its crown or accessory over three rows or more, its body (a row, the
+ * TV, a row, its eyes over three, its torso over two, its arms out of it),
+ * its legs over two. Usagi: its ears and hat over four rows or more, its
+ * round body (a round row, a row, the TV, a row, its eyes, its cheeks and
+ * mouth, a round row), its feet. The rows the glass leaves go over the head,
+ * as many as blowing the scene's mascot up evenly takes: Clawd's hat `k` rows
+ * when its head is 12k quarters across, Usagi's ears 1.5k rows when its face
+ * is 14k. The TV is the glass with its panel on its right, a cell apart, as
+ * wide of the casing left of it as right.
  */
 export const tvLayoutOf = (character: 'clawd' | 'usagi', columns: number, rows: number): TvLayout | undefined => {
   const across = Math.floor(columns)
   const down = Math.floor(rows)
   if (!Number.isFinite(across) || !Number.isFinite(down)) return undefined
   const width = Math.min(across - 2, TV_MAX_WIDTH)
-  const panel = width >= 60 ? 5 : 4
+  const panel = width >= 60 ? 7 : 5
   const usagi = character === 'usagi'
   // Rows besides the glass's text: Clawd 14 (3 + 9 + 2, the glass's two round rows among them), Usagi 13 (4 + 8 + 1).
   const around = usagi ? 13 : 14
@@ -66,14 +69,19 @@ export const tvLayoutOf = (character: 'clawd' | 'usagi', columns: number, rows: 
   if (screen < TV_MIN_SCREEN) return undefined
   const arm = usagi ? 3 : width >= 60 ? 4 : 3
   const margin = usagi ? 3 : 2
-  const body: Box = { x: arm, y: usagi ? 4 : 3, w: width - 2 * arm, h: screen + (usagi ? 8 : 9) }
-  const glassW = body.w - 2 * margin - 2 * panel - 2
+  const bodyW = width - 2 * arm
+  // Over the head: its least, and the rows the glass leaves, up to the scene's proportions (Clawd's hat k rows to a body of 12k quarters, Usagi's ears 1.5k to 14k).
+  const least = usagi ? 4 : 3
+  const most = Math.max(least, usagi ? Math.floor((3 * bodyW) / 14) : Math.floor(bodyW / 6))
+  const over = Math.min(most, least + Math.max(0, down - 1 - around - screen))
+  const body: Box = { x: arm, y: over, w: bodyW, h: screen + (usagi ? 8 : 9) }
+  const glassW = body.w - 2 * margin - panel - 1
   const content = glassW - 2
   if (content < TV_MIN_CONTENT) return undefined
   const tvTop = body.y + (usagi ? 2 : 1)
-  const glass: Box = { x: body.x + margin + panel + 1, y: tvTop, w: glassW, h: screen + 2 }
-  const tv: Box = { x: body.x + margin, y: tvTop, w: glassW + 2 * panel + 2, h: screen + 2 }
-  const height = screen + around
+  const tv: Box = { x: body.x + margin, y: tvTop, w: glassW + 1 + panel, h: screen + 2 }
+  const glass: Box = { x: tv.x, y: tvTop, w: glassW, h: screen + 2 }
+  const height = screen + around + over - least
 
   return {
     character,
@@ -84,8 +92,7 @@ export const tvLayoutOf = (character: 'clawd' | 'usagi', columns: number, rows: 
     body,
     tv,
     glass,
-    channel: { x: tv.x, y: tvTop, w: panel, h: glass.h },
-    scroll: { x: glass.x + glassW + 1, y: tvTop, w: panel, h: glass.h },
+    panel: { x: glass.x + glassW + 1, y: tvTop, w: panel, h: glass.h },
     close: { x: body.x + body.w - (usagi ? 5 : 4), y: body.y + (usagi ? 1 : 0) },
     content,
     screen,
@@ -209,23 +216,31 @@ export const channelOf = (inputs: Pick<TvInputs, 'tabs' | 'tab'>, by: number): s
   return inputs.tabs[(((at + by) % count) + count) % count]
 }
 
-// --- the panels ----------------------------------------------------------------------
+// --- the panel ------------------------------------------------------------------------
 
 /**
- * A panel's rows, by the glass's text rows: the channel panel's knob (two
- * rows), its `CH` and its `◀ ▶`; the scroll panel's knob, its `▲` and its
- * `▼`; a grille under both.
+ * The panel's rows, by the glass's text rows, top down: the channel dial (two
+ * rows), its `CH` and its `◀ ▶`; the scroll knob (two rows), its `▲` and its
+ * `▼`; a grille under them.
  */
-export type PanelPart = 'blank' | 'knob-top' | 'knob-bottom' | 'label' | 'arrows' | 'up' | 'down' | 'grille'
+export type PanelPart = 'blank' | 'dial-top' | 'dial-bottom' | 'label' | 'arrows' | 'knob-top' | 'knob-bottom' | 'up' | 'down' | 'grille'
 
-export const channelPanelOf = (screen: number): PanelPart[] => partsOf(screen, ['knob-top', 'knob-bottom', 'label', 'arrows'])
-export const scrollPanelOf = (screen: number): PanelPart[] => partsOf(screen, ['knob-top', 'knob-bottom', 'up', 'down'])
+type PanelSlot = Exclude<PanelPart, 'blank' | 'grille'> | 'lead' | 'gap'
 
-const partsOf = (screen: number, controls: readonly PanelPart[]): PanelPart[] => {
-  const lead: PanelPart[] = screen >= 7 ? ['blank'] : []
-  const top = [...lead, ...controls]
+/** The panel's controls top down: a blank row atop (`lead`) and one between the channel's and the scroll's (`gap`). */
+const PANEL_ORDER: readonly PanelSlot[] = ['lead', 'dial-top', 'dial-bottom', 'label', 'arrows', 'gap', 'knob-top', 'knob-bottom', 'up', 'down']
 
-  return Array.from({ length: screen }, (_, row) => top[row] ?? ((row - top.length) % 2 === 1 ? 'grille' : 'blank'))
+/** What a short glass keeps of them, first first: `◀ ▶`, `▲` and `▼`; the dial; `CH`; the knob; the blank rows. */
+const PANEL_KEPT: readonly (readonly PanelSlot[])[] = [['arrows', 'up', 'down'], ['dial-top', 'dial-bottom'], ['label'], ['knob-top', 'knob-bottom'], ['gap'], ['lead']]
+
+/** The panel for a glass of `screen` text rows: as many of its controls as fit, in order, and the grille under them. */
+export const panelOf = (screen: number): PanelPart[] => {
+  const room = Math.max(0, Math.floor(screen))
+  const kept = new Set<PanelSlot>()
+  for (const group of PANEL_KEPT) if (kept.size + group.length <= room) group.forEach(slot => kept.add(slot))
+  const controls = PANEL_ORDER.filter(slot => kept.has(slot)).map((slot): PanelPart => (slot === 'lead' || slot === 'gap' ? 'blank' : slot))
+
+  return Array.from({ length: room }, (_, row) => controls[row] ?? ((row - controls.length) % 2 === 1 ? 'grille' : 'blank'))
 }
 
 // --- presses ---------------------------------------------------------------------------
@@ -254,7 +269,7 @@ export const pressAt = (row: TvRow, column: number): string | undefined => {
 
 /**
  * What a press at a cell of the region lands on: the ✕ (or the cell round
- * it); a panel's control; the scrollbar (a glassful up above its thumb, down
+ * it); a control on the panel; the scrollbar (a glassful up above its thumb, down
  * below it); a press on the glass's rows; the mascot (`inside`: its body, and
  * whatever `drawn` says is its: its arms, legs, ears and hat); else outside,
  * which closes the TV.
@@ -267,21 +282,25 @@ export const tvHitAt = (inputs: TvInputs, scroll: number, x: number, y: number, 
   const row = fy - layout.glass.y - 1
   const onText = row >= 0 && row < layout.screen
   const within = (box: Box): boolean => fx >= box.x && fx < box.x + box.w
-  if (onText && within(layout.channel)) {
-    const part = channelPanelOf(layout.screen)[row]
-    if (part === 'knob-top' || part === 'knob-bottom') return { kind: 'channel', by: 1 }
-    if (part === 'arrows' || part === 'label') return { kind: 'channel', by: fx < layout.channel.x + layout.channel.w / 2 ? -1 : 1 }
-
-    return { kind: 'inside' }
-  }
-  if (onText && within(layout.scroll)) {
-    const part = scrollPanelOf(layout.screen)[row]
-    if (part === 'up') return { kind: 'scroll', by: -1 }
-    if (part === 'down') return { kind: 'scroll', by: 1 }
-    if (part === 'knob-top') return { kind: 'page', by: -1 }
-    if (part === 'knob-bottom') return { kind: 'page', by: 1 }
-
-    return { kind: 'inside' }
+  if (onText && within(layout.panel)) {
+    switch (panelOf(layout.screen)[row]) {
+      case 'dial-top':
+      case 'dial-bottom':
+        return { kind: 'channel', by: 1 }
+      case 'label':
+      case 'arrows':
+        return { kind: 'channel', by: fx < layout.panel.x + layout.panel.w / 2 ? -1 : 1 }
+      case 'knob-top':
+        return { kind: 'page', by: -1 }
+      case 'knob-bottom':
+        return { kind: 'page', by: 1 }
+      case 'up':
+        return { kind: 'scroll', by: -1 }
+      case 'down':
+        return { kind: 'scroll', by: 1 }
+      default:
+        return { kind: 'inside' }
+    }
   }
   if (onText && fx === layout.glass.x + layout.glass.w - 1) {
     const thumb = thumbOf(inputs, scroll)
@@ -366,11 +385,12 @@ export type Glass =
 /**
  * One frame of the TV: the mascot as its sprite (flying, `travel` of the way
  * from its place to the centre, at `scale` from its own size to the giant's)
- * or as the giant with its glass; its eyes; the desktop's dim over the pane.
+ * or as the giant with its glass (a propeller cap's blade turned `spin`
+ * frames); its eyes; the desktop's dim over the pane.
  */
 export type TvLook =
   | { form: 'sprite'; travel: number; scale: number; eyes: Eyes; scrim: number }
-  | { form: 'giant'; glass: Glass; eyes: Eyes; scrim: number }
+  | { form: 'giant'; glass: Glass; eyes: Eyes; scrim: number; spin?: number }
 
 /** Easing for a move: quick out, slow in. */
 export const easeOut = (t: number): number => 1 - (1 - t) * (1 - t)
