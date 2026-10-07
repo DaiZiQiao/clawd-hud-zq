@@ -805,6 +805,23 @@ describe('the session tab', () => {
     expect(rows.join(' ').replace(/\s+/g, ' ')).toContain(COST_ESTIMATE_NOTE)
   })
 
+  test('a user\'s cost stays in its column whatever script its detail is in', () => {
+    const users = [
+      { key: 'main', label: 'main', usd: 1 },
+      { key: 'sub-1', label: 'Explore', detail: '找出所有的中文注释 🎉', usd: 1 },
+      { key: 'sub-2', label: 'frontend', detail: 'Café menu 🍰 for the 東京 branch', usd: 1 },
+    ]
+    for (const columns of [72, 48]) {
+      const rows = inspectLines(costRows({ totalUsd: 3, models: [{ model: 'haiku-4-5', usd: 3, share: 1, priced: true, users }] }, columns, new Set(['haiku-4-5'])))
+      const shown = rows.filter(row => row.startsWith('  • '))
+      expect(shown).toHaveLength(3)
+      for (const row of shown) {
+        expect(row, `@${columns}`).toMatch(/ \$1\.00$/)
+        expect(displayWidth(row), `@${columns}: ${row}`).toBe(displayWidth(shown[0] ?? ''))
+      }
+    }
+  })
+
   test('/clear empties the ledger and keeps the lists\' expansion; another end keeps both', async ($, on) => {
     const { held, world, clock } = arrange(on)
     await $.session.start(START)

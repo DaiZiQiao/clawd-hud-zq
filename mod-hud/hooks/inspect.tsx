@@ -3,7 +3,7 @@ import type { ButtonProps, ElementConstructor, RenderElement } from 'claude-code
 import type { HudDetailFacts, HudSelection, HudTab, HudTokenFacts, HudTrailStep } from '../types'
 import type { CostModel, RunCounts } from './hud-ledger'
 import { formatCost, formatTokens } from './hud'
-import { displayWidth, truncate } from './text-width'
+import { displayWidth, padEnd, truncate } from './text-width'
 import type { HudElements } from './hud'
 import { renderTextRow } from './text-svg'
 import type { TextCell } from './text-svg'
@@ -587,7 +587,7 @@ export const costRows = (view: CostView, columns: number, expanded: ReadonlySet<
 
       return {
         key: `cost:${model.model}:${user.key}`,
-        cells: [dim('  • '), { text: shownName }, dim(rest.padEnd(userWidth - displayWidth(shownName))), { text: (model.priced ? formatCost(user.usd * scale) : '—').padStart(COST_WIDTH) }],
+        cells: [dim('  • '), { text: shownName }, dim(padEnd(rest, userWidth - displayWidth(shownName))), { text: (model.priced ? formatCost(user.usd * scale) : '—').padStart(COST_WIDTH) }],
       }
     })]
   })
