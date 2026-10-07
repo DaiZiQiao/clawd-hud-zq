@@ -187,12 +187,12 @@ export const complete = ($: Engine, agentId: string, extra: Record<string, unkno
 export const callTool = ($: Engine, agentId: string | undefined, tool = 'Bash') =>
   $.tool.call({ tool, command: 'ls', ...(agentId === undefined ? {} : { agentId }) } as never)
 
-export const mountPane = ($: Engine, surface: 'terminal' | 'desktop' = 'terminal', bodyColumns = 100) =>
+export const mountPane = ($: Engine, surface: 'terminal' | 'desktop' = 'terminal', bodyColumns = 100, bodyRows?: number) =>
   $.ui.mount({
     plugin: 'mod-hud',
     surface,
     component: 'Pane',
-    props: { ...PANE_PROPS, bodyColumns },
+    props: { ...PANE_PROPS, bodyColumns, ...(bodyRows === undefined ? {} : { scroll: { offset: 0, bodyRows } }) },
     requestId: PANE,
     viewport: VIEWPORT,
   })

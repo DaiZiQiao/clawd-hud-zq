@@ -440,6 +440,8 @@ export type SessionOverview = {
   asks: number
   failures: { denied: number; error: number }
   runs: RunCounts
+  /** Distinct files the main loop edited this conversation (moved here from the HUD in 1.2.0). */
+  edited?: number
 }
 
 const LABEL = 9
@@ -508,6 +510,7 @@ export const overviewRows = (view: SessionOverview, columns: number): InspectRow
       view.turns === undefined ? '0 turns' : `${view.turns} turn${view.turns === 1 ? '' : 's'}`,
       view.compactions === 0 ? 'no compactions' : `${view.compactions} compaction${view.compactions === 1 ? '' : 's'}`,
       view.compactions > 0 && view.sinceCompaction !== undefined ? `last ${agoOf(view.sinceCompaction)} ago` : '',
+      view.edited !== undefined && view.edited > 0 ? `${view.edited} file${view.edited === 1 ? '' : 's'} edited` : '',
     ], columns),
     ...labelled('context', 'context', [
       used ?? '—',

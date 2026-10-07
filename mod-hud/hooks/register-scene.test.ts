@@ -237,7 +237,7 @@ const sceneColours = async (ui: Drawing): Promise<Set<string>> => {
 }
 
 describe('in the pane', () => {
-  test('HUD, TODO, agents, then the scene: three running agents at 72×30, none at 72×12', { options: { wander: false, motion: 'classic' } }, async ($, on) => {
+  test('HUD, TODO, agents, then the scene: three running agents at 72×36, none at 72×12', { options: { wander: false, motion: 'classic' } }, async ($, on) => {
     const { clock, held } = arrange(on)
     await $.session.start(START)
     await clock.settle()
@@ -248,15 +248,15 @@ describe('in the pane', () => {
     for (const type of ['Explore', 'general-purpose', 'Explore']) await spawn($, type)
     // Past their arrival: all three stand in their slots, thinking (quiet under six seconds, so not idle yet).
     await clock.advance(5 * SECOND)
-    const hudRows = hudLines({ ...idleHud, motto: undefined, now: clock.now() }, { columns: 72, rows: 30, isNarrow: false }).length
+    const hudRows = hudLines({ ...idleHud, motto: undefined, now: clock.now() }, { columns: 72, rows: 36, isNarrow: false }).length
 
     for (const surface of SURFACES) {
-      const ui = await mountPane($, surface, 72, 30)
+      const ui = await mountPane($, surface, 72, 36)
       expect(await orderOf(ui)).toEqual(['hud', 'todos', 'agents', 'mascots'])
-      // The scene stands in what is left: 30 rows, less the HUD and its blank
+      // The scene stands in what is left (the 1.2.0 HUD is taller): 36 rows, less the HUD and its blank
       // row, the TODO section (header, five items) and its blank row, the
       // header and three agents, and the blank row above the scene.
-      const spare = 30 - (hudRows + 1) - (6 + 1) - 4 - 1
+      const spare = 36 - (hudRows + 1) - (6 + 1) - 4 - 1
       const rows = await sceneRows(ui)
       expect(spare).toBeGreaterThanOrEqual(4)
       // One line of four rows, and the sky row above it while a thought's (hmm) floats there.

@@ -110,6 +110,26 @@ export const parseGitStatus = (stdout: string): GitReading => {
   return defined({ branch, dirty, added, deleted, ahead, behind })
 }
 
+/** `git diff --shortstat HEAD`: the lines inserted and deleted (each 0 when the line leaves it out); undefined for anything else. */
+export const parseShortstat = (stdout: string): { linesAdded: number; linesDeleted: number } | undefined => {
+  const text = stdout.trim()
+  if (text === '') return { linesAdded: 0, linesDeleted: 0 }
+  if (!/files? changed/.test(text)) return undefined
+  const added = /(\d+) insertions?\(\+\)/.exec(text)
+  const deleted = /(\d+) deletions?\(-\)/.exec(text)
+
+  return { linesAdded: added === null ? 0 : Number(added[1]), linesDeleted: deleted === null ? 0 : Number(deleted[1]) }
+}
+
+/** `git log -1 --format=%ct`: the commit time in milliseconds; undefined for anything else. */
+export const parseCommitTime = (stdout: string): number | undefined => {
+  const text = stdout.trim()
+  if (!/^\d+$/.test(text)) return undefined
+  const ms = Number(text) * 1000
+
+  return ms > 0 ? ms : undefined
+}
+
 /** The held facts when the reading says the same, else the reading stamped `now`. */
 export const gitFactsOf = (held: HudGitFacts, reading: GitReading, now: number): HudGitFacts => {
   const { at: _at, ...last } = held
@@ -211,6 +231,50 @@ export const effortFromSettings = (settings: Settings | undefined, model: string
   return effortOf(settings?.effortLevel)
 }
 
+// --- the prompt cache ----------------------------------------------------------
+
+/** The prompt cache's lifetimes, in milliseconds. */
+export const CACHE_TTL_MS: Readonly<Record<'5m' | '1h', number>> = { '5m': 5 * 60_000, '1h': 60 * 60_000 }
+
+const isOn = (value: string | undefined): boolean => value !== undefined && /^(?:1|true|yes|on)$/i.test(value.trim())
+const isSet = (value: string | undefined): boolean => value !== undefined && value.trim() !== ''
+const ttlIn = (value: unknown): '5m' | '1h' | undefined => (value === '5m' || value === '1h' ? value : undefined)
+
+/** The environment variables `cacheTtlOf` reads. */
+export const CACHE_ENV = [
+  'DISABLE_PROMPT_CACHING',
+  'FORCE_PROMPT_CACHING_5M',
+  'CLAUDE_CODE_PROMPT_CACHE_TTL',
+  'ENABLE_PROMPT_CACHING_1H',
+  'ANTHROPIC_API_KEY',
+  'ANTHROPIC_AUTH_TOKEN',
+  'ANTHROPIC_BASE_URL',
+  'CLAUDE_CODE_USE_BEDROCK',
+  'CLAUDE_CODE_USE_VERTEX',
+  'CLAUDE_CODE_USE_FOUNDRY',
+] as const
+
+/**
+ * The main conversation's prompt-cache TTL, inferred the way the engine picks
+ * it: `off` with DISABLE_PROMPT_CACHING; 5m with FORCE_PROMPT_CACHING_5M;
+ * else CLAUDE_CODE_PROMPT_CACHE_TTL, else the `promptCacheTtl` setting; 1h
+ * with ENABLE_PROMPT_CACHING_1H; else automatic: 1h on a Claude subscription
+ * (no API key or auth token, no base URL, not Bedrock, Vertex or Foundry),
+ * 5m otherwise. A subscription drawing on usage credits past its limits drops
+ * to 5m, which nothing the mod can read shows: then this still says 1h.
+ */
+export const cacheTtlOf = (env: Readonly<Record<string, string | undefined>>, setting: unknown): '5m' | '1h' | 'off' => {
+  if (isOn(env.DISABLE_PROMPT_CACHING)) return 'off'
+  if (isOn(env.FORCE_PROMPT_CACHING_5M)) return '5m'
+  const chosen = ttlIn(env.CLAUDE_CODE_PROMPT_CACHE_TTL?.trim()) ?? ttlIn(setting)
+  if (chosen !== undefined) return chosen
+  if (isOn(env.ENABLE_PROMPT_CACHING_1H)) return '1h'
+  const viaApi = isSet(env.ANTHROPIC_API_KEY) || isSet(env.ANTHROPIC_AUTH_TOKEN) || isSet(env.ANTHROPIC_BASE_URL)
+    || isOn(env.CLAUDE_CODE_USE_BEDROCK) || isOn(env.CLAUDE_CODE_USE_VERTEX) || isOn(env.CLAUDE_CODE_USE_FOUNDRY)
+
+  return viaApi ? '5m' : '1h'
+}
+
 // --- usage -------------------------------------------------------------------
 
 const RATE_LIMIT_KINDS: readonly HudRateLimitFact['kind'][] = ['five_hour', 'seven_day', 'spend_limit']
@@ -284,9 +348,11 @@ export const counted = (value: unknown): number => {
 
 /**
  * One response's token counts (a request's, a compaction's) added to the
- * session's; the usage as it was when the response reported none.
+ * session's; the usage as it was when the response reported none. With
+ * `mainAt` (a main-loop request, answered then) the prompt cache's clock
+ * restarts and the turn's own tokens count it too.
  */
-export const addTokens = (usage: HudUsageFacts, spent: ModelUsage | null | undefined): HudUsageFacts => {
+export const addTokens = (usage: HudUsageFacts, spent: ModelUsage | null | undefined, mainAt?: number): HudUsageFacts => {
   if (spent === null || spent === undefined) return usage
   const more: HudTokenFacts = {
     input: counted(spent.input_tokens),
@@ -296,9 +362,13 @@ export const addTokens = (usage: HudUsageFacts, spent: ModelUsage | null | undef
   }
   if (more.input + more.output + more.cacheRead + more.cacheWrite === 0) return usage
   const held = usage.tokens ?? NO_TOKENS
+  const main = finite(mainAt) === undefined
+    ? {}
+    : { mainRequestAt: mainAt, turnTokens: (usage.turnTokens ?? 0) + more.input + more.cacheWrite + more.output }
 
   return {
     ...usage,
+    ...main,
     tokens: {
       input: held.input + more.input,
       output: held.output + more.output,
@@ -313,9 +383,10 @@ export const afterCompaction = (usage: HudUsageFacts): HudUsageFacts =>
   defined({ ...usage, compactions: usage.compactions + 1, contextTokens: undefined, contextPercent: undefined })
 
 /**
- * A `/clear`: the conversation's compactions, context fill, tokens, turns and
- * context samples start over; the window, the rate limits (and their samples)
- * and the cost stay.
+ * A `/clear`: the conversation's compactions, context fill, tokens, turns,
+ * context samples, last turn and cache clock start over; the window, the
+ * rate limits (and their samples) and the cost stay, the next turn's cost
+ * measured from it.
  */
 export const afterClear = (usage: HudUsageFacts): HudUsageFacts =>
   defined({
@@ -327,6 +398,11 @@ export const afterClear = (usage: HudUsageFacts): HudUsageFacts =>
     turns: undefined,
     busyMs: undefined,
     contextSamples: undefined,
+    mainRequestAt: undefined,
+    turnTokens: undefined,
+    lastTurn: undefined,
+    // The next turn's cost runs from here.
+    costAtTurnEnd: usage.costUsd,
   })
 
 // --- the session's pace --------------------------------------------------------
@@ -340,17 +416,30 @@ export const CONTEXT_SAMPLES = 11
 export const LIMIT_WINDOW_MS = 30 * 60_000
 const LIMIT_SAMPLES_MAX = 32
 
-/** A main turn ended after `durationMs`: one more turn, its time busy, and the context's tokens sampled when known. */
+/**
+ * A main turn ended after `durationMs`: one more turn, its time busy, the
+ * context's tokens sampled when known, and the turn kept as `lastTurn` (what
+ * the session spent since the turn before ended, how long it ran, its tokens).
+ */
 export const afterMainTurn = (usage: HudUsageFacts, durationMs?: number): HudUsageFacts => {
   const tokens = finite(usage.contextTokens)
   const samples = tokens === undefined ? usage.contextSamples : [...(usage.contextSamples ?? []), Math.floor(tokens)].slice(-CONTEXT_SAMPLES)
   const spent = finite(durationMs)
+  const cost = finite(usage.costUsd)
+  const lastTurn = defined({
+    costUsd: cost === undefined ? undefined : Math.max(0, cost - (usage.costAtTurnEnd ?? 0)),
+    durationMs: spent === undefined || spent <= 0 ? undefined : Math.round(spent),
+    tokens: usage.turnTokens,
+  })
 
   return defined({
     ...usage,
     turns: (usage.turns ?? 0) + 1,
     busyMs: spent === undefined || spent <= 0 ? usage.busyMs : (usage.busyMs ?? 0) + Math.round(spent),
     contextSamples: samples,
+    costAtTurnEnd: cost ?? usage.costAtTurnEnd,
+    turnTokens: undefined,
+    lastTurn: Object.keys(lastTurn).length === 0 ? undefined : lastTurn,
   })
 }
 
@@ -531,21 +620,30 @@ export const inventoryOf = (breakdown: SessionContextBreakdown | undefined, now:
 
 // --- the renderer's input ----------------------------------------------------
 
-/** What the renderer draws, from the facts as held and the time now. */
-export const assembleHudData = (facts: HudFacts, now: number): HudData => {
+/**
+ * What the renderer draws, from the facts as held and the time now. The
+ * prompt cache's TTL is `cacheTtl` (the option) unless that is `auto`, when
+ * the one inferred at start stands; the cache is drawn once a main request
+ * answered under a TTL that is not `off`.
+ */
+export const assembleHudData = (facts: HudFacts, now: number, cacheTtl: 'auto' | '5m' | '1h' = 'auto'): HudData => {
   const { at: _gitAt, ...git } = facts.git
+  const { cacheTtl: _ttl, ...session } = facts.session
   const current = facts.tools.current
   // The Session tab's counts are not the HUD's to draw; the samples are: the
   // context's for the ctx row's runway, the limits' for the alert strip's ETA.
-  const { turns: _turns, busyMs: _busyMs, contextSamples, limitSamples, ...usage } = facts.usage
+  const { turns: _turns, busyMs: _busyMs, mainRequestAt: _at, turnTokens: _turnTokens, costAtTurnEnd: _costAt, contextSamples, limitSamples, lastTurn, ...usage } = facts.usage
   const edited = facts.tools.edited?.length ?? 0
+  const ttl = cacheTtl === 'auto' ? facts.session.cacheTtl : cacheTtl
+  const cacheAt = facts.usage.mainRequestAt
 
   return {
-    session: defined({ ...facts.session }),
+    session: defined({ ...session }),
     usage: defined({
       ...usage,
       rateLimits: [...usage.rateLimits],
       tokens: usage.tokens === undefined ? undefined : { ...usage.tokens },
+      lastTurn: lastTurn === undefined ? undefined : { ...lastTurn },
       contextSamples: contextSamples === undefined || contextSamples.length === 0 ? undefined : [...contextSamples],
       limitSamples: limitSamples === undefined
         ? undefined
@@ -559,6 +657,7 @@ export const assembleHudData = (facts: HudFacts, now: number): HudData => {
     }),
     todos: { items: facts.todos.items.map(item => defined({ ...item })) },
     inventory: defined({ mcpServers: [...facts.inventory.mcpServers], skills: facts.inventory.skills, compactAt: facts.inventory.compactAt }),
+    ...(cacheAt !== undefined && (ttl === '5m' || ttl === '1h') ? { cache: { ttl, lastAt: cacheAt } } : {}),
     now,
   }
 }

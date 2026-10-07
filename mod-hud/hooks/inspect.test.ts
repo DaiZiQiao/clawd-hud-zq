@@ -716,6 +716,13 @@ describe('the session tab', () => {
     expect(inspectLines(rows)).toContain('asks     2 waiting')
   })
 
+  test('the files the main loop edited, moved off the HUD in 1.2.0, count on the turns row; none, nothing', () => {
+    const view = { compactions: 3, turns: 12, limits: [], asks: 0, failures: { denied: 0, error: 0 }, runs: { spawned: 0, running: 0, done: 0, failed: 0, ms: 0 } }
+    expect(inspectLines(overviewRows({ ...view, edited: 7 }, 72))).toContain('turns    12 turns · 3 compactions · 7 files edited')
+    expect(inspectLines(overviewRows({ ...view, edited: 1 }, 72))).toContain('turns    12 turns · 3 compactions · 1 file edited')
+    expect(inspectLines(overviewRows(view, 72))).toContain('turns    12 turns · 3 compactions')
+  })
+
   test('Cost: the session\'s total and rate, each model a Button that opens to its users by cost; open models written on a press only', async ($, on) => {
     const { held, world, clock } = arrange(on)
     await $.session.start(START)

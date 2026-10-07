@@ -29,6 +29,8 @@ export type Settings = {
   scenes: boolean
   todoRows: number
   collisions: 'off' | 'rare' | 'normal'
+  /** The prompt cache's TTL the context section counts down: `auto` infers it (hooks/facts.ts `cacheTtlOf`). */
+  cacheTtl: 'auto' | '5m' | '1h'
   /** `smooth`: the scene runs in a `Client` surface module where the surface has one; `classic` keeps the Box/Text scene everywhere. */
   motion: 'smooth' | 'classic'
 }
@@ -56,4 +58,5 @@ export const settingsOf = (options: PluginOptions): Settings => ({
   todoRows: Math.max(1, Math.floor(positive(options.todoRows, TODO_ROWS))),
   collisions: options.collisions === 'off' || options.collisions === 'normal' ? options.collisions : 'rare',
   motion: options.motion === 'classic' ? 'classic' : 'smooth',
+  cacheTtl: options.cacheTtl === '5m' || options.cacheTtl === '1h' ? options.cacheTtl : 'auto',
 })

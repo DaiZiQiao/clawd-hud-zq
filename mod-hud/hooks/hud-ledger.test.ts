@@ -6,6 +6,7 @@ import {
   LEDGER_COMPACT_MS,
   LEDGER_MAX,
   NO_LEDGER,
+  agentShareOf,
   costOf,
   costTree,
   ledgerBooked,
@@ -118,4 +119,19 @@ test('deployment suffixes normalize to exact older Claude list prices; unknown v
   expect(priceOf('us.anthropic.claude-opus-4-1-20250805-v1:0')).toEqual({ input: 15, output: 75, cacheRead: 1.5, cacheWrite: 18.75 })
   for (const model of ['claude-sonnet-4-5', 'claude-sonnet-4', 'claude-3-7-sonnet-20250219']) expect(priceOf(model)).toEqual({ input: 3, output: 15, cacheRead: 0.3, cacheWrite: 3.75 })
   expect(priceOf('us.anthropic.claude-opus-99-v2:0')).toBe(undefined)
+})
+
+test('agentShareOf: the share of the estimated spend that is not the main loop\'s; none before anything priced', () => {
+  expect(agentShareOf(NO_LEDGER)).toBe(undefined)
+  const who = { kind: 'main' as const }
+  let ledger = ledgerBooked(NO_LEDGER, 'main', spent(3_000_000, 0), who, NOW)
+  expect(agentShareOf(ledger)).toBe(0)
+  ledger = ledgerBooked(ledger, 'sub-1', spent(1_000_000, 0), { kind: 'agent', name: 'Explore' }, NOW)
+  expect(Math.round((agentShareOf(ledger) ?? 0) * 1e6)).toBe(250_000)
+  // Compacted loops still count as agents'.
+  const later = ledgerCompacted(ledgerEnded(ledger, 'sub-1', 'answer', NOW), NOW + LEDGER_COMPACT_MS)
+  expect(Object.keys(later.entries)).toEqual(['main'])
+  expect(Math.round((agentShareOf(later) ?? 0) * 1e6)).toBe(250_000)
+  // An unpriced model adds nothing to either side.
+  expect(agentShareOf(ledgerBooked(NO_LEDGER, 'sub-2', spent(1_000, 0, 'gpt-6'), { kind: 'agent' }, NOW))).toBe(undefined)
 })

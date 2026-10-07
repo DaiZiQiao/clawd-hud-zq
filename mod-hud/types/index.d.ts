@@ -211,6 +211,11 @@ export type HudSessionFacts = {
   cwd?: string
   /** The git repository's root; absent outside one. */
   repoRoot?: string
+  /**
+   * The main conversation's prompt-cache TTL as inferred at start (hooks/facts.ts
+   * `cacheTtlOf`): `off` with prompt caching disabled; absent before it is read.
+   */
+  cacheTtl?: '5m' | '1h' | 'off'
 }
 
 /** One rate-limit window, of a kind the HUD knows. */
@@ -265,6 +270,23 @@ export type HudUsageFacts = {
    * changes and the one before them (at most 32), for its burn rate.
    */
   limitSamples?: { [K in HudRateLimitFact['kind']]?: { at: number; percent: number }[] }
+  /** When the main loop's last request answered (`turn.step` without an agent): the prompt cache's TTL counts from it. Starts over at /clear. */
+  mainRequestAt?: number
+  /** The tokens the main loop's requests in the turn running now sent fresh, wrote to the cache or generated (cache reads left out). */
+  turnTokens?: number
+  /** The session's cost as the last main turn ended: the next turn's cost is measured from it. */
+  costAtTurnEnd?: number
+  /** The last main turn that ended: what the session spent during it, how long it ran, and its main-loop tokens (as `turnTokens`). Starts over at /clear. */
+  lastTurn?: HudLastTurn
+}
+
+/** One ended main turn (HudUsageFacts.lastTurn). */
+export type HudLastTurn = {
+  /** The session's cost at the turn's end less its cost at the turn before's end (subagents running meanwhile included). */
+  costUsd?: number
+  /** `turn.complete`'s `durationMs`. */
+  durationMs?: number
+  tokens?: number
 }
 
 /** `git status --porcelain=v2 --branch`, counted; empty outside a repository. */
@@ -279,6 +301,11 @@ export type HudGitFacts = {
   /** Absent without an upstream. */
   ahead?: number
   behind?: number
+  /** Lines added and deleted in the tree against HEAD (`git diff --shortstat HEAD`); absent without a commit. */
+  linesAdded?: number
+  linesDeleted?: number
+  /** When HEAD was committed (`git log -1 --format=%ct`), in milliseconds. */
+  lastCommitAt?: number
   /** When this reading was taken. */
   at?: number
 }
@@ -369,8 +396,18 @@ export type HudUsage = {
   compactions: number
   /** The context's tokens as each of the last main turns ended (HudUsageFacts): the ctx row's runway to compaction. */
   contextSamples?: number[]
-  /** Each window's percent as it changed (HudUsageFacts): the alert strip's limit ETA. */
+  /** Each window's percent as it changed (HudUsageFacts): the alert strip's limit ETA and the limit rows' `out ~HH:MM`. */
   limitSamples?: { [K in HudRateLimit['kind']]?: { at: number; percent: number }[] }
+  /** The last main turn (HudLastTurn): the usage section's `last` row. */
+  lastTurn?: HudLastTurn
+  /** The subagents', workflow agents' and forks' share of the session's estimated spend, 0 to 1 (from the ledger, kept with inspect on). */
+  agentShare?: number
+}
+
+/** The main conversation's prompt cache: its TTL, and when the main loop's last request answered. */
+export type HudCache = {
+  ttl: '5m' | '1h'
+  lastAt: number
 }
 
 export type HudGit = {
@@ -383,6 +420,11 @@ export type HudGit = {
   deleted?: number
   ahead?: number
   behind?: number
+  /** Lines added and deleted against HEAD. */
+  linesAdded?: number
+  linesDeleted?: number
+  /** When HEAD was committed, on the same clock as `HudData.now`. */
+  lastCommitAt?: number
 }
 
 export type HudTools = {
@@ -411,7 +453,7 @@ export type HudInventory = {
   compactAt?: number
 }
 
-/** The main loop working or idle (HudMainFacts): the identity row's `● working 00:42` / `○ idle 3m`. */
+/** The main loop working or idle (HudMainFacts): the header's `● working 00:42` / `○ idle 3m`. */
 export type HudMain = {
   busySince?: number
   idleSince?: number
@@ -440,6 +482,8 @@ export type HudData = {
   todos?: HudTodos
   inventory?: HudInventory
   main?: HudMain
+  /** The context section's `cache` row and the alert strip's `cache cools in`. */
+  cache?: HudCache
   alerts?: HudAlerts
   /** One dim line under the HUD. */
   motto?: string
@@ -454,8 +498,9 @@ export type HudLayout = {
   /** Rows the pane shows, when known: the HUD takes at most half (never fewer than four). */
   rows?: number
   /**
-   * The pane's narrow layout (below 60 columns): the same sections stacked one
-   * per row, with 10-cell bars (8 below 44 columns, none at 36 and under).
+   * The pane's narrow layout (below 60 columns): the same sections and rows,
+   * with short section labels and 10-cell bars (8 below 44 columns, none at
+   * 36 and under).
    */
   isNarrow: boolean
 }

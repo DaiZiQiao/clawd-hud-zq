@@ -81,6 +81,7 @@ export const overviewOf = (
   all: Agents,
   held: Readonly<Record<string, ShadowAgentEntry>>,
   now: number,
+  edited?: number,
 ): SessionOverview => {
   const duration = startedAt === undefined ? undefined : Math.max(0, now - startedAt)
   const perTurn = contextGrowth(usage.contextSamples)
@@ -114,5 +115,6 @@ export const overviewOf = (
     asks: Object.values(all).filter(entry => isRunning(entry) && entry.awaitingPermission === true).length,
     failures: spent.failures ?? { denied: 0, error: 0 },
     runs: runCounts(spent, now, id => all[id]?.status ?? held[id]?.status),
+    edited: edited !== undefined && edited > 0 ? edited : undefined,
   })
 }

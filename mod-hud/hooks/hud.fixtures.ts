@@ -72,11 +72,15 @@ export const full: HudData = {
       { kind: 'seven_day', percentUsed: 12, resetsAt: RESET_7D },
     ],
     costUsd: 4.21,
+    // 87 % of the input served by the cache.
+    tokens: { input: 300_000, output: 84_000, cacheRead: 9_800_000, cacheWrite: 1_164_000 },
     compactions: 3,
     contextSamples: CONTEXT_SAMPLES,
     limitSamples: { five_hour: FIVE_HOUR_SAMPLES },
+    lastTurn: { costUsd: 0.38, durationMs: 72_000, tokens: 24_000 },
+    agentShare: 0.38,
   },
-  git: { branch: 'main', dirty: 4, added: 3, deleted: 1, ahead: 2 },
+  git: { branch: 'main', dirty: 4, added: 3, deleted: 1, ahead: 2, linesAdded: 142, linesDeleted: 37, lastCommitAt: NOW - 48 * MINUTE },
   tools: {
     current: { name: 'Bash', since: NOW - 4000, arg: 'npm test -- hud' },
     counts: { Read: 41, Bash: 12, Edit: 9, Grep: 7, Write: 3 },
@@ -93,10 +97,18 @@ export const full: HudData = {
   },
   inventory: { mcpServers: ['context7', 'notion', 'playwright', 'review-gates'], skills: 12, compactAt: 800_000 },
   main: { busySince: NOW - 42_000 },
+  // The main loop's last request answered 18 minutes ago: 42 minutes left of an hour.
+  cache: { ttl: '1h', lastAt: NOW - 18 * MINUTE },
   alerts: { asks: 2 },
   motto: 'ship small, ship often',
   now: NOW,
 }
+
+/** The sketch an hour and ten minutes after the main loop's last request: the cache cold. */
+export const coldCache: HudData = { ...full, cache: { ttl: '1h', lastAt: NOW - 70 * MINUTE }, alerts: undefined, usage: { ...full.usage!, limitSamples: undefined } }
+
+/** The sketch with 90 seconds left on the cache: cooling, and the alert strip says so. */
+export const coolingCache: HudData = { ...full, cache: { ttl: '1h', lastAt: NOW - 3_510_000 }, alerts: undefined, usage: { ...full.usage!, limitSamples: undefined } }
 
 /** A session twelve seconds old: a model and a clock, nothing measured yet. */
 export const sparse: HudData = {
@@ -209,4 +221,4 @@ export const calm: HudData = {
   alerts: undefined,
 }
 
-export const FIXTURES = { full, sparse, empty, manyTools, longBranch, fullContext, alarmed, calm } as const
+export const FIXTURES = { full, sparse, empty, manyTools, longBranch, fullContext, alarmed, calm, coldCache, coolingCache } as const

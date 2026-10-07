@@ -213,6 +213,20 @@ export const costTree = (ledger: HudLedger): CostModel[] => {
     .sort((a, b) => b.usd - a.usd || a.model.localeCompare(b.model))
 }
 
+/**
+ * The share of the ledger's estimated spend that is not the main loop's
+ * (subagents, workflow agents, forks, the compacted), 0 to 1; undefined
+ * before anything priced was booked.
+ */
+export const agentShareOf = (ledger: HudLedger): number | undefined => {
+  const tree = costTree(ledger)
+  const total = tree.reduce((sum, model) => sum + model.usd, 0)
+  if (total <= 0) return undefined
+  const main = tree.reduce((sum, model) => sum + model.users.filter(user => user.key === 'main').reduce((one, user) => one + user.usd, 0), 0)
+
+  return Math.min(1, Math.max(0, (total - main) / total))
+}
+
 /** The loops the ledger has seen, beside the session's: how many, how they ended, how long they ran (ms). */
 export type RunCounts = { spawned: number; running: number; done: number; failed: number; ms: number }
 

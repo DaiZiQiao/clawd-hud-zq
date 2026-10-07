@@ -48,11 +48,17 @@ const EDITED_PATHS = Array.from({ length: 7 }, (_, index) => `/Users/daiziqiao/.
 
 // The HUD's facts as the hooks keep them, written straight into the host's
 // state: the sketch's (docs/pane-sketch.md), every part of it known; the
-// edited files as paths, and the main loop's activity under `main`.
+// edited files as paths, the main loop's activity under `main`, and the
+// cache as its TTL (with the session) and its last main request (with the
+// usage). The agents' share of the spend is the ledger's, so it is left out.
 const seedHud = (held: Held, data: HudData = full): void => {
   for (const key of HUD_KEYS) {
     const raw = data[key as keyof HudData]
-    const value = key === 'tools' && data.tools !== undefined ? { ...data.tools, edited: EDITED_PATHS.slice(0, data.tools.edited ?? 0) } : raw
+    const value = key === 'tools' && data.tools !== undefined
+      ? { ...data.tools, edited: EDITED_PATHS.slice(0, data.tools.edited ?? 0) }
+      : key === 'usage' && data.usage !== undefined
+        ? { ...data.usage, agentShare: undefined, mainRequestAt: data.cache?.lastAt }
+        : key === 'session' && data.session !== undefined ? { ...data.session, cacheTtl: data.cache?.ttl } : raw
     if (value !== undefined) held.set(key, { value, version: (held.get(key)?.version ?? 0) + 1 })
   }
   if (data.main !== undefined) held.set('main', { value: data.main, version: (held.get('main')?.version ?? 0) + 1 })
@@ -61,7 +67,7 @@ const seedHud = (held: Held, data: HudData = full): void => {
 // What the pane's HUD draws from those facts at `now`, with the motto configured
 // (none unless given). The sketch's two permission asks need running agents that
 // ask, so they are left out; the 5h window still runs out before its reset.
-const sketchAt = (now: number, motto?: string): HudData => ({ ...full, alerts: undefined, motto, now })
+const sketchAt = (now: number, motto?: string): HudData => ({ ...full, usage: { ...full.usage!, agentShare: undefined }, alerts: undefined, motto, now })
 
 const layoutOf = (columns: number, rows: number | undefined = BODY_ROWS) => ({ columns, rows, isNarrow: columns < NARROW_BELOW })
 
@@ -89,16 +95,17 @@ test('the pane draws the HUD above the agents with one blank row between, on eve
       const ui = await mountPane($, surface, columns)
       const pane = await paneOf(ui)
       const expected = hudLines(sketchAt(clock.now(), MOTTO), layoutOf(columns))
-      // Narrow stacks the same sections, the inventory on a row of its own.
-      expect(expected).toHaveLength(columns < NARROW_BELOW ? 8 : 7)
+      // Twenty rows: the HUD takes ten, the least needed rows (the motto among them) left out.
+      expect(expected).toHaveLength(10)
+      expect(expected[0]).toStartWith('◆ opus 5.5')
       // The TODO section, folded to its progress line, stands between the HUD
       // and the agents; the mascots take the rows it leaves.
       expect(pane.order.slice(0, 3)).toEqual(['hud', 'todos', 'agents'])
       const todoHeader = await ui.find({ key: 'todo:header' })
-      expect(surface === 'terminal' ? todoHeader?.text : textRowOf(todoHeader)).toMatch(/^▸ TODO {2}(━+─+ )?3\/5 {2}◐ Wiring the status line/)
+      // The desktop leaves the Button's cell blank in the row's document.
+      expect(surface === 'terminal' ? todoHeader?.text : textRowOf(todoHeader)).toMatch(/^ todo [▸ ] +(━+─+ {2})?3\/5$/)
       expect(pane.gap).toBe(1)
       expect(pane.hud).toEqual(expected)
-      expect(pane.hud.at(-1)).toBe(`  ${MOTTO}`)
       expect(pane.rows[expected.length]).toBe('')
       expect(pane.rows[expected.length + 1]).toBe(SESSION_ROW)
       expect(pane.rows[expected.length + 2]).toBe('▾ Agents · 1 running · 1 done')
@@ -195,7 +202,7 @@ test('with the status line on, it reads the HUD line, then the agents, and follo
   const { clock, world } = await sketched($, on)
   await spawn($)
   const hud = statusLineText(sketchAt(clock.now()))
-  expect(hud).toBe('opus 5.5 · xhigh │ ⚠ 1 │ ctx 41% │ 5h 31% · 7d 12% │ $4.21 │ main* +3 −1 ↑2 │ todo 3/5')
+  expect(hud).toBe('opus 5.5 · xhigh │ ⚠ 1 │ ctx 41% │ 5h 31% · 7d 12% │ $4.21 │ main* +3 −1 ↑2 │ todo 3/5 │ cache 42m')
   expect(lastStatus(world)).toBe(`${hud} │ agents · 1 running · 0 done`)
 
   // A measurement moves the HUD's half without an agent stirring; one that
@@ -206,7 +213,7 @@ test('with the status line on, it reads the HUD line, then the agents, and follo
     cost: { usd: 5 },
     changed: ['context', 'rateLimits', 'cost'],
   } as Parameters<Engine['session']['measure']>[0])
-  expect(lastStatus(world)).toBe('opus 5.5 · xhigh │ ⚠ 1 │ ctx 50% │ 5h 31% · 7d 12% │ $5.00 │ main* +3 −1 ↑2 │ todo 3/5 │ agents · 1 running · 0 done')
+  expect(lastStatus(world)).toBe('opus 5.5 · xhigh │ ⚠ 1 │ ctx 50% │ 5h 31% · 7d 12% │ $5.00 │ main* +3 −1 ↑2 │ todo 3/5 │ cache 42m │ agents · 1 running · 0 done')
 })
 
 test('switches leave git, tools, todos and the inventory out of the pane and the status line; the motto is the last row', {
@@ -216,13 +223,13 @@ test('switches leave git, tools, todos and the inventory out of the pane and the
   await spawn($)
   const shown: HudData = { ...sketchAt(clock.now(), 'keep going'), git: undefined, tools: undefined, todos: undefined, inventory: undefined }
   expect(lastStatus(world)).toBe(`${statusLineText(shown)} │ agents · 1 running · 0 done`)
-  expect(lastStatus(world)).toBe('opus 5.5 · xhigh │ ⚠ 1 │ ctx 41% │ 5h 31% · 7d 12% │ $4.21 │ agents · 1 running · 0 done')
+  expect(lastStatus(world)).toBe('opus 5.5 · xhigh │ ⚠ 1 │ ctx 41% │ 5h 31% · 7d 12% │ $4.21 │ cache 42m │ agents · 1 running · 0 done')
 
   for (const surface of SURFACES) {
     for (const columns of [100, 48]) {
-      const ui = await mountPane($, surface, columns)
+      const ui = await mountPane($, surface, columns, 40)
       const pane = await paneOf(ui)
-      expect(pane.hud).toEqual(hudLines(shown, layoutOf(columns)))
+      expect(pane.hud).toEqual(hudLines(shown, layoutOf(columns, 40)))
       expect(pane.hud.at(-1)).toBe('  keep going')
       expect(pane.hud.some(row => /main|mcp|skills|tools|todo/.test(row))).toBe(false)
       expect(await ui.find({ type: 'Box', key: 'hud:tools' })).toBe(undefined)
@@ -239,24 +246,28 @@ test('a /clear starts the HUD\'s conversation over and keeps who, where, git and
   // Any other end leaves the HUD as it is.
   await $.session.end({ reason: 'other', sessionId: 's1' } as Parameters<Engine['session']['end']>[0])
   expect(fact('tools')).toEqual({ ...full.tools, edited: EDITED_PATHS })
-  expect(fact('usage')).toEqual(full.usage)
+  expect(fact('usage')).toEqual({ ...full.usage, agentShare: undefined, mainRequestAt: full.cache?.lastAt })
 
   await $.session.end({ reason: 'clear', sessionId: 's1' } as Parameters<Engine['session']['end']>[0])
   expect(fact('tools')).toEqual({ counts: {} })
   expect(fact('todos')).toEqual({ items: [] })
   // The limits' samples stay with their windows; the context's start over.
   expect(fact('usage')).toEqual({ window: 1_000_000, rateLimits: full.usage?.rateLimits, limitSamples: full.usage?.limitSamples, compactions: 0 })
-  expect(fact('session')).toEqual({ ...full.session, startedAt: clock.now() })
+  expect(fact('session')).toEqual({ ...full.session, cacheTtl: full.cache?.ttl, startedAt: clock.now() })
   expect(fact('git')).toEqual(full.git)
   expect(fact('inventory')).toEqual(full.inventory)
 
   const ui = await mountPane($)
   const pane = await paneOf(ui)
   expect((await ui.findAll({ type: 'Box' })).filter(box => box.key?.startsWith('hud:') === true).map(box => box.key))
-    .toEqual(['hud:identity', 'hud:alerts', 'hud:location', 'hud:ctx', 'hud:limits'])
-  // The context starts over (its runway with it); the 5h window's burn, kept with the window, still runs out before it resets.
+    .toEqual(['hud:header', 'hud:alerts', 'hud:gap', 'hud:session.repo', 'hud:session.branch', 'hud:context.used', 'hud:limits.5h', 'hud:limits.7d', 'hud:usage.cost'])
+  // The context starts over (its runway, its cache clock and the last turn with it); the 5h
+  // window's burn, kept with the window, still runs out before it resets.
   expect(pane.hud[1]).toMatch(/^ {2}⚠ 5h out ~\d\d:\d\d, before ↻\d\d:\d\d$/)
-  expect(pane.hud[3]).toBe('  ctx   —')
+  expect(pane.hud[2]).toBe('')
+  expect(pane.hud[5]).toBe(' context  used    —')
+  // The engine still reports the old conversation's cost: unknown until a fresh one, the clock from the clear.
+  expect(pane.hud[8]).toBe(' usage    cost    —                  00:00')
   expect(pane.board).toEqual([SESSION_ROW, '▾ Agents', 'No agents yet.'])
   await ui.unmount()
 })
@@ -313,8 +324,8 @@ test('an open HUD with no agents advances its clock and running-tool row after s
   await $.command.run(TOGGLE)
   const ui = await mountPane($)
   const before = await paneOf(ui)
-  expect(before.hud[0]).toContain('1h 12m')
-  expect(before.hud.some(row => row.startsWith('  now   Bash  npm test -- hud') && row.endsWith(' 00:04 · 7 files edited'))).toBe(true)
+  expect(before.hud.some(row => / cost {4}\$4\.21 +\$3\.51 \/ h · 1h 12m$/.test(row))).toBe(true)
+  expect(before.hud.some(row => / now {5}Bash · npm test -- hud +00:04$/.test(row))).toBe(true)
   const ticks = world.writes.filter(key => key === TICK).length
 
   await clock.advance(60_000)
@@ -322,8 +333,9 @@ test('an open HUD with no agents advances its clock and running-tool row after s
   expect(tickOf(held)).toBe(clock.now())
   expect(world.writes.filter(key => key === TICK).length - ticks).toBe(60)
   const after = await paneOf(ui)
-  expect(after.hud[0]).toContain('1h 13m')
-  expect(after.hud.some(row => row.startsWith('  now   Bash  npm test -- hud') && row.endsWith(' 01:04 · 7 files edited'))).toBe(true)
+  // A minute on, the rate an hour eases as the clock runs.
+  expect(after.hud.some(row => / cost {4}\$4\.21 +\$3\.46 \/ h · 1h 13m$/.test(row))).toBe(true)
+  expect(after.hud.some(row => / now {5}Bash · npm test -- hud +01:04$/.test(row))).toBe(true)
   await ui.unmount()
   await $.command.run(TOGGLE)
   const reads = world.reads.length
@@ -458,9 +470,9 @@ test('the motto left unset draws none: the default is empty since 1.2.0', async 
   await sketched($, on)
   for (const surface of SURFACES) {
     for (const columns of [100, 48]) {
-      const ui = await mountPane($, surface, columns)
+      const ui = await mountPane($, surface, columns, 40)
       expect(await ui.find({ key: 'hud:motto' })).toBe(undefined)
-      expect((await paneOf(ui)).hud.at(-1)).toMatch(/^ {2}now {3}Bash/)
+      expect((await paneOf(ui)).hud.at(-1)).toMatch(/^ +cache +\d+% hit$/)
       await ui.unmount()
     }
   }
@@ -470,7 +482,8 @@ test('a motto set is the HUD\'s last row, dim and italic', { options: { motto: O
   await sketched($, on)
   for (const surface of SURFACES) {
     for (const columns of [100, 48]) {
-      const ui = await mountPane($, surface, columns)
+      // Forty rows: the HUD has room for every row, the motto the last.
+      const ui = await mountPane($, surface, columns, 40)
       expect((await paneOf(ui)).hud.at(-1)).toBe(`  ${OLD_MOTTO}`)
       const motto = surface === 'terminal'
         ? (await ui.findAll({ type: 'Text' })).find(one => one.text === OLD_MOTTO)
@@ -503,8 +516,8 @@ test('the TODO line\'s ▸ opens the list and ▾ folds it: written to listView 
     for (const columns of [100, 48]) {
       const ui = await mountPane($, surface, columns)
       const rowsOf = async () => (await ui.findAll({ type: 'Box' })).filter(box => /^todo:/.test(box.key ?? '')).map(box => box.key)
-      // Folded: the progress line alone, its toggle a Button.
-      expect(await rowsOf()).toEqual(['todo:header'])
+      // Folded: the label row and the item in progress, its toggle a Button.
+      expect(await rowsOf()).toEqual(['todo:header', 'todo:3'])
       expect((await ui.find({ key: 'todos:toggle' }))?.props.label).toBe('▸')
       const writes = world.writes.filter(key => key === 'listView').length
       await ui.redraw()
@@ -519,7 +532,7 @@ test('the TODO line\'s ▸ opens the list and ▾ folds it: written to listView 
       await ui.press({ key: 'todos:toggle' })
       await ui.redraw()
       expect((held.get('listView')?.value as { todosExpanded?: true } | undefined)?.todosExpanded).toBe(undefined)
-      expect(await rowsOf()).toEqual(['todo:header'])
+      expect(await rowsOf()).toEqual(['todo:header', 'todo:3'])
       expect(world.writes.filter(key => key === 'listView')).toHaveLength(writes + 2)
       await ui.unmount()
     }

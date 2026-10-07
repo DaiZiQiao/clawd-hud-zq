@@ -42,6 +42,8 @@ import {
   afterMainTurn,
   applyMeasure,
   assembleHudData,
+  CACHE_ENV,
+  cacheTtlOf,
   debouncer,
   editedPathOf,
   effortFromSettings,
@@ -52,6 +54,8 @@ import {
   noCurrentTool,
   parseGitStatus,
   parseTodos,
+  parseCommitTime,
+  parseShortstat,
   providerOf,
   sameFacts,
   throttleDue,
@@ -60,7 +64,7 @@ import {
   toolStarted,
 } from './facts'
 import { renderHudBlock, renderTodos, statusLineText } from './hud'
-import { NO_LEDGER, costTree, ledgerBooked, ledgerEnded, ledgerFailed, ledgerSummary } from './hud-ledger'
+import { NO_LEDGER, agentShareOf, costTree, ledgerBooked, ledgerEnded, ledgerFailed, ledgerSummary } from './hud-ledger'
 import type { LedgerWho } from './hud-ledger'
 import { settingsOf } from './hud-options'
 import type { Settings } from './hud-options'
@@ -469,6 +473,15 @@ const markMainIdle = async ($: EngineInterface): Promise<void> => {
   mainBusy = false
 }
 
+// One answer of the engine's, boxed so an unset value tells apart from a refusal (undefined).
+const read1 = async <T,>(call: () => Promise<T>): Promise<{ value: T } | undefined> => {
+  try {
+    return { value: await call() }
+  } catch {
+    return undefined
+  }
+}
+
 // One answer of the engine's, or undefined when the call fails.
 const attempt = async <T,>(call: () => Promise<T>): Promise<T | undefined> => {
   try {
@@ -487,13 +500,22 @@ const gitWindow = (ms: number): void => {
 const refreshGit = async ($: EngineInterface): Promise<void> => {
   const cwd = (await attempt(() => $.session.cwd())) ?? (await read($, hudSession)).cwd
   if (cwd === undefined || cwd === '') return
+  // No index refresh, so these reads never hold a lock the agent's git wants.
+  const git = (args: string[]): Promise<ProcessRunResult> =>
+    $.process.run(['git', '-C', cwd, ...args], { timeoutMs: GIT_TIMEOUT_MS, env: { GIT_OPTIONAL_LOCKS: '0' } })
   let ran: ProcessRunResult
+  let lines: ProcessRunResult | undefined
+  let commit: ProcessRunResult | undefined
   try {
-    ran = await $.process.run(['git', '-C', cwd, 'status', '--porcelain=v2', '--branch'], {
-      timeoutMs: GIT_TIMEOUT_MS,
-      // No index refresh, so this read never holds a lock the agent's git wants.
-      env: { GIT_OPTIONAL_LOCKS: '0' },
-    })
+    // The status, the lines changed against HEAD and HEAD's commit time, side by side.
+    const [status, diff, log] = await Promise.all([
+      git(['status', '--porcelain=v2', '--branch']),
+      attempt(() => git(['diff', '--shortstat', 'HEAD'])),
+      attempt(() => git(['log', '-1', '--format=%ct'])),
+    ])
+    ran = status
+    lines = diff
+    commit = log
   } catch {
     // Git missing, or slower than its timeout: keep the reading and back off.
     gitWindow(GIT_BACKOFF_MS)
@@ -502,7 +524,14 @@ const refreshGit = async ($: EngineInterface): Promise<void> => {
   // Not a repository (or git refused it): nothing to draw.
   if (ran.exitCode !== 0) return reviseGit($, () => NO_FACTS.git)
   gitWindow(GIT_DEBOUNCE_MS)
-  const reading = parseGitStatus(ran.stdout)
+  // A repository with no commit yet has neither: those cells stay away.
+  const changed = lines?.exitCode === 0 ? parseShortstat(lines.stdout) : undefined
+  const reading = defined({
+    ...parseGitStatus(ran.stdout),
+    linesAdded: changed?.linesAdded,
+    linesDeleted: changed?.linesDeleted,
+    lastCommitAt: commit?.exitCode === 0 ? parseCommitTime(commit.stdout) : undefined,
+  })
   const now = await $.clock.now()
   await reviseGit($, held => gitFactsOf(held, reading, now))
 }
@@ -547,20 +576,35 @@ const requestInventory = async ($: EngineInterface): Promise<void> => {
 // The session's facts at start and at each reload: who, where, and what the
 // engine has measured so far. Git and the inventory follow from timers.
 const startHud = async ($: EngineInterface, settings: Settings, startCwd: string): Promise<void> => {
-  const [model, cwd, repo, usage, baseUrl, stored] = await Promise.all([
+  const [model, cwd, repo, usage, env, stored] = await Promise.all([
     attempt(() => $.session.model()),
     attempt(() => $.session.cwd()),
     attempt(() => $.session.repo()),
     attempt(() => $.session.usage()),
-    attempt(() => $.env.get('ANTHROPIC_BASE_URL')),
+    // What picks the prompt cache's TTL (facts.ts CACHE_ENV): only whether each is set is used, never a key's value.
+    Promise.all([
+      read1(() => $.env.get('DISABLE_PROMPT_CACHING')),
+      read1(() => $.env.get('FORCE_PROMPT_CACHING_5M')),
+      read1(() => $.env.get('CLAUDE_CODE_PROMPT_CACHE_TTL')),
+      read1(() => $.env.get('ENABLE_PROMPT_CACHING_1H')),
+      read1(() => $.env.get('ANTHROPIC_API_KEY')),
+      read1(() => $.env.get('ANTHROPIC_AUTH_TOKEN')),
+      read1(() => $.env.get('ANTHROPIC_BASE_URL')),
+      read1(() => $.env.get('CLAUDE_CODE_USE_BEDROCK')),
+      read1(() => $.env.get('CLAUDE_CODE_USE_VERTEX')),
+      read1(() => $.env.get('CLAUDE_CODE_USE_FOUNDRY')),
+    ]).then(values => (values.some(one => one === undefined) ? undefined : Object.fromEntries(CACHE_ENV.map((name, index) => [name, values[index]?.value])) as Record<string, string | undefined>)),
     attempt(() => $.settings.read()),
   ])
+  const baseUrl = env?.ANTHROPIC_BASE_URL
   await reviseSession($, held => defined({
     ...held,
     model: model ?? held.model,
     // A main step's effort is the one in use; the settings' stand in before one.
     effort: held.effort ?? effortFromSettings(stored, model ?? held.model),
     provider: providerOf(baseUrl),
+    // An environment that cannot be read leaves the TTL unknown (the option may still name one).
+    cacheTtl: env === undefined ? undefined : cacheTtlOf(env, (stored as { promptCacheTtl?: unknown } | undefined)?.promptCacheTtl),
     startedAt: usage?.startedAt ?? held.startedAt,
     cwd: cwd ?? startCwd,
     // null is outside a repository; undefined, a failed call that changes nothing.
@@ -576,7 +620,7 @@ const startHud = async ($: EngineInterface, settings: Settings, startCwd: string
 
 // What the HUD draws, every fact read so a drawing that calls this redraws
 // when any of them is written.
-const readHudData = async ($: EngineInterface, now: number): Promise<HudData> =>
+const readHudData = async ($: EngineInterface, now: number, cacheTtl: Settings['cacheTtl'] = 'auto'): Promise<HudData> =>
   assembleHudData({
     session: await read($, hudSession),
     usage: await read($, hudUsage),
@@ -584,7 +628,7 @@ const readHudData = async ($: EngineInterface, now: number): Promise<HudData> =>
     tools: await read($, hudTools),
     todos: await read($, hudTodos),
     inventory: await read($, hudInventory),
-  }, now)
+  }, now, cacheTtl)
 
 // What the alert strip counts that no HUD fact carries: running subagents
 // waiting on a permission ask, subagents and workflow agents stalled, and the
@@ -613,7 +657,9 @@ const alertCountsOf = async ($: EngineInterface, settings: Settings, now: number
 // `showInventory` on it is still read for the ctx bar's compaction mark and
 // runway, and printed by `/mod-hud facts`.
 const hudDataOf = async ($: EngineInterface, settings: Settings, now: number): Promise<HudData> => {
-  const data = await readHudData($, now)
+  const data = await readHudData($, now, settings.cacheTtl)
+  // The agents' share of the spend, from the ledger (kept with inspect on).
+  const agentShare = settings.inspect ? await attempt(async () => agentShareOf(await read($, ledger))) : undefined
   const main = (await attempt(() => read($, mainFacts))) ?? NO_MAIN
   const working = main.busySince !== undefined || main.idleSince !== undefined
     ? defined({ busySince: main.busySince, idleSince: main.busySince === undefined ? main.idleSince : undefined })
@@ -621,6 +667,7 @@ const hudDataOf = async ($: EngineInterface, settings: Settings, now: number): P
 
   return defined<HudData>({
     ...data,
+    usage: data.usage === undefined ? undefined : defined({ ...data.usage, agentShare }),
     git: settings.showGit ? data.git : undefined,
     tools: settings.showTools ? data.tools : undefined,
     todos: settings.showTodos ? data.todos : undefined,
@@ -1244,7 +1291,8 @@ export const register: Register = (on, options) => {
     // and, when due, the inventory.
     if (id === undefined && settings.mascots && mainBusy !== false) await quietly($, () => markMainIdle($))
     // One more turn for the Session tab, its time busy and the context's size: in one usage write.
-    if (id === undefined && settings.inspect) await quietly($, () => reviseUsage($, held => afterMainTurn(held, e.durationMs)))
+    // With the usage section's last turn and the context's runway, kept whatever the options.
+    if (id === undefined) await quietly($, () => reviseUsage($, held => afterMainTurn(held, e.durationMs)))
     await quietly($, async () => {
       if (id !== undefined) return
       if (settings.showTools) await reviseTools($, noCurrentTool)
@@ -1297,7 +1345,11 @@ export const register: Register = (on, options) => {
     // session's tokens, and the ledger's for that loop and model.
     const spent = result.usage
     if (spent !== null && spent !== undefined) {
-      await quietly($, () => reviseUsage($, held => addTokens(held, spent)))
+      // A main request restarts the prompt cache's clock, in the same write.
+      await quietly($, async () => {
+        const at = e.agentId === undefined ? await $.clock.now() : undefined
+        await reviseUsage($, held => addTokens(held, spent, at))
+      })
       if (settings.inspect) await quietly($, async () => {
         const who = await ledgerWhoOf($, settings, e.agentId)
         const now = await $.clock.now()
@@ -1489,7 +1541,7 @@ export const register: Register = (on, options) => {
             body = tab === 'task' ? taskRows(agentBody, columns) : tab === 'trail' ? trailRows(agentBody, columns, now) : saidRows(agentBody, columns)
           } else if (usage !== undefined && tab === 'overview') {
             const held = settings.showWorkflows ? await read($, shadows) : {}
-            body = overviewRows(overviewOf(usage, main, await read($, ledger), (await read($, hudInventory)).compactAt, hudData?.session?.startedAt, all, held, now), columns)
+            body = overviewRows(overviewOf(usage, main, await read($, ledger), (await read($, hudInventory)).compactAt, hudData?.session?.startedAt, all, held, now, hudData?.tools?.edited), columns)
           } else if (usage !== undefined && tab === 'cost') {
             const startedAt = hudData?.session?.startedAt
             body = costRows({ totalUsd: usage.costUsd, duration: startedAt === undefined ? undefined : now - startedAt, models: costTree(await read($, ledger)) }, columns, new Set(view.models ?? []))

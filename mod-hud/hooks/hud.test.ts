@@ -9,19 +9,31 @@ import {
   BAR_WIDTH,
   CLOSE_RESERVE,
   COMPACT_SOON_TURNS,
+  GUTTER,
   NARROW_BAR_WIDTH,
+  NARROW_GUTTER,
+  NARROW_SUB_WIDTH,
+  RANKS,
+  SECTIONS,
   SMALL_BAR_WIDTH,
+  SUB_WIDTH,
   TODO_ROWS,
   alertsOf,
   bar,
   barWidthFor,
+  cacheCoolAt,
+  cacheStateOf,
   compactRunway,
+  formatAgo,
   formatCost,
   formatDuration,
   formatIdle,
+  formatLeft,
   formatReset,
+  formatSpan,
   formatTokens,
   hudLines,
+  hudRowIds,
   levelColor,
   modelLabel,
   renderHud,
@@ -47,6 +59,8 @@ import {
   alarmed,
   allDone,
   calm,
+  coldCache,
+  coolingCache,
   empty,
   full,
   fullContext,
@@ -82,6 +96,21 @@ const MODEL = 'opus 5.5'
 const BAR_CELLS = /[━─┃]/g
 /** The 5h alert as the full sketch draws it, on this zone's clock. */
 const OUT_ALERT = `5h out ~${AT_OUT_5H}, before ${TIGHT_5H}`
+const MINUTE = 60_000
+/** Where a section row's value starts: after the gutter and the sub-label. */
+const VALUE_AT = GUTTER + SUB_WIDTH
+const NARROW_VALUE_AT = NARROW_GUTTER + NARROW_SUB_WIDTH
+/** The gauges: the context used and the three limits. */
+const GAUGES = ['context.used', 'limits.5h', 'limits.7d', 'limits.spend']
+
+/** The rows as plain text keyed by id. */
+const rowsById = (data: HudData, columns = 72, rows?: number): Record<string, string> => {
+  const layout = { columns, rows, isNarrow: columns < NARROW_BELOW }
+  const ids = hudRowIds(data, layout)
+  const lines = hudLines(data, layout)
+
+  return Object.fromEntries(ids.map((id, index) => [id, lines[index] ?? '']))
+}
 
 type Surface = (typeof SURFACES)[number]
 
@@ -297,6 +326,23 @@ describe('formats', () => {
     expect(levelColor(100)).toBe('error')
   })
 
+  test('formatSpan, formatAgo and formatLeft: a turn\'s length, a commit\'s age, a countdown', () => {
+    expect(formatSpan(42_000)).toBe('42s')
+    expect(formatSpan(72_000)).toBe('1m 12s')
+    expect(formatSpan(65 * MINUTE)).toBe('1h 05m')
+    expect(formatSpan(-1)).toBe('0s')
+    expect(formatAgo(30_000)).toBe('just now')
+    expect(formatAgo(48 * MINUTE)).toBe('48m ago')
+    expect(formatAgo(3 * 60 * MINUTE + 5)).toBe('3h ago')
+    expect(formatAgo(50 * 60 * MINUTE)).toBe('2d ago')
+    expect(formatAgo(Number.NaN)).toBe('just now')
+    expect(formatLeft(45_000)).toBe('45s')
+    expect(formatLeft(90_000)).toBe('2m')
+    expect(formatLeft(42 * MINUTE)).toBe('42m')
+    expect(formatLeft(60 * MINUTE)).toBe('1h')
+    expect(formatLeft(0)).toBe('0s')
+  })
+
   test('displayWidth and truncate count terminal cells', () => {
     expect(displayWidth('main')).toBe(4)
     expect(displayWidth('分支')).toBe(4)
@@ -308,11 +354,13 @@ describe('formats', () => {
 })
 
 describe('status line', () => {
-  test('segments joined by │, absent facts dropped, no colour, at most 100 characters', () => {
-    expect(statusLineText(full)).toBe('opus 5.5 · xhigh │ ⚠ 2 │ ctx 41% │ 5h 31% · 7d 12% │ $4.21 │ main* +3 −1 ↑2 │ todo 3/5')
+  test('segments joined by │, absent facts dropped, no colour, at most 100 characters; the cache last, when it fits', () => {
+    expect(statusLineText(full)).toBe('opus 5.5 · xhigh │ ⚠ 2 │ ctx 41% │ 5h 31% · 7d 12% │ $4.21 │ main* +3 −1 ↑2 │ todo 3/5 │ cache 42m')
     // `⚠ n` counts the alert strip's alerts, right after who; none, no segment.
     expect(statusLineText(alarmed)).toStartWith('opus 5.5 · xhigh │ ⚠ 6 │ ctx 70%')
-    expect(statusLineText(calm)).toBe('opus 5.5 · xhigh │ ctx 41% │ 5h 31% · 7d 12% │ $4.21 │ main* +3 −1 ↑2 │ todo 3/5')
+    expect(statusLineText(calm)).toBe('opus 5.5 · xhigh │ ctx 41% │ 5h 31% · 7d 12% │ $4.21 │ main* +3 −1 ↑2 │ todo 3/5 │ cache 42m')
+    expect(statusLineText(coldCache)).toEndWith(' │ todo 3/5 │ cache cold')
+    expect(statusLineText(coolingCache)).toStartWith('opus 5.5 · xhigh │ ⚠ 1 │')
     expect(statusLineText(sparse)).toBe('opus 5.5 · xhigh │ $0.00')
     expect(statusLineText(empty)).toBe('')
     expect(statusLineText(fullContext)).toContain('5h 92% · 7d 64% · spend 85%')
@@ -326,8 +374,37 @@ describe('status line', () => {
       session: { ...longBranch.session, model: 'a-model-whose-name-goes-on-and-on-and-on', effort: 'maximum-effort' },
     }
     expect(statusLineText(crowded).length).toBeLessThanOrEqual(100)
+    // The cache is the first to give way.
+    expect(statusLineText(crowded)).not.toContain('cache')
   })
 })
+
+/** The 72-column sketch: docs/pane-sketch.md, the README and the PR draw it. */
+const SKETCH_72 = [
+  '◆ opus 5.5 · xhigh · gateway                           ● working 00:42',
+  `  ⚠ 2 agents waiting for permission · ${OUT_ALERT}`,
+  '',
+  ' session  repo    ~/.claude/mods',
+  '          branch  main* ↑2   +142 −37 lines · last commit 48m ago',
+  '          now     Bash · npm test -- hud                         00:04',
+  ' context  used    ━━━━━━━━────────┃───  41%   412k / 1.0M',
+  '          growth  +65k / turn        compact in ~6 turns',
+  '          cache   ━━━━━━━━━━━━━━──────  warm · 42m left (1h)',
+  ` limits   5h      ━━━━━━──────────────  31%   ${AT_5H}   out ~${AT_OUT_5H}`,
+  `          7d      ━━──────────────────  12%   ${AT_7D}`,
+  ' usage    cost    $4.21              $3.51 / h · 1h 12m',
+  '          last    $0.38              1m 12s · 24k tokens',
+  '          cache   87% hit            agents 38% of spend',
+]
+
+/** The ids of the sketch's rows, top to bottom. */
+const SKETCH_IDS = [
+  'header', 'alerts', 'gap',
+  'session.repo', 'session.branch', 'session.now',
+  'context.used', 'context.growth', 'context.cache',
+  'limits.5h', 'limits.7d',
+  'usage.cost', 'usage.last', 'usage.cache',
+]
 
 describe('the HUD', () => {
   test('mounts every fixture on terminal and desktop at 100, 56 and 48 columns', async ($, on) => {
@@ -335,24 +412,131 @@ describe('the HUD', () => {
     await eachDrawing($, scene, WIDTHS, (rows, { name, surface, columns }) => {
       const lines = linesFor(surface, hudLines(scene.data, { columns, isNarrow: columns < NARROW_BELOW }))
       expect(rows.map(row => row.text), `${name} @${columns}`).toEqual(lines)
+      expect(rows.map(row => row.id), `${name} @${columns}`).toEqual(hudRowIds(scene.data, { columns, isNarrow: columns < NARROW_BELOW }))
       if (name === 'empty') expect(rows).toHaveLength(0)
       else expect(rows.length, `${name} @${columns}`).toBeGreaterThan(0)
     })
   })
 
-  test('(1) the identity row is bold, the model name in the theme accent', async ($, on) => {
+  test('the 72-column sketch: every row, as docs/pane-sketch.md draws it', () => {
+    const sketch = { ...full, motto: undefined }
+    expect(hudLines(sketch, { columns: 72, isNarrow: false })).toEqual(SKETCH_72)
+    expect(hudRowIds(sketch, { columns: 72, isNarrow: false })).toEqual(SKETCH_IDS)
+    // From 74 columns the card is whole: the header's right cell at 72.
+    expect(displayWidth(hudLines(sketch, { columns: 74, isNarrow: false })[0] ?? '')).toBe(72)
+  })
+
+  test('the cold-cache sketch at 72: an empty track and what the next turn rewrites, calm, no alert', () => {
+    expect(hudLines({ ...coldCache, motto: undefined }, { columns: 72, isNarrow: false })).toEqual([
+      '◆ opus 5.5 · xhigh · gateway                           ● working 00:42',
+      '',
+      ...SKETCH_72.slice(3, 8),
+      `          cache   ${'─'.repeat(20)}  cold · next turn rewrites 412k`,
+      ` limits   5h      ━━━━━━──────────────  31%   ${AT_5H}`,
+      ...SKETCH_72.slice(10),
+    ])
+  })
+
+  test('narrow at 48 columns: the same rows, the short labels, 10-cell bars', () => {
+    expect(hudLines(full, { columns: 48, isNarrow: true })).toEqual([
+      '◆ opus 5.5 · xhigh · gateway   ● working 00:42',
+      '  ⚠ 2 agents waiting for permission · 5h out ~1…',
+      '',
+      ' sess repo   ~/.claude/mods',
+      '      branch main* ↑2  +142 −37 lines',
+      '      now    Bash · npm test -- hud      00:04',
+      ' ctx  used   ━━━━────┃─  41%  412k/1.0M',
+      '      growth +65k/turn  compact in ~6 turns',
+      '      cache  ━━━━━━━───  warm · 42m left (1h)',
+      ` lim  5h     ━━━───────  31%  ${AT_5H}`,
+      `      7d     ━─────────  12%  ${AT_7D}`,
+      ' use  cost   $4.21  $3.51 / h · 1h 12m',
+      '      last   $0.38  1m 12s · 24k tokens',
+      '      cache  87% hit  agents 38% of spend',
+      '  ship small, ship often',
+    ])
+  })
+
+  test('narrow at 56, 40 and 36 columns: pieces that do not fit are left out whole, the bars shrink, then go', () => {
+    const at56 = rowsById(full, 56)
+    expect(at56['limits.5h']).toBe(` lim  5h     ━━━───────  31%  ${AT_5H}  out ~${AT_OUT_5H}`)
+    expect(at56['usage.cache']).toBe('      cache  87% hit  agents 38% of spend')
+    expect(hudLines(full, { columns: 40, isNarrow: true })).toEqual([
+      '◆ opus 5.5 · xhigh     ● working 00:42',
+      '  ⚠ 2 agents waiting for permission · 5…',
+      '',
+      ' sess repo   ~/.claude/mods',
+      '      branch main* ↑2  +142 −37 lines',
+      '      now    Bash · npm test…    00:04',
+      ' ctx  used   ━━━───┃─  41%  412k/1.0M',
+      '      growth +65k/turn',
+      '      cache  ━━━━━━──  warm · 42m left',
+      ` lim  5h     ━━──────  31%  ${AT_5H}`,
+      `      7d     ━───────  12%  ${AT_7D}`,
+      ' use  cost   $4.21  $3.51 / h · 1h 12m',
+      '      last   $0.38  1m 12s · 24k tokens',
+      '      cache  87% hit',
+      '  ship small, ship often',
+    ])
+    const at36 = hudLines(full, { columns: 36, isNarrow: true })
+    // The working cell and the provider gave way; the effort stays.
+    expect(at36[0]).toBe('◆ opus 5.5 · xhigh')
+    expect(at36).toContain(' ctx  used    41%  412k/1.0M')
+    expect(at36).toContain(` lim  5h      31%  ${AT_5H}`)
+    expect(at36).toContain('      cache  warm · 42m left (1h)')
+    expect(at36).toContain('      branch main* ↑2')
+    expect(hudLines(fullContext, { columns: 36, isNarrow: true })).toContain(' ctx  used   100%  1.0M/1.0M')
+  })
+
+  test('every section row puts its label in the gutter, its sub-label after, its value in one column', () => {
+    for (const [columns, isNarrow, gutter, sub] of [[72, false, GUTTER, SUB_WIDTH], [100, false, GUTTER, SUB_WIDTH], [56, true, NARROW_GUTTER, NARROW_SUB_WIDTH], [40, true, NARROW_GUTTER, NARROW_SUB_WIDTH]] as const) {
+      for (const data of [full, fullContext, alarmed, coldCache, sparse]) {
+        const layout = { columns, isNarrow }
+        const ids = hudRowIds(data, layout)
+        const lines = hudLines(data, layout)
+        const seen = new Set<string>()
+        ids.forEach((id, index) => {
+          const [section, label] = id.split('.')
+          if (label === undefined || section === undefined) return
+          const line = lines[index] ?? ''
+          const where = `${id} @${columns}: ${line}`
+          const names = SECTIONS[section as keyof typeof SECTIONS]
+          // The section's label on its first row, blank on the rest.
+          expect(line.slice(0, gutter), where).toBe(seen.has(section) ? ' '.repeat(gutter) : ` ${isNarrow ? names.short : names.label}`.padEnd(gutter))
+          seen.add(section)
+          expect(line.slice(gutter, gutter + sub), where).toBe(label.padEnd(sub))
+          // The value starts right there (a barless percent is right-aligned in its cell).
+          expect(line.slice(gutter + sub, gutter + sub + 1), where).not.toBe(' ')
+        })
+      }
+    }
+    expect(VALUE_AT).toBe(18)
+    expect(NARROW_VALUE_AT).toBe(13)
+  })
+
+  test('a section\'s label moves to its first row shown when the rows above it go', () => {
+    const noPlace: HudData = { ...full, session: { ...full.session, cwd: undefined, repoRoot: undefined }, git: {} }
+    expect(rowsById(noPlace)['session.now']).toBe(' session  now     Bash · npm test -- hud                         00:04')
+    // A short pane drops the repo and the branch: the label goes with the now row.
+    expect(rowsById(full, 72, 14)['session.now']).toStartWith(' session  now ')
+    // A section with no rows has no label at all.
+    expect(hudLines({ ...full, usage: { rateLimits: [], compactions: 0 } }, { columns: 72, isNarrow: false }).some(line => line.startsWith(' limits'))).toBe(false)
+  })
+
+  test('(1) the header is bold, the model name in the theme accent; the clock and the cost are the usage section\'s', async ($, on) => {
     stage(on)
     for (const surface of SURFACES) {
       for (const columns of WIDTHS) {
         const ui = await mount($, surface, columns)
         const rows = await rowsOf(ui)
-        const identity = rowOf(rows, 'identity')
-        expect(rows[0]?.id).toBe('identity')
-        expect(identity?.text).toStartWith(`◆ ${MODEL} · xhigh`)
-        expect(piece(identity, '◆')?.props).toEqual({ color: 'claude' })
-        expect(piece(identity, MODEL)?.props).toEqual({ color: 'claude', bold: true })
-        expect(piece(identity, 'xhigh')?.props).toEqual({ bold: true })
-        expect(piece(identity, '$4.21')?.props).toEqual({ bold: true })
+        const header = rowOf(rows, 'header')
+        expect(rows[0]?.id).toBe('header')
+        expect(header?.text).toStartWith(`◆ ${MODEL} · xhigh`)
+        expect(header?.text).not.toMatch(/\$|1h 12m/)
+        expect(piece(header, '◆')?.props).toEqual({ color: 'claude' })
+        expect(piece(header, MODEL)?.props).toEqual({ color: 'claude', bold: true })
+        expect(piece(header, 'xhigh')?.props).toEqual({ bold: true })
+        expect(piece(rowOf(rows, 'usage.cost'), '$4.21')?.props).toEqual({ bold: true })
         await ui.unmount()
       }
     }
@@ -378,18 +562,14 @@ describe('the HUD', () => {
             ],
           },
         }
-        for (const [columns, cells] of [[100, BAR_WIDTH], [56, NARROW_BAR_WIDTH], [44, NARROW_BAR_WIDTH], [43, SMALL_BAR_WIDTH], [40, SMALL_BAR_WIDTH]] as const) {
+        for (const [columns, cells] of [[100, BAR_WIDTH], [60, BAR_WIDTH], [56, NARROW_BAR_WIDTH], [44, NARROW_BAR_WIDTH], [43, SMALL_BAR_WIDTH], [40, SMALL_BAR_WIDTH]] as const) {
           const ui = await mount($, surface, columns)
           const rows = await rowsOf(ui)
-          // Wide, the 5h and 7d windows share a row of two 8-cell bars.
-          const gauges: [string, number, number][] = columns >= NARROW_BELOW
-            ? [['ctx', cells, 1], ['limits', SMALL_BAR_WIDTH, 2], ['spend_limit', cells, 1]]
-            : [['ctx', cells, 1], ['five_hour', cells, 1], ['seven_day', cells, 1], ['spend_limit', cells, 1]]
-          for (const [id, width, count] of gauges) {
+          for (const id of GAUGES) {
             const row = rowOf(rows, id)
             const where = `${id} at ${percent} @${columns}`
-            expect(row?.text.match(BAR_CELLS) ?? [], where).toHaveLength(width * count)
-            expect(row?.text.split(`${bar(percent, width)} ${`${percent}%`.padStart(4)}`).length, where).toBe(count + 1)
+            expect(row?.text.match(BAR_CELLS) ?? [], where).toHaveLength(cells)
+            expect(row?.text, where).toContain(`${bar(percent, cells)} ${`${percent}%`.padStart(4)}`)
             // The fill and the track are separate spans: the fill coloured, the track dim.
             const fill = row?.pieces.find(one => one.text.includes('━'))
             if (percent > 0) expect(fill?.props, where).toEqual({ color })
@@ -403,18 +583,15 @@ describe('the HUD', () => {
 
         // At 36 columns and under the bar goes and the percent stands alone, uncoloured.
         const barless = await mount($, surface, BARLESS_AT)
-        for (const row of (await rowsOf(barless)).filter(one => ['ctx', 'five_hour', 'seven_day', 'spend_limit'].includes(one.id))) {
+        for (const row of (await rowsOf(barless)).filter(one => GAUGES.includes(one.id) || one.id === 'context.cache')) {
           expect(row.text.match(BAR_CELLS), `${row.id} at ${percent}`).toBeNull()
-          expect(row.text, `${row.id} at ${percent}`).toMatch(new RegExp(`^ {2}\\S+ +${percent}%`))
-          expect(row.pieces.some(one => one.props.color !== undefined), `${row.id} at ${percent}`).toBe(false)
+          if (row.id !== 'context.cache') expect(row.text.slice(NARROW_VALUE_AT).trimStart(), `${row.id} at ${percent}`).toStartWith(`${percent}%`)
+          if (row.id !== 'context.cache') expect(row.pieces.some(one => one.props.color !== undefined), `${row.id} at ${percent}`).toBe(false)
         }
         await barless.unmount()
       }
     }
   })
-
-  /** The identity row with the main loop idle three minutes. */
-  const idleLine = (): string => hudLines({ ...full, main: { idleSince: NOW - 180_000 } }, { columns: 72, isNarrow: false })[0] ?? ''
 
   test('(3) ticking clocks change digits in fixed cells, never move a neighbour', async ($, on) => {
     const scene = stage(on)
@@ -426,7 +603,7 @@ describe('the HUD', () => {
           scene.data = { ...full, now: NOW + later }
           const ui = await mount($, surface, columns)
           const rows = await rowsOf(ui)
-          for (const id of ['identity', 'now']) {
+          for (const id of ['header', 'session.now']) {
             const text = rowOf(rows, id)?.text
             if (text === undefined) continue
             const held = seen.get(id)
@@ -437,108 +614,53 @@ describe('the HUD', () => {
         }
       }
     }
-    // Crossing the hour widens the clock inside its cell: the cost stays put.
-    const before = hudLines({ ...full, session: { ...full.session, startedAt: NOW - 3_599_000 } }, { columns: 72, isNarrow: false })[0] ?? ''
-    const after = hudLines({ ...full, session: { ...full.session, startedAt: NOW - 3_601_000 } }, { columns: 72, isNarrow: false })[0] ?? ''
-    expect(before.indexOf('$4.21')).toBe(after.indexOf('$4.21'))
-    expect(displayWidth(before)).toBe(displayWidth(after))
-    // The working cell crossing the hour stays in its cell: the clock and the cost stay put.
+    // The working cell crossing the hour stays in its cell: the model and the row's width stay put.
     const working = (ms: number) => hudLines({ ...full, main: { busySince: NOW - ms } }, { columns: 72, isNarrow: false })[0] ?? ''
-    expect(working(3_599_000)).toContain('● working 59:59')
-    expect(working(3_601_000)).toContain('● working 1h 00m')
-    expect(working(3_599_000).indexOf('1h 12m')).toBe(working(3_601_000).indexOf('1h 12m'))
-    expect(working(3_599_000).indexOf('$4.21')).toBe(idleLine().indexOf('$4.21'))
-    // A tool starting or stopping never moves the files-edited count at the edge.
-    const running = hudLines(full, { columns: 72, isNarrow: false }).find(line => line.startsWith('  now')) ?? ''
-    const between = hudLines({ ...full, tools: { ...full.tools, counts: {}, current: undefined } }, { columns: 72, isNarrow: false }).find(line => line.startsWith('  now')) ?? ''
-    expect(running).toEndWith(' 00:04 · 7 files edited')
-    expect(between).toMatch(/^ {2}now {3}— +7 files edited$/)
-    expect(displayWidth(running)).toBe(displayWidth(between))
+    expect(working(3_599_000)).toEndWith('● working 59:59')
+    expect(working(3_601_000)).toEndWith('● working 1h 00m')
+    expect(displayWidth(working(3_599_000))).toBe(displayWidth(working(3_601_000)))
+    // A tool's elapsed time crossing the hour stays at the edge.
+    const elapsed = (ms: number) => rowsById({ ...full, tools: { ...full.tools!, current: { name: 'Bash', since: NOW - ms, arg: 'npm test -- hud' } } })['session.now'] ?? ''
+    expect(displayWidth(elapsed(3_599_000))).toBe(displayWidth(elapsed(3_601_000)))
+    expect(elapsed(3_601_000)).toEndWith('1h 00m')
   })
 
-  test('(4) narrow shows the same sections stacked, with 10/8-cell bars', async ($, on) => {
+  test('(4) narrow keeps every wide row, in the same order, with short labels and 10/8-cell bars', async ($, on) => {
     const scene = stage(on)
     for (const surface of SURFACES) {
       scene.data = fullContext
       const wide = await mount($, surface, 100)
       const wideIds = (await rowsOf(wide)).map(row => row.id)
       await wide.unmount()
-      // Wide, the 5h and 7d windows share one row.
-      expect(wideIds).toEqual(['identity', 'alerts', 'location', 'ctx', 'limits', 'spend_limit', 'now', 'motto'])
+      expect(wideIds).toEqual(['header', 'alerts', 'gap', 'session.repo', 'session.branch', 'session.now', 'context.used', 'context.cache', 'limits.5h', 'limits.7d', 'limits.spend', 'usage.cost', 'usage.last', 'usage.cache', 'motto'])
 
       for (const columns of [59, 56, 48, 44, 43, 40, 37]) {
         const ui = await mount($, surface, columns)
         const rows = await rowsOf(ui)
-        // Every wide section, in the same order, one per row; the limits each their own.
-        expect(rows.map(row => row.id), `@${columns}`).toEqual(['identity', 'alerts', 'location', 'ctx', 'five_hour', 'seven_day', 'spend_limit', 'now', 'motto'])
+        expect(rows.map(row => row.id), `@${columns}`).toEqual(wideIds)
         const cells = columns < 44 ? SMALL_BAR_WIDTH : NARROW_BAR_WIDTH
-        for (const id of ['ctx', 'five_hour', 'seven_day', 'spend_limit']) {
-          expect(rowOf(rows, id)?.text.match(BAR_CELLS), `${id} @${columns}`).toHaveLength(cells)
+        for (const id of GAUGES) expect(rowOf(rows, id)?.text.match(BAR_CELLS), `${id} @${columns}`).toHaveLength(cells)
+        for (const [id, label] of [['session.repo', ' sess '], ['context.used', ' ctx  '], ['limits.5h', ' lim  '], ['usage.cost', ' use  ']] as const) {
+          expect(rowOf(rows, id)?.text, `${id} @${columns}`).toStartWith(label)
         }
         // The facts the wide rows carry are all there.
         const text = rows.map(row => row.text).join('\n')
-        for (const fact of ['opus 5.5', '1h 12m', '$4.21', '⚠ 2 agents', 'main* +3 −1 ↑2', '100%', '1.0M/1.0M', '92%', AT_5H, '64%', AT_7D, '85%', AT_SPEND, 'now   Bash', 'ship small']) {
+        for (const fact of ['opus 5.5', columns < 40 ? '$3.51 / h' : '1h 12m', '$4.21', '⚠ 2 agents', 'main*', '100%', '1.0M/1.0M', '92%', AT_5H, '64%', AT_7D, '85%', AT_SPEND, 'Bash', 'ship small']) {
           expect(text, `${fact} @${columns}`).toContain(fact)
         }
-        expect(rowOf(rows, 'location')?.text).toBe('  ~/.claude/mods · main* +3 −1 ↑2')
         await ui.unmount()
       }
     }
-
     // The provider stays while the row has room for it, and gives way first.
-    expect(hudLines(full, { columns: 56, isNarrow: true })[0]).not.toContain('gateway')
-    expect(hudLines({ ...full, main: undefined }, { columns: 56, isNarrow: true })[0]).toContain('· gateway')
+    expect(hudLines(full, { columns: 48, isNarrow: true })[0]).toContain('· gateway')
     expect(hudLines(full, { columns: 44, isNarrow: true })[0]).not.toContain('gateway')
     expect(hudLines(full, { columns: 44, isNarrow: true })[0]).toContain('opus 5.5 · xhigh')
-    // The now row's right-hand cells end in line with the identity row's, clear of the close button.
-    const now = hudLines(full, { columns: 56, isNarrow: true }).find(line => line.startsWith('  now')) ?? ''
-    expect(now).toBe('  now   Bash  npm test -- hud   00:04 · 7 files edited')
-    expect(displayWidth(now)).toBe(56 - CLOSE_RESERVE)
   })
 
-  test('the 72-column sketch: every row, as docs/pane-sketch.md draws it', () => {
-    expect(hudLines({ ...full, motto: undefined }, { columns: 72, isNarrow: false })).toEqual([
-      '◆ opus 5.5 · xhigh · gateway          ● working 00:42   1h 12m   $4.21',
-      `  ⚠ 2 agents waiting for permission · ${OUT_ALERT}`,
-      '  ~/.claude/mods · main* +3 −1 ↑2',
-      '  ctx   ━━━━━━━━────────┃───  41%  412k / 1.0M     compact in ~6 turns',
-      `  5h    ━━──────  31% ${TIGHT_5H}    7d  ━───────  12% ${TIGHT_7D}`,
-      '  now   Bash  npm test -- hud                   00:04 · 7 files edited',
-    ])
-  })
-
-  test('narrow at 40 columns: the full sketch, every section stacked', () => {
-    expect(hudLines(full, { columns: 40, isNarrow: true })).toEqual([
-      '◆ opus 5.5 · xhigh      1h 12m   $4.21',
-      '  ⚠ 2 agents waiting for permission · 5…',
-      '  ~/.claude/mods · main* +3 −1 ↑2',
-      '  ctx   ━━━───┃─  41%  412k/1.0M',
-      `  5h    ━━──────  31%  ${AT_5H}`,
-      `  7d    ━───────  12%  ${AT_7D}`,
-      '  now   Bash    00:04 · 7 files edited',
-      '  ship small, ship often',
-    ])
-  })
-
-  test('narrow at 36 columns: no bars, the percent stands alone; the now row keeps its argument', () => {
-    expect(hudLines(full, { columns: 36, isNarrow: true })).toEqual([
-      '◆ opus 5.5          1h 12m   $4.21',
-      '  ⚠ 2 agents waiting for permission…',
-      '  ~/.claude/mods · main* +3 −1 ↑2',
-      '  ctx    41%  412k/1.0M',
-      `  5h     31%  ${AT_5H}`,
-      `  7d     12%  ${AT_7D}`,
-      '  now   Bash  npm test -- hud',
-      '  ship small, ship often',
-    ])
-    expect(hudLines(fullContext, { columns: 36, isNarrow: true })[3]).toBe('  ctx   100%  1.0M/1.0M')
-  })
-
-  test('the identity row stops two cells short of the close button at every width', () => {
-    const cost = { ...full, usage: { ...(full.usage ?? { rateLimits: [], compactions: 0 }), costUsd: 123.45 } }
-    // With no identity to draw, whichever row comes first keeps the reserve.
+  test('the header stops two cells short of the close button at every width', () => {
+    // With no header to draw, whichever row comes first keeps the reserve.
     const placeOnly: HudData = { session: { cwd: '/Users/someone/a/path/long/enough/to/fill/any/pane/it/is/drawn/into' }, git: { branch: 'main', dirty: true }, now: NOW }
-    for (const data of [...Object.values(FIXTURES), cost, placeOnly]) {
+    for (const data of [...Object.values(FIXTURES), placeOnly]) {
       for (const columns of EVERY_WIDTH) {
         const lines = hudLines(data, { columns, isNarrow: columns < NARROW_BELOW })
         if (lines.length === 0) continue
@@ -547,65 +669,62 @@ describe('the HUD', () => {
         expect(displayWidth(first), `@${columns}: ${first}`).toBeLessThanOrEqual(columns - CLOSE_RESERVE)
       }
     }
-    expect(hudLines(placeOnly, { columns: 40, isNarrow: true })).toEqual(['  …/any/pane/it/is/drawn/into · main*'])
-    // The cost is never under the close button, however long it grows.
+    expect(hudLines(placeOnly, { columns: 40, isNarrow: true })).toEqual([' sess repo   …/pane/it/is/drawn/into', '      branch main*'])
+    // The working cell is never under the close button.
     for (const columns of [40, 48, 56, 60, 72]) {
-      const first = hudLines(cost, { columns, isNarrow: columns < NARROW_BELOW })[0] ?? ''
-      expect(first, `@${columns}`).toEndWith('$123.45')
+      const first = hudLines(full, { columns, isNarrow: columns < NARROW_BELOW })[0] ?? ''
+      expect(first, `@${columns}`).toEndWith('● working 00:42')
       expect(displayWidth(first), `@${columns}`).toBe(Math.min(columns, 72 + CLOSE_RESERVE) - CLOSE_RESERVE)
     }
-    // Right-aligned cells share the reserve; from 74 columns the card is whole.
-    expect(displayWidth(hudLines(full, { columns: 72, isNarrow: false }).find(line => line.startsWith('  ctx')) ?? '')).toBe(70)
-    expect(displayWidth(hudLines(full, { columns: 74, isNarrow: false })[0] ?? '')).toBe(72)
-    expect(hudLines(full, { columns: 40, isNarrow: true })[0]).toBe('◆ opus 5.5 · xhigh      1h 12m   $4.21')
   })
 
-  test('right-aligned cells share the identity edge at 60 through 73 columns', () => {
+  test('right-aligned cells share the header\'s edge at 60 through 73 columns', () => {
     for (let columns = 60; columns <= 73; columns += 1) {
-      const data = { ...full, usage: { ...full.usage!, contextTokens: undefined } }
-      const lines = hudLines(data, { columns, isNarrow: false })
-      const edge = displayWidth(lines[0] ?? '')
-      for (const suffix of ['compactions', '00:04 · 7 files edited']) {
-        const row = lines.find(line => line.endsWith(suffix))
-        expect(row, `${suffix} @${columns}`).toBeDefined()
-        expect(displayWidth(row ?? ''), `${suffix} @${columns}`).toBe(edge)
-      }
+      const lines = rowsById(full, columns)
+      const edge = displayWidth(lines.header ?? '')
+      expect(displayWidth(lines['session.now'] ?? ''), `@${columns}`).toBe(edge)
+      expect(lines['session.now'], `@${columns}`).toEndWith(' 00:04')
     }
   })
 
-  test('(5) a missing fact hides its row instead of printing zeros', async ($, on) => {
+  test('(5) a missing fact hides its row instead of printing zeros; a section with no rows hides its label', async ($, on) => {
     const scene = stage(on, sparse)
     for (const surface of SURFACES) {
-      const ui = await mount($, surface, 100)
-      const rows = await rowsOf(ui)
-      expect(rows.map(row => row.id)).toEqual(['identity', 'ctx'])
-      expect(rowOf(rows, 'ctx')?.text).toBe('  ctx   —')
-      await ui.unmount()
-
-      const narrow = await mount($, surface, 48)
-      const narrowRows = await rowsOf(narrow)
-      expect(narrowRows.map(row => row.id)).toEqual(['identity', 'ctx'])
-      expect(rowOf(narrowRows, 'ctx')?.text).toBe('  ctx   —')
-      await narrow.unmount()
+      for (const columns of [100, 48]) {
+        const ui = await mount($, surface, columns)
+        const rows = await rowsOf(ui)
+        expect(rows.map(row => row.id)).toEqual(['header', 'gap', 'context.used', 'usage.cost'])
+        expect(rowOf(rows, 'context.used')?.text).toBe(columns < NARROW_BELOW ? ' ctx  used   —' : ' context  used    —')
+        expect(rowOf(rows, 'usage.cost')?.text).toBe(columns < NARROW_BELOW ? ' use  cost   $0.00  00:12' : ' usage    cost    $0.00              00:12')
+        await ui.unmount()
+      }
 
       scene.data = empty
       const none = await mount($, surface, 100)
       expect(await rowsOf(none)).toHaveLength(0)
       await none.unmount()
 
-      // No limits, no git, no inventory, no tools, nothing alarming: those rows go, the rest stay.
-      scene.data = { ...full, usage: { ...(full.usage ?? { compactions: 0, rateLimits: [] }), rateLimits: [] }, git: {}, inventory: { mcpServers: [] }, tools: { counts: {} }, alerts: undefined }
+      // No limits, no git, no inventory, no tools, no cache, no last turn, nothing alarming: those rows go, the rest stay.
+      scene.data = {
+        ...full,
+        usage: { ...full.usage!, rateLimits: [], lastTurn: undefined, tokens: undefined, agentShare: undefined },
+        git: {},
+        inventory: { mcpServers: [] },
+        tools: { counts: {} },
+        cache: undefined,
+        alerts: undefined,
+      }
       const bare = await mount($, surface, 100)
       const left = await rowsOf(bare)
-      expect(left.map(row => row.id)).toEqual(['identity', 'location', 'ctx', 'motto'])
+      expect(left.map(row => row.id)).toEqual(['header', 'gap', 'session.repo', 'context.used', 'context.growth', 'usage.cost', 'motto'])
       // Without the threshold the runway runs to the window.
-      expect(rowOf(left, 'ctx')?.text).toEndWith('compact in ~10 turns')
-      expect(rowOf(left, 'location')?.text).toBe('  ~/.claude/mods')
+      expect(rowOf(left, 'context.growth')?.text).toEndWith('compact in ~10 turns')
+      expect(rowOf(left, 'session.repo')?.text).toBe(' session  repo    ~/.claude/mods')
       await bare.unmount()
       scene.data = sparse
     }
     await eachDrawing($, scene, WIDTHS, rows => {
-      for (const row of rows) expect(row.text).not.toMatch(/mcp|skills|[+~−↑↓×]0\b|0 compactions|0 files|⚠ 0|~0 turns/)
+      for (const row of rows) expect(row.text).not.toMatch(/mcp|skills|[+~−↑↓×]0\b|0 compactions|0 files|⚠ 0|~0 turns|0 tokens|agents 0%/)
     })
   })
 
@@ -645,7 +764,7 @@ describe('the HUD', () => {
     }
   })
 
-  test('(8) dim for the secondary, bold for the headline, colour only on bars, glyphs, the model, working and the alerts', async ($, on) => {
+  test('(8) dim for the secondary, bold for the headlines, colour only on bars, glyphs, the model, working, the ETA, the cooling cache and the alerts', async ($, on) => {
     const scene = stage(on)
     await eachDrawing($, scene, WIDTHS, async (rows, { name, columns }) => {
       for (const row of rows) {
@@ -656,9 +775,9 @@ describe('the HUD', () => {
           if (one.props.color !== undefined) {
             expect(THEME_KEYS, where).toContain(one.props.color)
             // The alert strip is coloured throughout: each alert in its severity's key.
-            if (row.id !== 'alerts') expect(/^[━◆●◐*]+$/.test(one.text) || one.text === MODEL || one.text === '● working', where).toBe(true)
+            if (row.id !== 'alerts') expect(/^[━◆●◐*]+$/.test(one.text) || /^out ~/.test(one.text.trim()) || ['cooling', MODEL, '● working'].includes(one.text), where).toBe(true)
           }
-          if (one.props.bold === true) expect(row.id, where).toBe('identity')
+          if (one.props.bold === true) expect(['header', 'usage.cost'], where).toContain(row.id)
           if (one.props.dimColor === true) expect(one.props.bold, where).toBeUndefined()
         }
       }
@@ -668,15 +787,22 @@ describe('the HUD', () => {
       const ui = await mount($, surface, 100)
       const rows = await rowsOf(ui)
       for (const [id, text] of [
-        ['identity', 'gateway'], ['identity', '1h 12m'], ['identity', '00:42'], ['location', '~/.claude/mods'],
-        ['ctx', 'ctx'], ['ctx', '─'], ['ctx', '┃'], ['ctx', '412k / 1.0M'], ['ctx', 'compact in ~6 turns'], ['limits', TIGHT_5H],
-        ['now', 'now'], ['now', 'npm test -- hud'], ['now', '00:04'], ['now', '7 files edited'],
+        ['header', 'gateway'], ['header', '00:42'], ['session.repo', 'repo'], ['session.repo', '~/.claude/mods'],
+        ['session.branch', '↑2'], ['session.branch', '+142 −37 lines'], ['session.branch', 'last commit 48m ago'],
+        ['session.now', 'npm test -- hud'], ['session.now', '00:04'],
+        ['context.used', 'used'], ['context.used', '─'], ['context.used', '┃'], ['context.used', '412k / 1.0M'],
+        ['context.growth', 'compact in ~6 turns'], ['context.cache', '42m left'], ['context.cache', '(1h)'],
+        ['limits.5h', AT_5H], ['usage.cost', '1h 12m'], ['usage.last', '1m 12s'], ['usage.cache', 'agents 38% of spend'],
       ] as const) {
         expect(piece(rowOf(rows, id), text)?.props.dimColor, `${id}: ${text}`).toBe(true)
       }
-      expect(piece(rowOf(rows, 'location'), '*')?.props).toEqual({ color: 'warning' })
-      expect(piece(rowOf(rows, 'identity'), '● working')?.props).toEqual({ color: 'claude' })
-      expect(piece(rowOf(rows, 'now'), 'Bash')?.props).toEqual({})
+      expect(piece(rowOf(rows, 'session.repo'), 'session')?.props).toEqual({})
+      expect(piece(rowOf(rows, 'session.branch'), '*')?.props).toEqual({ color: 'warning' })
+      expect(piece(rowOf(rows, 'header'), '● working')?.props).toEqual({ color: 'claude' })
+      expect(piece(rowOf(rows, 'session.now'), 'Bash')?.props).toEqual({})
+      expect(piece(rowOf(rows, 'limits.5h'), `out ~${AT_OUT_5H}`)?.props).toEqual({ color: 'error' })
+      expect(piece(rowOf(rows, 'context.cache'), '━')?.props).toEqual({ color: 'success' })
+      expect(piece(rowOf(rows, 'context.cache'), 'warm')?.props).toEqual({})
       expect(piece(rowOf(rows, 'alerts'), '⚠')?.props).toEqual({ color: 'error' })
       expect(piece(rowOf(rows, 'alerts'), '2 agents waiting for permission')?.props).toEqual({ color: 'error' })
       await ui.unmount()
@@ -698,11 +824,10 @@ describe('the HUD', () => {
       for (const columns of WIDTHS) {
         const ui = await mount($, surface, columns)
         const rows = await rowsOf(ui)
-        const location = rowOf(rows, 'location')?.text ?? ''
-        expect(location, `@${columns}`).toMatch(/feature\/very-long-[^ ]*…\* \+3 −1 ↑2$/)
+        expect(rowOf(rows, 'session.branch')?.text ?? '', `@${columns}`).toMatch(/feature\/very-long-[^ ]*…\* ↑2$/)
         expect(rowOf(rows, 'motto')?.text, `@${columns}`).toEndWith('…')
         expect(todoLines(longBranch.todos, columns, TODO_ROWS, true).find(line => line.includes('Rewriting')), `@${columns}`).toMatch(/Rewriting the reconcil.*…$/)
-        expect(todoLines(longBranch.todos, columns)[0], `@${columns}`).toMatch(/◐ Rewriting the rec.*…$/)
+        expect(todoLines(longBranch.todos, columns)[1], `@${columns}`).toMatch(/◐ Rewriting the rec.*…$/)
         await ui.unmount()
       }
     }
@@ -736,63 +861,34 @@ describe('the HUD', () => {
     }
   })
 
-  test('a short pane gives the HUD half its rows, dropping the least needed first', () => {
-    const has = (lines: string[], text: string): boolean => lines.some(line => line.includes(text))
-    // Wide drops the motto, now, the place, then the spend gauge; never identity, the alerts or ctx.
-    const wide = (rows?: number) => hudLines(fullContext, { columns: 100, rows, isNarrow: false })
-    expect(wide()).toHaveLength(8)
-    expect(wide(40)).toHaveLength(8)
-    const twelve = wide(12)
-    expect(twelve).toHaveLength(6)
-    expect(has(twelve, 'ship small')).toBe(false)
-    expect(has(twelve, '  now')).toBe(false)
-    expect(has(twelve, '~/.claude/mods')).toBe(true)
-    expect(has(twelve, 'ctx')).toBe(true)
-    expect(wide(4)).toHaveLength(4)
-    expect(wide(4)[0]).toStartWith('◆')
-    expect(wide(4)[1]).toStartWith('  ⚠')
-    expect(has(wide(4), 'ctx')).toBe(true)
-    expect(hudLines(full, { columns: 48, rows: 4, isNarrow: true })).toHaveLength(4)
-
-    // Narrow drops the motto, now, the place, then the spend gauge, then the 7d; never identity, the alerts or ctx.
-    // (The todo list is a section of its own under the HUD.)
-    const narrow = (rows?: number) => hudLines(fullContext, { columns: 40, rows, isNarrow: true })
-    expect(narrow()).toHaveLength(9)
-    expect(narrow(18)).toHaveLength(9)
-    expect(has(narrow(16), 'ship small')).toBe(false)
-    expect(has(narrow(16), '  now')).toBe(true)
-    expect(has(narrow(14), '  now')).toBe(false)
-    expect(has(narrow(14), '~/.claude/mods')).toBe(true)
-    expect(has(narrow(12), '~/.claude/mods')).toBe(false)
-    expect(has(narrow(12), 'spend')).toBe(true)
-    expect(has(narrow(10), 'spend')).toBe(false)
-    for (const rows of [4, 6, 8, 10, 12, 14, 16, 18, 20]) {
-      const lines = narrow(rows)
-      expect(lines, `rows ${rows}`).toHaveLength(Math.min(9, Math.max(4, rows / 2)))
-      expect(lines[0], `rows ${rows}`).toStartWith('◆')
-      expect(lines[1], `rows ${rows}`).toStartWith('  ⚠')
-      expect(has(lines, 'ctx'), `rows ${rows}`).toBe(true)
+  test('a short pane gives the HUD half its rows, dropping by rank: alerts, header, used, limits, now, cache, cost, then the rest', () => {
+    // Most needed first; the blank row goes before anything with words in it.
+    const order = ['alerts', 'header', 'context.used', 'limits.5h', 'limits.7d', 'session.now', 'context.cache', 'usage.cost', 'session.branch', 'session.repo', 'context.growth', 'usage.last', 'usage.cache', 'motto', 'gap']
+    expect([...order].sort((a, b) => (RANKS[b as keyof typeof RANKS] ?? 0) - (RANKS[a as keyof typeof RANKS] ?? 0)).filter(id => id in RANKS)).toEqual(order.filter(id => id in RANKS))
+    for (const [columns, isNarrow] of [[100, false], [72, false], [48, true], [40, true]] as const) {
+      expect(hudLines(full, { columns, isNarrow })).toHaveLength(order.length)
+      for (let rows = 4; rows <= 34; rows += 2) {
+        const budget = Math.max(4, rows / 2)
+        const kept = order.slice(0, budget)
+        const ids = hudRowIds(full, { columns, rows, isNarrow })
+        expect(ids, `@${columns} rows ${rows}`).toEqual(SKETCH_IDS.concat('motto').filter(id => kept.includes(id)))
+      }
     }
   })
 
-  test('a full context window reads 100 % on a full red bar, the threshold marked', () => {
-    const ctx = hudLines(fullContext, { columns: 72, isNarrow: false }).find(line => line.startsWith('  ctx')) ?? ''
-    expect(ctx).toContain(`${'━'.repeat(16)}┃${'━'.repeat(3)} 100%  1.0M / 1.0M`)
-    // Without growth samples the runway is unknown: the compaction count stands in.
-    expect(ctx).toEndWith('3 compactions')
-    expect(hudLines(fullContext, { columns: 48, isNarrow: true })[3]).toBe(`  ctx   ${'━'.repeat(8)}┃━ 100%  1.0M/1.0M`)
-    expect(hudLines(fullContext, { columns: 40, isNarrow: true })[3]).toBe(`  ctx   ${'━'.repeat(6)}┃━ 100%  1.0M/1.0M`)
+  test('a full context window reads 100 % on a full red bar, the threshold marked; no growth known, no growth row', () => {
+    const rows = rowsById(fullContext)
+    expect(rows['context.used']).toBe(` context  used    ${'━'.repeat(16)}┃${'━'.repeat(3)} 100%   1.0M / 1.0M`)
+    expect(rows['context.growth']).toBeUndefined()
+    expect(rowsById(fullContext, 48)['context.used']).toBe(` ctx  used   ${'━'.repeat(8)}┃━ 100%  1.0M/1.0M`)
+    expect(rowsById(fullContext, 40)['context.used']).toBe(` ctx  used   ${'━'.repeat(6)}┃━ 100%  1.0M/1.0M`)
     const unmarked = { ...fullContext, inventory: { mcpServers: [] } }
-    expect(hudLines(unmarked, { columns: 72, isNarrow: false }).find(line => line.startsWith('  ctx'))).toContain(`${'━'.repeat(20)} 100%`)
+    expect(rowsById(unmarked)['context.used']).toContain(`${'━'.repeat(20)} 100%`)
   })
 })
 
-// ---------------------------------------------------------------------------
-// The TODO section: its own rows between the HUD and the agents.
-// ---------------------------------------------------------------------------
-
 describe('the alert strip', () => {
-  test('one row under the identity, only while something needs attention, most severe first', () => {
+  test('one row under the header, only while something needs attention, most severe first', () => {
     const layout = { columns: 72, isNarrow: false }
     expect(alertsOf(calm)).toEqual([])
     expect(hudLines(calm, layout).some(line => line.includes('⚠'))).toBe(false)
@@ -812,6 +908,8 @@ describe('the alert strip', () => {
     expect(displayWidth(lines[1] ?? '')).toBeLessThanOrEqual(72)
     // Narrow, the same row cut to the pane.
     expect(hudLines(alarmed, { columns: 48, isNarrow: true })[1]).toBe('  ⚠ 2 agents waiting for permission · 5h out ~1…')
+    // The cache cooling sits after the compaction, before the failures.
+    expect(alertsOf({ ...alarmed, cache: coolingCache.cache }).map(alert => alert.id)).toEqual(['asks', 'limit:five_hour', 'stalled', 'compact', 'cache', 'failures', 'behind'])
   })
 
   test('each alert alone: its words, its colour; a limit that resets first, a compaction far off and zero counts say nothing', () => {
@@ -837,16 +935,37 @@ describe('the alert strip', () => {
     expect(compactRunway(turnsAt(604_000))).toBe(4)
     expect(strip(turnsAt(604_000))).toBeUndefined()
     expect(strip(turnsAt(790_000))).toBe('  ⚠ compact in ~1 turn')
-    // Colours: asks and a limit `error`, stalled and compaction `warning`, failures and behind dim `warning`.
-    const looks = Object.fromEntries(alertsOf(alarmed).map(alert => [alert.id, { color: alert.color, dim: alert.dim }]))
+    // Colours: asks and a limit `error`, stalled, compaction and the cache `warning`, failures and behind dim `warning`.
+    const looks = Object.fromEntries(alertsOf({ ...alarmed, cache: coolingCache.cache }).map(alert => [alert.id, { color: alert.color, dim: alert.dim }]))
     expect(looks).toEqual({
       asks: { color: 'error', dim: undefined },
       'limit:five_hour': { color: 'error', dim: undefined },
       stalled: { color: 'warning', dim: undefined },
       compact: { color: 'warning', dim: undefined },
+      cache: { color: 'warning', dim: undefined },
       failures: { color: 'warning', dim: true },
       behind: { color: 'warning', dim: true },
     })
+  })
+
+  test('the cache cooling: within two minutes of a 1h TTL, one of a 5m TTL; cold is the cache row\'s, never an alert', () => {
+    const strip = (data: HudData): string | undefined => hudLines(data, { columns: 100, isNarrow: false }).find(line => line.startsWith('  ⚠'))
+    const left = (ms: number, ttl: '5m' | '1h' = '1h'): HudData => ({ ...calm, cache: { ttl, lastAt: NOW - ((ttl === '1h' ? 60 : 5) * MINUTE - ms) } })
+    expect(cacheCoolAt(60 * MINUTE)).toBe(2 * MINUTE)
+    expect(cacheCoolAt(5 * MINUTE)).toBe(MINUTE)
+    expect(strip(left(2 * MINUTE + 1000))).toBeUndefined()
+    expect(strip(left(2 * MINUTE))).toBe('  ⚠ cache cools in 2m · next turn rewrites 412k')
+    expect(strip(left(90_000))).toBe('  ⚠ cache cools in 2m · next turn rewrites 412k')
+    expect(strip(left(40_000))).toBe('  ⚠ cache cools in 40s · next turn rewrites 412k')
+    expect(strip(left(0))).toBeUndefined()
+    expect(strip(coldCache)).toBeUndefined()
+    // A 5-minute cache cools in its last minute.
+    expect(strip(left(61_000, '5m'))).toBeUndefined()
+    expect(strip(left(60_000, '5m'))).toBe('  ⚠ cache cools in 1m · next turn rewrites 412k')
+    // With the context's size unknown, the cooling alone.
+    expect(strip({ ...left(60_000), usage: { ...calm.usage!, contextTokens: undefined, contextPercent: undefined } })).toBe('  ⚠ cache cools in 1m')
+    expect(cacheStateOf(left(60_000))).toEqual({ ttl: '1h', ttlMs: 60 * MINUTE, leftMs: 60_000, cooling: true })
+    expect(cacheStateOf({ ...calm, cache: undefined })).toBeUndefined()
   })
 
   test('mounted: the ⚠ in the most severe colour, each alert in its own, separators dim', async ($, on) => {
@@ -863,131 +982,207 @@ describe('the alert strip', () => {
   })
 })
 
-describe('the identity row\'s working cell', () => {
+describe('the header\'s working cell', () => {
   test('● working mm:ss in the accent while the main loop works, ○ idle dim once it stopped, nothing before either', () => {
     const at = (main: HudData['main']) => hudLines({ ...full, main }, { columns: 72, isNarrow: false })[0] ?? ''
-    expect(at({ busySince: NOW - 42_000 })).toBe('◆ opus 5.5 · xhigh · gateway          ● working 00:42   1h 12m   $4.21')
-    expect(at({ idleSince: NOW - 180_000 })).toBe('◆ opus 5.5 · xhigh · gateway                ○ idle 3m   1h 12m   $4.21')
-    expect(at(undefined)).toBe('◆ opus 5.5 · xhigh · gateway                            1h 12m   $4.21')
+    expect(at({ busySince: NOW - 42_000 })).toBe('◆ opus 5.5 · xhigh · gateway                           ● working 00:42')
+    expect(at({ idleSince: NOW - 180_000 })).toBe('◆ opus 5.5 · xhigh · gateway                                 ○ idle 3m')
+    expect(at(undefined)).toBe('◆ opus 5.5 · xhigh · gateway')
     // Busy wins over a stale idle time.
     expect(at({ busySince: NOW - 5000, idleSince: NOW - 60_000 })).toContain('● working 00:05')
   })
 
-  test('the first to give way after the provider, before the effort', () => {
-    for (let columns = 30; columns <= 74; columns += 1) {
+  test('the provider gives way first, then the working cell, then the effort', () => {
+    for (let columns = 24; columns <= 74; columns += 1) {
       const line = hudLines(full, { columns, isNarrow: columns < NARROW_BELOW })[0] ?? ''
-      // Whenever the working cell shows, so does the effort.
+      // Whenever the working cell shows, so does the effort; without it, no provider either.
       if (line.includes('working')) expect(line, `@${columns}`).toContain('xhigh')
+      else expect(line, `@${columns}`).not.toContain('gateway')
       expect(displayWidth(line), `@${columns}`).toBeLessThanOrEqual(columns - CLOSE_RESERVE)
     }
-    expect(hudLines(full, { columns: 56, isNarrow: true })[0]).toBe('◆ opus 5.5 · xhigh    ● working 00:42   1h 12m   $4.21')
-    expect(hudLines(full, { columns: 48, isNarrow: true })[0]).toBe('◆ opus 5.5 · xhigh · gateway    1h 12m   $4.21')
+    expect(hudLines(full, { columns: 44, isNarrow: true })[0]).toBe('◆ opus 5.5 · xhigh         ● working 00:42')
+    expect(hudLines(full, { columns: 36, isNarrow: true })[0]).toBe('◆ opus 5.5 · xhigh')
+    expect(hudLines(full, { columns: 18, isNarrow: true })[0]).toBe('◆ opus 5.5')
   })
 })
 
-describe('the ctx row', () => {
-  test('the auto-compact threshold marked ┃ on the bar, and the runway at the context\'s growth per turn', () => {
-    const ctx = (data: HudData, columns = 72) => hudLines(data, { columns, isNarrow: columns < NARROW_BELOW }).find(line => line.startsWith('  ctx')) ?? ''
-    // 800k of 1M: the 17th of 20 cells; 412k growing 65k a turn reaches it in ~6 turns.
-    expect(ctx(full)).toBe('  ctx   ━━━━━━━━────────┃───  41%  412k / 1.0M     compact in ~6 turns')
-    expect(ctx(full, 56)).toBe('  ctx   ━━━━────┃─  41%  412k/1.0M')
-    // No threshold known (or none below the window): no mark, and the runway runs to the window.
-    const noMark = { ...full, inventory: { mcpServers: [] } }
-    expect(ctx(noMark)).toBe('  ctx   ━━━━━━━━────────────  41%  412k / 1.0M    compact in ~10 turns')
-    expect(ctx({ ...full, inventory: { mcpServers: [], compactAt: 1_000_000 } })).not.toContain('┃')
-    // No growth known: the compaction count, as before; none either, nothing.
-    const flat = { ...full, usage: { ...full.usage!, contextSamples: [412_000, 412_000] } }
-    expect(ctx(flat)).toEndWith('┃───  41%  412k / 1.0M           3 compactions')
-    expect(ctx({ ...flat, usage: { ...flat.usage, compactions: 0 } })).toBe('  ctx   ━━━━━━━━────────┃───  41%  412k / 1.0M')
+describe('the session section', () => {
+  test('repo: the working directory from the home `~`, its leading directories the first to go', () => {
+    expect(rowsById(full)['session.repo']).toBe(' session  repo    ~/.claude/mods')
+    const deep: HudData = { ...full, session: { ...full.session, cwd: '/home/dai/src/work/clients/acme/monorepo/packages/frontend/app' } }
+    expect(rowsById(deep, 48)['session.repo']).toBe(' sess repo   …/monorepo/packages/frontend/app')
+    expect(rowsById({ ...full, session: { ...full.session, cwd: undefined } })['session.repo']).toBe(' session  repo    ~/.claude')
+  })
+
+  test('branch: the branch, dirty and ahead/behind, then the lines changed and the last commit\'s age', () => {
+    const branch = (git: HudData['git'], columns = 72) => rowsById({ ...full, git }, columns)['session.branch']
+    expect(branch(full.git)).toBe('          branch  main* ↑2   +142 −37 lines · last commit 48m ago')
+    // Without the line counts, the paths stand in: added, modified, deleted.
+    expect(branch({ ...full.git, linesAdded: undefined, linesDeleted: undefined })).toBe('          branch  main* ↑2   +3 −1 · last commit 48m ago')
+    // Clean: the branch and its last commit.
+    expect(branch({ branch: 'main', dirty: 0, linesAdded: 0, linesDeleted: 0, lastCommitAt: NOW - 3 * 60 * MINUTE })).toBe('          branch  main   last commit 3h ago')
+    // No commit yet: no age.
+    expect(branch({ branch: 'main', dirty: 2, added: 2 })).toBe('          branch  main*   +2')
+    expect(branch({ branch: 'dev', ahead: 1, behind: 4 })).toBe('          branch  dev ↑1 ↓4')
+    // Narrow: what fits whole.
+    expect(branch(full.git, 48)).toBe('      branch main* ↑2  +142 −37 lines')
+    expect(branch(full.git, 36)).toBe('      branch main* ↑2')
+    expect(rowsById({ ...full, git: {} })['session.branch']).toBeUndefined()
+  })
+
+  test('now: the tool running now and its main argument, its elapsed time at the edge; between tools a dim —', () => {
+    const now = (data: HudData, columns = 72) => rowsById(data, columns)['session.now']
+    expect(now(full)).toBe('          now     Bash · npm test -- hud                         00:04')
+    // An MCP tool keeps its own name; a long argument is cut with …; a path keeps its end.
+    expect(now(manyTools)).toMatch(/^ {10}now {5}browser_tak… · https:\/\/example\.com\/[^ ]*… +01:05$/)
+    expect(displayWidth(now(manyTools) ?? '')).toBe(70)
+    const path: HudData = { ...full, tools: { ...full.tools!, current: { name: 'Edit', since: NOW - 2000, arg: '/Users/daiziqiao/.claude/mods/mod-hud/hooks/a-rather-long-module-name.tsx' } } }
+    expect(now(path)).toMatch(/^ {10}now {5}Edit · …\/hooks\/a-rather-long-module-name\.tsx +00:02$/)
+    // No argument; between tools; nothing called yet (or the option off): no row.
+    expect(now({ ...full, tools: { counts: {}, current: { name: 'Read', since: NOW - 1000 } } })).toMatch(/^ {10}now {5}Read +00:01$/)
+    expect(now({ ...full, tools: { counts: { Read: 4 } } })).toBe('          now     —')
+    expect(now({ ...full, tools: { counts: {} } })).toBeUndefined()
+    expect(now({ ...full, tools: undefined })).toBeUndefined()
+    expect(now(full, 48)).toBe('      now    Bash · npm test -- hud      00:04')
+  })
+
+  test('the per-tool counts, the session\'s tokens by kind, cache writes, compactions, files edited and the MCP/skill inventory are not drawn', () => {
+    for (const columns of [100, 72, 56, 48, 40]) {
+      const text = hudLines(manyTools, { columns, isNarrow: columns < NARROW_BELOW }).join('\n')
+      expect(text, `@${columns}`).not.toMatch(/×41|tools|tok |cache write|mcp|skills|\d[kM]? in\b|\d[kM]? out\b|compactions|files edited/)
+    }
+  })
+})
+
+describe('the context section', () => {
+  test('used: the auto-compact threshold marked ┃ on the bar, the tokens of the window', () => {
+    // 800k of 1M: the 17th of 20 cells.
+    expect(rowsById(full)['context.used']).toBe(' context  used    ━━━━━━━━────────┃───  41%   412k / 1.0M')
+    expect(rowsById(full, 56)['context.used']).toBe(' ctx  used   ━━━━────┃─  41%  412k/1.0M')
+    // No threshold known (or none below the window): no mark.
+    expect(rowsById({ ...full, inventory: { mcpServers: [] } })['context.used']).toBe(' context  used    ━━━━━━━━────────────  41%   412k / 1.0M')
+    expect(rowsById({ ...full, inventory: { mcpServers: [], compactAt: 1_000_000 } })['context.used']).not.toContain('┃')
+  })
+
+  test('growth: the context\'s growth per turn and the runway to compaction; no growth seen, no row', () => {
+    expect(rowsById(full)['context.growth']).toBe('          growth  +65k / turn        compact in ~6 turns')
+    expect(rowsById(full, 48)['context.growth']).toBe('      growth +65k/turn  compact in ~6 turns')
+    // No threshold: the runway runs to the window.
+    expect(rowsById({ ...full, inventory: { mcpServers: [] } })['context.growth']).toEndWith('compact in ~10 turns')
+    expect(rowsById({ ...full, usage: { ...full.usage!, contextSamples: [412_000, 412_000] } })['context.growth']).toBeUndefined()
+    expect(rowsById({ ...full, usage: { ...full.usage!, contextTokens: undefined, contextPercent: undefined } })['context.growth']).toBe('          growth  +65k / turn')
     // A compaction's drop is left out of the growth.
     expect(compactRunway({ ...full, usage: { ...full.usage!, contextSamples: [300_000, 40_000, 105_000, 170_000] } })).toBe(Math.ceil((800_000 - 412_000) / 65_000))
   })
+
+  test('cache: the TTL left since the main loop\'s last request, draining; cooling in warning; cold, an empty track; the TTL in parens', () => {
+    const cache = (data: HudData, columns = 72) => rowsById(data, columns)['context.cache']
+    const at = (ms: number, ttl: '5m' | '1h' = '1h'): HudData => ({ ...full, cache: { ttl, lastAt: NOW - ms } })
+    expect(cache(full)).toBe('          cache   ━━━━━━━━━━━━━━──────  warm · 42m left (1h)')
+    expect(cache(at(0))).toBe(`          cache   ${'━'.repeat(20)}  warm · 1h left (1h)`)
+    expect(cache(at(59 * MINUTE))).toBe(`          cache   ━${'─'.repeat(19)}  cooling · 1m left (1h)`)
+    expect(cache(coldCache)).toBe(`          cache   ${'─'.repeat(20)}  cold · next turn rewrites 412k`)
+    expect(cache(at(2 * MINUTE, '5m'))).toBe('          cache   ━━━━━━━━━━━━────────  warm · 3m left (5m)')
+    expect(cache(at(5 * MINUTE, '5m'))).toContain('cold · next turn rewrites 412k')
+    // Cold with no context size known: just cold.
+    expect(cache({ ...coldCache, usage: { ...full.usage!, contextTokens: undefined, contextPercent: undefined } })).toBe(`          cache   ${'─'.repeat(20)}  cold (1h)`)
+    // Narrow, then barless.
+    expect(cache(full, 48)).toBe('      cache  ━━━━━━━───  warm · 42m left (1h)')
+    expect(cache(full, 36)).toBe('      cache  warm · 42m left (1h)')
+    // No main request yet (or no TTL): no row.
+    expect(cache({ ...full, cache: undefined })).toBeUndefined()
+  })
 })
 
-describe('the limits row', () => {
-  test('wide, 5h and 7d share one row of 8-cell bars, the resets tight; narrow, each its own; spend always its own', () => {
-    const wide = hudLines(fullContext, { columns: 72, isNarrow: false })
-    expect(wide).toContain(`  5h    ━━━━━━━─  92% ${TIGHT_5H}    7d  ━━━━━───  64% ${TIGHT_7D}`)
-    expect(wide.some(line => line.startsWith('  spend ━━━━━━━━━━━━━━━━━───  85%'))).toBe(true)
-    const narrow = hudLines(fullContext, { columns: 56, isNarrow: true })
-    expect(narrow).toContain(`  5h    ━━━━━━━━━─  92%  ${AT_5H}`)
-    expect(narrow).toContain(`  7d    ━━━━━━────  64%  ${AT_7D}`)
-    // Only one of them known: its own 20-cell gauge, wide too.
+describe('the limits section', () => {
+  test('5h and 7d each on their own row, the bar as wide as the context\'s; the ETA only while it comes before the reset; spend its own row', () => {
+    const rows = rowsById(fullContext)
+    expect(rows['limits.5h']).toBe(` limits   5h      ━━━━━━━━━━━━━━━━━━──  92%   ${AT_5H}`)
+    expect(rows['limits.7d']).toBe(`          7d      ━━━━━━━━━━━━━───────  64%   ${AT_7D}`)
+    expect(rows['limits.spend']).toBe(`          spend   ━━━━━━━━━━━━━━━━━───  85%   ${AT_SPEND}`)
+    // The sketch's 5h window runs out before it resets: `out ~` after the reset, in error.
+    expect(rowsById(full)['limits.5h']).toBe(` limits   5h      ━━━━━━──────────────  31%   ${AT_5H}   out ~${AT_OUT_5H}`)
+    const early = new Date(NOW + 60 * 60_000).toISOString()
+    expect(rowsById({ ...full, usage: { ...full.usage!, rateLimits: [{ kind: 'five_hour', percentUsed: 31, resetsAt: early }] } })['limits.5h']).not.toContain('out ~')
+    // No reset known: the ETA follows the percent.
+    expect(rowsById({ ...full, usage: { ...full.usage!, rateLimits: [{ kind: 'five_hour', percentUsed: 31 }] } })['limits.5h']).toBe(` limits   5h      ━━━━━━──────────────  31%   out ~${AT_OUT_5H}`)
+    // Only one window known: that row alone, the label on it.
     const one: HudData = { ...full, usage: { ...full.usage!, rateLimits: [{ kind: 'seven_day', percentUsed: 12, resetsAt: RESET_7D }] } }
-    expect(hudLines(one, { columns: 72, isNarrow: false })).toContain(`  7d    ━━──────────────────  12%  ${AT_7D}`)
-    // The 7d half starts in one column whatever the 5h reset reads.
-    for (const columns of [60, 66, 72, 100]) {
-      for (const data of [full, fullContext, { ...full, usage: { ...full.usage!, rateLimits: [{ kind: 'five_hour' as const, percentUsed: 5, resetsAt: RESET_SPEND }, { kind: 'seven_day' as const, percentUsed: 7 }] } }]) {
-        const row = hudLines(data, { columns, isNarrow: false }).find(line => line.startsWith('  5h')) ?? ''
-        expect(row.indexOf('7d'), `@${columns}: ${row}`).toBe(32)
-        expect(displayWidth(row), `@${columns}`).toBeLessThanOrEqual(columns - CLOSE_RESERVE)
-      }
-    }
+    expect(rowsById(one)['limits.7d']).toBe(` limits   7d      ━━──────────────────  12%   ${AT_7D}`)
+    expect(rowsById(one)['limits.5h']).toBeUndefined()
+    // Narrow: each its own row, the ETA while it fits.
+    expect(rowsById(fullContext, 56)['limits.5h']).toBe(` lim  5h     ━━━━━━━━━─  92%  ${AT_5H}`)
+    expect(rowsById(full, 48)['limits.5h']).toBe(` lim  5h     ━━━───────  31%  ${AT_5H}`)
   })
 })
 
-describe('the now row', () => {
-  test('the tool running now and its main argument, its elapsed time, and the files edited at the edge', () => {
-    const now = (data: HudData, columns = 72) => hudLines(data, { columns, isNarrow: columns < NARROW_BELOW }).find(line => line.startsWith('  now'))
-    expect(now(full)).toBe('  now   Bash  npm test -- hud                   00:04 · 7 files edited')
-    // An MCP tool keeps its own name; a long argument is cut with …; a path keeps its end.
-    expect(now(manyTools)).toMatch(/^ {2}now {3}browser_tak… {2}https:\/\/example\.com\/[^ ]*… +01:05$/)
-    expect(displayWidth(now(manyTools) ?? '')).toBe(70)
-    const path: HudData = { ...full, tools: { ...full.tools!, current: { name: 'Edit', since: NOW - 2000, arg: '/Users/daiziqiao/.claude/mods/mod-hud/hooks/a-rather-long-module-name.tsx' } } }
-    expect(now(path)).toMatch(/^ {2}now {3}Edit {2}…\/a-rather-long-module-name\.tsx +00:02 · 7 files edited$/)
-    // No argument, no edits, one edit.
-    const bare = now({ ...full, tools: { counts: {}, current: { name: 'Read', since: NOW - 1000 } } }) ?? ''
-    expect(bare).toMatch(/^ {2}now {3}Read +00:01$/)
-    const editedOnly = now({ ...full, tools: { counts: {}, edited: 1 } }) ?? ''
-    expect(editedOnly).toMatch(/^ {2}now {3}— +1 file edited$/)
-    expect([displayWidth(bare), displayWidth(editedOnly)]).toEqual([70, 70])
-    // Nothing running and nothing edited: no row (nor with the option off).
-    expect(now({ ...full, tools: { counts: { Read: 4 } } })).toBeUndefined()
-    expect(now({ ...full, tools: undefined })).toBeUndefined()
+describe('the usage section', () => {
+  test('cost: the session\'s cost, its rate an hour after five minutes, the session\'s clock', () => {
+    expect(rowsById(full)['usage.cost']).toBe(' usage    cost    $4.21              $3.51 / h · 1h 12m')
+    const young: HudData = { ...full, session: { ...full.session, startedAt: NOW - 4 * MINUTE } }
+    expect(rowsById(young)['usage.cost']).toBe(' usage    cost    $4.21              04:00')
+    expect(rowsById({ ...full, usage: { ...full.usage!, costUsd: undefined } })['usage.cost']).toBe(' usage    cost    —                  1h 12m')
+    expect(rowsById({ ...full, session: { ...full.session, startedAt: undefined } })['usage.cost']).toBe(' usage    cost    $4.21')
+    expect(rowsById({ ...full, session: { model: 'x' }, usage: { rateLimits: [], compactions: 0 } })['usage.cost']).toBeUndefined()
+    expect(rowsById(full, 48)['usage.cost']).toBe(' use  cost   $4.21  $3.51 / h · 1h 12m')
   })
 
-  test('the per-tool counts, the tokens, the cache and the MCP/skill inventory are no longer drawn', () => {
-    const counted: HudData = { ...full, usage: { ...full.usage!, tokens: { input: 1_234_000, output: 84_000, cacheRead: 9_800_000, cacheWrite: 640_000 } } }
-    for (const columns of [100, 72, 56, 48, 40]) {
-      const text = hudLines(counted, { columns, isNarrow: columns < NARROW_BELOW }).join('\n')
-      expect(text, `@${columns}`).not.toMatch(/×41|tools|tok |cache|mcp|skills|1\.2M in/)
-    }
+  test('last: the last main turn\'s cost, how long it ran, its own tokens; pieces it lacks left out', () => {
+    expect(rowsById(full)['usage.last']).toBe('          last    $0.38              1m 12s · 24k tokens')
+    const last = (lastTurn: NonNullable<HudData['usage']>['lastTurn']) => rowsById({ ...full, usage: { ...full.usage!, lastTurn } })['usage.last']
+    expect(last({ durationMs: 4000 })).toBe('          last    —                  4s')
+    expect(last({ costUsd: 0.02, tokens: 950 })).toBe('          last    $0.02              950 tokens')
+    expect(last({ costUsd: 0, durationMs: 0, tokens: 0 })).toBe('          last    $0.00')
+    expect(last({})).toBeUndefined()
+    expect(last(undefined)).toBeUndefined()
+  })
+
+  test('cache: the share of input the prompt cache served, and the agents\' share of the spend', () => {
+    expect(rowsById(full)['usage.cache']).toBe('          cache   87% hit            agents 38% of spend')
+    const usage = (more: Partial<NonNullable<HudData['usage']>>) => rowsById({ ...full, usage: { ...full.usage!, ...more } })['usage.cache']
+    expect(usage({ agentShare: undefined })).toBe('          cache   87% hit')
+    expect(usage({ agentShare: 0 })).toBe('          cache   87% hit')
+    expect(usage({ tokens: undefined })).toBe('          cache   agents 38% of spend')
+    expect(usage({ tokens: { input: 0, output: 10, cacheRead: 0, cacheWrite: 0 }, agentShare: undefined })).toBeUndefined()
+    expect(usage({ tokens: undefined, agentShare: undefined })).toBeUndefined()
+    expect(rowsById(full, 40)['usage.cache']).toBe('      cache  87% hit')
   })
 })
 
 describe('the TODO section', () => {
-  test('folded (the default): one progress line, the item in progress (else the next pending) after it', () => {
-    expect(todoLines(sevenTodos, 72)).toEqual(['▸ TODO  ━━━━────── 3/7  ◐ Wiring the detail view'])
-    expect(todoLines(full.todos, 72)).toEqual(['▸ TODO  ━━━━━━──── 3/5  ◐ Wiring the status line'])
-    // No item in progress: the next pending; every item done: the count alone, the bar full.
-    expect(todoLines({ items: [{ content: 'Plan', status: 'completed' }, { content: 'Ship', status: 'pending' }] }, 72)).toEqual(['▸ TODO  ━━━━━───── 1/2  ☐ Ship'])
-    expect(todoLines(allDone, 72)).toEqual(['▸ TODO  ━━━━━━━━━━ 7/7'])
-    expect(todoLines({ items: [{ content: 'Plain', status: 'in_progress' }] }, 40)).toEqual(['▸ TODO  ──────── 0/1  ◐ Plain'])
-    // 8 cells below 44 columns; none at 36 and under.
-    expect(todoLines(sevenTodos, 36)).toEqual(['▸ TODO  3/7  ◐ Wiring the detail vi…'])
-    expect(todoRows(sevenTodos, 72)).toHaveLength(1)
+  test('folded (the default): the label row (toggle, bar, count) and the item in progress (else the next pending) under it', () => {
+    expect(todoLines(sevenTodos, 72)).toEqual([' todo ▸   ━━━━──────  3/7', '          ◐ Wiring the detail view'])
+    expect(todoLines(full.todos, 72)).toEqual([' todo ▸   ━━━━━━────  3/5', '          ◐ Wiring the status line'])
+    // No item in progress: the next pending; every item done: the label row alone, the bar full.
+    expect(todoLines({ items: [{ content: 'Plan', status: 'completed' }, { content: 'Ship', status: 'pending' }] }, 72)).toEqual([' todo ▸   ━━━━━─────  1/2', '          ☐ Ship'])
+    expect(todoLines(allDone, 72)).toEqual([' todo ▸   ━━━━━━━━━━  7/7'])
+    // Narrow: two cells past the toggle; 8 cells below 44 columns, none at 36 and under.
+    expect(todoLines(sevenTodos, 48)).toEqual([' todo ▸ ━━━━──────  3/7', '        ◐ Wiring the detail view'])
+    expect(todoLines({ items: [{ content: 'Plain', status: 'in_progress' }] }, 40)).toEqual([' todo ▸ ────────  0/1', '        ◐ Plain'])
+    expect(todoLines(sevenTodos, 36)).toEqual([' todo ▸ 3/7', '        ◐ Wiring the detail view'])
+    expect(todoRows(sevenTodos, 72)).toHaveLength(2)
     expect(todoLines({ items: [] }, 72)).toEqual([])
     expect(todoLines(undefined, 72)).toEqual([])
   })
 
-  test('open: the line (▾), then in progress, pending, completed; ☑ ◐ ☐; two cells in; capped at todoRows (6 by default)', () => {
+  test('open: the label row (▾), then in progress, pending, completed; ☑ ◐ ☐; in the value gutter; capped at todoRows (6 by default)', () => {
     expect(todoLines(sevenTodos, 72, 10, true)).toEqual([
-      '▾ TODO  ━━━━────── 3/7',
-      '  ◐ Wiring the detail view',
-      '  ☐ Test the scenes',
-      '  ☐ Update the sprite sheet',
-      '  ☐ Sketch the pane at 72 and 48 columns',
-      '  ☑ Read the brief',
-      '  ☑ Split the sprites out',
-      '  ☑ Write the choreography',
+      ' todo ▾   ━━━━──────  3/7',
+      '          ◐ Wiring the detail view',
+      '          ☐ Test the scenes',
+      '          ☐ Update the sprite sheet',
+      '          ☐ Sketch the pane at 72 and 48 columns',
+      '          ☑ Read the brief',
+      '          ☑ Split the sprites out',
+      '          ☑ Write the choreography',
     ])
     expect(TODO_ROWS).toBe(6)
     const capped = todoLines(sevenTodos, 72, TODO_ROWS, true)
     expect(capped).toHaveLength(1 + 6 + 1)
-    expect(capped.at(-1)).toBe('  +1 more')
-    expect(todoLines(sevenTodos, 72, 3, true).at(-1)).toBe('  +4 more')
+    expect(capped.at(-1)).toBe('          +1 more')
+    expect(todoLines(sevenTodos, 72, 3, true).at(-1)).toBe('          +4 more')
     expect(todoRows(allDone, 72, TODO_ROWS, true).filter(row => row.status === 'completed')).toHaveLength(6)
-    expect(todoLines(allDone, 72, 10, true).slice(1).every(line => line.startsWith('  ☑ '))).toBe(true)
+    expect(todoLines(allDone, 72, 10, true).slice(1).every(line => line.startsWith('          ☑ '))).toBe(true)
   })
 
   test('no row is wider than the pane from 20 to 130 columns; a long item ends in …', () => {
@@ -1002,7 +1197,7 @@ describe('the TODO section', () => {
     }
   })
 
-  test('mounted folded: the toggle a dim Button (with one) or dim text, TODO bold, the fill success, ◐ in the accent', async ($, on) => {
+  test('mounted folded: the toggle a dim Button (with one) or dim text, the fill success, ◐ in the accent', async ($, on) => {
     const layouts: Record<string, { expanded: boolean; button: boolean }> = {
       folded: { expanded: false, button: true },
       open: { expanded: true, button: true },
@@ -1020,7 +1215,7 @@ describe('the TODO section', () => {
     const mountTodos = (surface: Surface, name: string, columns: number) =>
       $.ui.mount({ plugin: 'mod-hud', surface, component: 'Pane', requestId: `todos:${name}`, props: { ...PANE_PROPS, bodyColumns: columns }, viewport: VIEWPORT })
     for (const surface of SURFACES) {
-      for (const columns of [72, 48]) {
+      for (const [columns, label] of [[72, ' todo ▸   ━━━━──────  3/7'], [48, ' todo ▸ ━━━━──────  3/7']] as const) {
         const ui = await mountTodos(surface, 'folded', columns)
         const button = await ui.find({ key: 'todos:toggle' })
         expect(button?.props.label).toBe('▸')
@@ -1029,34 +1224,33 @@ describe('the TODO section', () => {
         if (surface === 'desktop') {
           const source = rowSource(await ui.find({ key: 'todo:header' })) ?? ''
           // The Button's cell is left blank in the document; the rest reads as the terminal's.
-          expect(textLine(source)).toBe('  TODO  ━━━━────── 3/7  ◐ Wiring the detail view')
-          const pieces = textPieces(source)
-          expect(pieces.find(one => one.text === 'TODO')?.props).toEqual({ bold: true })
-          expect(pieces.find(one => one.text === '◐')?.props).toEqual({ color: 'claude' })
-          expect(source).toContain(`<g class='g' fill='${SCENE_THEMES.dark.success}'><rect x='64' y='7' width='32' height='3'/></g>`)
+          expect(textLine(source)).toBe(label.replace('▸', ' '))
+          const doing = textPieces(rowSource(await ui.find({ key: 'todo:3' })) ?? '')
+          expect(doing.find(one => one.text === '◐')?.props).toEqual({ color: 'claude' })
+          expect(source).toContain(`<g class='g' fill='${SCENE_THEMES.dark.success}'><rect x='${(label.indexOf('━')) * CELL_WIDTH}' y='7' width='32' height='3'/></g>`)
           expect(await ui.findAll({ type: 'Text' })).toEqual([])
         } else {
           const header = await ui.find({ key: 'todo:header' })
-          expect(header?.text).toBe('▸ TODO  ━━━━────── 3/7  ◐ Wiring the detail view')
+          expect(header?.text).toBe(label)
           const texts = await ui.findAll({ type: 'Text' })
-          expect(texts.find(one => one.text === 'TODO')?.props.bold).toBe(true)
           expect(texts.find(one => one.text === '━━━━')?.props.color).toBe('success')
           expect(texts.find(one => one.text === '◐')?.props.color).toBe('claude')
+          expect((await ui.find({ key: 'todo:3' }))?.text).toBe(`${' '.repeat(columns < 60 ? 8 : 10)}◐ Wiring the detail view`)
           expect(await ui.findAll({ type: 'Svg' })).toEqual([])
         }
         await ui.unmount()
 
-        // Without a Button the toggle is dim text, and the line reads the same.
+        // Without a Button the toggle is dim text, and the row reads the same.
         const plainUi = await mountTodos(surface, 'plain', columns)
         expect(await plainUi.find({ key: 'todos:toggle' })).toBe(undefined)
-        if (surface === 'terminal') expect((await plainUi.find({ key: 'todo:header' }))?.text).toBe('▸ TODO  ━━━━────── 3/7  ◐ Wiring the detail view')
-        else expect(textLine(rowSource(await plainUi.find({ key: 'todo:header' })) ?? '')).toBe('▸ TODO  ━━━━────── 3/7  ◐ Wiring the detail view')
+        if (surface === 'terminal') expect((await plainUi.find({ key: 'todo:header' }))?.text).toBe(label)
+        else expect(textLine(rowSource(await plainUi.find({ key: 'todo:header' })) ?? '')).toBe(label)
         await plainUi.unmount()
       }
     }
   })
 
-  test('mounted open: ▾ on the line, completed struck through and dim, ◐ in the accent, +n more dim', async ($, on) => {
+  test('mounted open: ▾ on the label row, completed struck through and dim, ◐ in the accent, +n more dim', async ($, on) => {
     on('ui.render', { component: 'Pane', requestId: 'todos-under-test' }, ($$, e) => {
       const table = $$.ui.resolve(e)
 
@@ -1064,6 +1258,7 @@ describe('the TODO section', () => {
     })
     for (const surface of SURFACES) {
       for (const columns of [72, 48]) {
+        const indent = ' '.repeat(columns < 60 ? 8 : 10)
         const ui = await $.ui.mount({ plugin: 'mod-hud', surface, component: 'Pane', requestId: 'todos-under-test', props: { ...PANE_PROPS, bodyColumns: columns }, viewport: VIEWPORT })
         expect((await ui.find({ key: 'todos:toggle' }))?.props.label).toBe('▾')
         if (surface === 'desktop') {
@@ -1073,12 +1268,12 @@ describe('the TODO section', () => {
 
             return { text: textLine(source), pieces: textPieces(source) }
           }
-          expect((await row('todo:header')).text).toBe('  TODO  ━━━━────── 3/7')
-          expect((await row('todo:0')).pieces).toEqual([{ text: '  ', props: {} }, { text: '☑ Read the brief', props: { dimColor: true, strikethrough: true } }])
-          expect((await row('todo:1')).text).toBe('  ☑ Split the sprites out')
+          expect((await row('todo:header')).text).toBe(columns < 60 ? ' todo   ━━━━──────  3/7' : ' todo     ━━━━──────  3/7')
+          expect((await row('todo:0')).pieces).toEqual([{ text: indent, props: {} }, { text: '☑ Read the brief', props: { dimColor: true, strikethrough: true } }])
+          expect((await row('todo:1')).text).toBe(`${indent}☑ Split the sprites out`)
           expect((await row('todo:1')).pieces.at(-1)?.props).toEqual({ dimColor: true, strikethrough: true })
           const doing = await row('todo:3')
-          expect(doing.text).toBe('  ◐ Wiring the detail view')
+          expect(doing.text).toBe(`${indent}◐ Wiring the detail view`)
           expect(doing.pieces.find(one => one.text === '◐')?.props).toEqual({ color: 'claude' })
           expect(doing.pieces.find(one => one.text.includes('Wiring'))?.props).toEqual({})
           expect((await row('todo:more')).pieces.at(-1)).toEqual({ text: '+1 more', props: { dimColor: true } })
@@ -1086,16 +1281,16 @@ describe('the TODO section', () => {
           await ui.unmount()
           continue
         }
-        expect((await ui.find({ key: 'todo:header' }))?.text).toBe('▾ TODO  ━━━━────── 3/7')
+        expect((await ui.find({ key: 'todo:header' }))?.text).toBe(columns < 60 ? ' todo ▾ ━━━━──────  3/7' : ' todo ▾   ━━━━──────  3/7')
         const done = await ui.find({ key: 'todo:0' })
         const struck = (await ui.findAll({ type: 'Text' })).filter(one => one.props.strikethrough === true)
-        expect(struck.map(one => one.text)).toEqual(['  ☑ Read the brief', '  ☑ Split the sprites out'])
+        expect(struck.map(one => one.text)).toEqual(['☑ Read the brief', '☑ Split the sprites out'])
         expect(struck.every(one => one.props.dimColor === true)).toBe(true)
-        expect(done?.text).toBe('  ☑ Read the brief')
+        expect(done?.text).toBe(`${indent}☑ Read the brief`)
         const doing = await ui.find({ key: 'todo:3' })
-        expect(doing?.text).toBe('  ◐ Wiring the detail view')
-        expect((await ui.findAll({ type: 'Text' })).find(one => one.text === '  ◐ ')?.props.color).toBe('claude')
-        expect((await ui.find({ key: 'todo:more' }))?.text).toBe('  +1 more')
+        expect(doing?.text).toBe(`${indent}◐ Wiring the detail view`)
+        expect((await ui.findAll({ type: 'Text' })).find(one => one.text === '◐')?.props.color).toBe('claude')
+        expect((await ui.find({ key: 'todo:more' }))?.text).toBe(`${indent}+1 more`)
         expect(await ui.findAll({ type: 'Svg' })).toEqual([])
         await ui.unmount()
       }
@@ -1116,7 +1311,7 @@ test('the motto is the HUD\'s last row and never a HUD of its own', () => {
 // ---------------------------------------------------------------------------
 
 describe('in pixels on the desktop', () => {
-  test('each HUD row is one Svg on the scene\'s 8×16 grid, as wide as it draws and a row high; no Text; the terminal keeps its Texts', async ($, on) => {
+  test('each HUD row is one Svg on the scene\'s 8×16 grid, as wide as it draws and a row high; the blank row an empty Box; no Text; the terminal keeps its Texts', async ($, on) => {
     const scene = stage(on, fullContext)
     for (const columns of WIDTHS) {
       const ui = await mount($, 'desktop', columns)
@@ -1126,9 +1321,13 @@ describe('in pixels on the desktop', () => {
       for (const box of boxes) {
         const where = `${box.key} @${columns}`
         const svgs = svgsOf(box)
-        expect(svgs, where).toHaveLength(1)
         expect(box.props.height, where).toBe(1)
         expect(box.props.flexShrink, where).toBe(0)
+        if (box.key === 'hud:gap') {
+          expect(svgs, where).toHaveLength(0)
+          continue
+        }
+        expect(svgs, where).toHaveLength(1)
         const source = String(svgs[0]?.props?.source ?? '')
         const size = textSvgSize(source)
         expect(svgs[0]?.props?.width, where).toBe(size.width)
@@ -1154,7 +1353,7 @@ describe('in pixels on the desktop', () => {
     }
     const terminal = await mount($, 'terminal', 100)
     expect(await terminal.findAll({ type: 'Svg' })).toEqual([])
-    expect((await terminal.findAll({ type: 'Box' })).filter(box => box.key?.startsWith('hud:') === true).every(box => (box.children[0] as { type?: string })?.type === 'Text')).toBe(true)
+    expect((await terminal.findAll({ type: 'Box' })).filter(box => box.key?.startsWith('hud:') === true && box.key !== 'hud:gap').every(box => (box.children[0] as { type?: string })?.type === 'Text')).toBe(true)
     await terminal.unmount()
   })
 
@@ -1162,23 +1361,23 @@ describe('in pixels on the desktop', () => {
     stage(on, full)
     const ui = await mount($, 'desktop', 100)
     const source = async (id: string): Promise<string> => rowSource(await ui.find({ key: `hud:${id}` })) ?? ''
-    const identity = await source('identity')
-    expect(identity).toContain(`<g class='a' fill='${SCENE_THEMES.dark.claude}' font-weight='bold'><text x='16' y='12' textLength='64'>opus 5.5</text>`)
-    expect(identity).toContain(`.a{fill:${SCENE_THEMES.light.claude}}`)
-    expect(identity).toMatch(/<style>@media \(prefers-color-scheme:light\)\{[^<]*\}<\/style>/)
-    // ctx at 41 %: eight cells of fill, a thick rect in the success colour; twelve of track, thin dim
-    // ones either side of the compaction threshold's ┃, a dim glyph in its own cell.
-    const ctx = await source('ctx')
-    expect(ctx).toContain(`<g class='g' fill='${SCENE_THEMES.dark.success}'><rect x='64' y='7' width='64' height='3'/></g>`)
-    expect(ctx).toMatch(new RegExp(`<g class='f' fill='${SCENE_THEMES.dark.text}' opacity='\\.55'>[^]*<rect x='128' y='8' width='64' height='1'/><text x='192' y='12'>┃</text><rect x='200' y='8' width='24' height='1'/>`))
-    expect(ctx).not.toContain('━')
-    expect(ctx).not.toContain('─')
+    const header = await source('header')
+    expect(header).toContain(`<g class='a' fill='${SCENE_THEMES.dark.claude}' font-weight='bold'><text x='16' y='12' textLength='64'>opus 5.5</text>`)
+    expect(header).toContain(`.a{fill:${SCENE_THEMES.light.claude}}`)
+    expect(header).toMatch(/<style>@media \(prefers-color-scheme:light\)\{[^<]*\}<\/style>/)
+    // used at 41 %: eight cells of fill from cell 18, a thick rect in the success colour; twelve
+    // of track, thin dim ones either side of the compaction threshold's ┃, a dim glyph in its own cell.
+    const used = await source('context.used')
+    expect(used).toContain(`<g class='g' fill='${SCENE_THEMES.dark.success}'><rect x='144' y='7' width='64' height='3'/></g>`)
+    expect(used).toMatch(new RegExp(`<g class='f' fill='${SCENE_THEMES.dark.text}' opacity='\\.55'>[^]*<rect x='208' y='8' width='64' height='1'/><text x='272' y='12'>┃</text><rect x='280' y='8' width='24' height='1'/>`))
+    expect(used).not.toContain('━')
+    expect(used).not.toContain('─')
     // The motto is dim and italic.
     expect(await source('motto')).toContain(`opacity='.55' font-style='italic'`)
     expect(textRuns(await source('motto'))).toEqual([{ x: 2, text: 'ship small, ship often', props: { dimColor: true, italic: true } }])
     // The alt is the row in words, its bars left out.
-    const ctxSvg = svgsOf(await ui.find({ key: 'hud:ctx' }))[0]
-    expect(ctxSvg?.props?.alt).toBe('ctx ┃ 41% 412k / 1.0M compact in ~6 turns')
+    const usedSvg = svgsOf(await ui.find({ key: 'hud:context.used' }))[0]
+    expect(usedSvg?.props?.alt).toBe('context used ┃ 41% 412k / 1.0M')
     await ui.unmount()
   })
 })

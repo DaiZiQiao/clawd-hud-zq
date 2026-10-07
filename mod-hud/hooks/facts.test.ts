@@ -4,6 +4,7 @@ import type { Engine } from 'claude-code/testing'
 
 import type { HudGitFacts, HudInventoryFacts, HudSessionFacts, HudTodoFacts, HudToolFacts, HudUsageFacts } from '../types'
 import {
+  CACHE_TTL_MS,
   EDITED_MAX,
   NO_FACTS,
   addTokens,
@@ -13,6 +14,7 @@ import {
   applyMeasure,
   assembleHudData,
   busyIdleOf,
+  cacheTtlOf,
   contextGrowth,
   debouncer,
   editedPathOf,
@@ -25,7 +27,9 @@ import {
   limitEta,
   limitSamplesAfter,
   noCurrentTool,
+  parseCommitTime,
   parseGitStatus,
+  parseShortstat,
   parseTodos,
   providerOf,
   rateLimitsOf,
@@ -205,15 +209,18 @@ test('a main turn\'s end writes usage once (one more turn, its time, the context
   await completeTurn($, { usage, agentId: 'sub-9' })
   expect(held.get('usage')).toEqual(before)
   await completeTurn($, { usage, durationMs: 4000 })
-  expect(held.get('usage')).toEqual({ value: { ...before.value, turns: 1, busyMs: 4000, contextSamples: [40_000] }, version: before.version + 1 })
+  // The turn's cost runs from the session's start: no turn ended before it.
+  const turn = { turns: 1, busyMs: 4000, contextSamples: [40_000], costAtTurnEnd: 0.5, lastTurn: { costUsd: 0.5, durationMs: 4000 } }
+  expect(held.get('usage')).toEqual({ value: { ...before.value, ...turn }, version: before.version + 1 })
 })
 
-test('with inspect off a main turn\'s end writes no usage', { options: { inspect: false } }, async ($, on) => {
+test('with inspect off a main turn\'s end still writes usage: the HUD\'s last turn and runway read it', { options: { inspect: false } }, async ($, on) => {
   const { clock, held } = arrange(on)
   await started($, clock)
-  const before = held.get('usage')
+  const before = held.get('usage') as { value: HudUsageFacts; version: number }
   await completeTurn($, { durationMs: 4000 })
-  expect(held.get('usage')).toEqual(before)
+  expect(held.get('usage')?.version).toBe(before.version + 1)
+  expect((held.get('usage')?.value as HudUsageFacts).lastTurn).toEqual({ costUsd: 0.5, durationMs: 4000 })
 })
 
 test('a measurement replaces the context and cost, and leaves out what it lacks; the rate limits it reports replace those held', async () => {
@@ -287,7 +294,7 @@ test('a /clear forgets the compactions and the context fill, and keeps the rest'
   const held: HudUsageFacts = {
     contextTokens: 190_000, contextPercent: 95, window: 200_000, rateLimits, costUsd: 3, compactions: 2,
   }
-  expect(afterClear(held)).toEqual({ window: 200_000, rateLimits, costUsd: 3, compactions: 0 })
+  expect(afterClear(held)).toEqual({ window: 200_000, rateLimits, costUsd: 3, compactions: 0, costAtTurnEnd: 3 })
   expect(afterClear(NO_FACTS.usage)).toEqual(NO_FACTS.usage)
 })
 
@@ -378,6 +385,8 @@ const arrange = (on: On) => {
   const world = {
     runs: [] as Run[],
     git: { exitCode: 0, stdout: PORCELAIN, stderr: '' },
+    diff: { exitCode: 0, stdout: ' 3 files changed, 142 insertions(+), 37 deletions(-)\n', stderr: '' },
+    log: { exitCode: 0, stdout: '1791024000\n', stderr: '' },
     gitRefused: false,
     usage: {
       startedAt: NOW - 60_000,
@@ -433,7 +442,9 @@ const arrange = (on: On) => {
     world.runs.push({ argv: [...e.argv], init: e.init })
     if (world.gitRefused) return { deny: 'git timed out' }
 
-    return { value: { ...world.git, isStdoutTruncated: false, isStderrTruncated: false } }
+    const answer = e.argv.includes('diff') ? world.diff : e.argv.includes('log') ? world.log : world.git
+
+    return { value: { ...answer, isStdoutTruncated: false, isStderrTruncated: false } }
   })
   on('command.register', (_$, e) => ({ value: { command: e.name } }))
   on('agent.list', () => ({ value: [] }))
@@ -455,9 +466,11 @@ const arrange = (on: On) => {
   })
 
   const fact = <T>(key: string): T => held.get(key)?.value as T
-  const gitRuns = (): Run[] => world.runs.filter(run => run.argv[0] === 'git')
+  // A git reading is its `status` run; the diff and the log run beside it.
+  const gitRuns = (): Run[] => world.runs.filter(run => run.argv[0] === 'git' && run.argv.includes('status'))
+  const allGitRuns = (): Run[] => world.runs.filter(run => run.argv[0] === 'git')
 
-  return { clock, world, held, fact, gitRuns }
+  return { clock, world, held, fact, gitRuns, allGitRuns }
 }
 
 const callTool = ($: Engine, tool: string, extra: Record<string, unknown> = {}) =>
@@ -503,7 +516,7 @@ const started = async ($: Engine, clock: ReturnType<typeof mock.clock>) => {
 }
 
 test('session start gathers who, where and what was measured, then one git reading and the inventory', async ($, on) => {
-  const { clock, world, fact, gitRuns } = arrange(on)
+  const { clock, world, fact, gitRuns, allGitRuns } = arrange(on)
   world.env.ANTHROPIC_BASE_URL = 'https://gateway.example'
   await started($, clock)
 
@@ -514,6 +527,8 @@ test('session start gathers who, where and what was measured, then one git readi
     startedAt: NOW - 60_000,
     cwd: '/work',
     repoRoot: '/work',
+    // A gateway's base URL: the 5-minute prompt cache.
+    cacheTtl: '5m',
   })
   expect(fact<HudUsageFacts>('usage')).toEqual({
     contextTokens: 40_000,
@@ -526,7 +541,10 @@ test('session start gathers who, where and what was measured, then one git readi
     limitSamples: { five_hour: [{ at: NOW, percent: 12 }] },
   })
   expect(gitRuns()).toEqual([{ argv: GIT_ARGV, init: { timeoutMs: 3000, env: { GIT_OPTIONAL_LOCKS: '0' } } }])
-  expect(fact<HudGitFacts>('git')).toEqual({ branch: 'main', dirty: 6, added: 2, deleted: 1, ahead: 2, behind: 1, at: NOW })
+  // Beside the status, the lines changed against HEAD and HEAD's commit time, read the same way.
+  expect(allGitRuns().map(run => run.argv)).toEqual([GIT_ARGV, ['git', '-C', '/work', 'diff', '--shortstat', 'HEAD'], ['git', '-C', '/work', 'log', '-1', '--format=%ct']])
+  expect(allGitRuns().every(run => run.init?.env?.GIT_OPTIONAL_LOCKS === '0' && run.init.timeoutMs === 3000)).toBe(true)
+  expect(fact<HudGitFacts>('git')).toEqual({ branch: 'main', dirty: 6, added: 2, deleted: 1, ahead: 2, behind: 1, linesAdded: 142, linesDeleted: 37, lastCommitAt: 1_791_024_000_000, at: NOW })
   expect(fact<HudInventoryFacts>('inventory')).toEqual({ mcpServers: ['codex-relay', 'notion'], skills: 12, at: NOW })
   expect(world.breakdowns).toBe(1)
 })
@@ -760,7 +778,8 @@ test('turn steps name the main model and effort; turn ends count main turns and 
   await completeTurn($, { usage })
   await completeTurn($, { usage, agentId: 'sub-9' })
   await completeTurn($)
-  expect(fact<HudUsageFacts>('usage')).toEqual({ ...before, turns: 2, busyMs: 2, contextSamples: [40_000, 40_000] })
+  // The last main turn: no cost since the one before, its millisecond, no main request of its own.
+  expect(fact<HudUsageFacts>('usage')).toEqual({ ...before, turns: 2, busyMs: 2, contextSamples: [40_000, 40_000], costAtTurnEnd: 0.5, lastTurn: { costUsd: 0, durationMs: 1 } })
 })
 
 test('every response\'s tokens add up, whichever loop made the request, and a compaction\'s too', async ($, on) => {
@@ -849,6 +868,8 @@ test('/clear refreshes the session clock and cost without restoring conversation
   // The turns, their time and the context samples start over; the limits' samples stay with the limits.
   expect(fact<HudUsageFacts>('usage')).toEqual({
     window: 200_000, rateLimits: [{ kind: 'five_hour', percentUsed: 12 }], costUsd: 0.25, compactions: 0, limitSamples: { five_hour: [{ at: NOW, percent: 12 }] },
+    // The last turn goes; the next one's cost runs from the clear.
+    costAtTurnEnd: 0.25,
   })
   // A host without a ledger leaves cost unknown, not a stale value.
   world.usage = { startedAt: clock.now(), context: { window: 200_000 }, rateLimits: [] }
@@ -1024,4 +1045,117 @@ test('limit ETA needs three changed measurements spanning five minutes, not just
   expect(limitEta([sample(0, 10), sample(10, 20)], 20, NOW + 10 * MINUTE)).toBe(undefined)
   expect(limitEta([sample(0, 10), sample(1, 11), sample(4, 14)], 14, NOW + 20 * MINUTE)).toBe(undefined)
   expect(limitEta([sample(0, 10), sample(2, 12), sample(5, 15)], 15, NOW + 5 * MINUTE)).toBe(85 * MINUTE)
+})
+
+// ---------------------------------------------------------------------------
+// 1.2.0: the git lines and last commit, the prompt cache, the last turn.
+// ---------------------------------------------------------------------------
+
+test('git diff --shortstat reads the lines inserted and deleted; git log %ct the commit time', () => {
+  expect(parseShortstat(' 3 files changed, 142 insertions(+), 37 deletions(-)\n')).toEqual({ linesAdded: 142, linesDeleted: 37 })
+  expect(parseShortstat(' 1 file changed, 1 insertion(+)\n')).toEqual({ linesAdded: 1, linesDeleted: 0 })
+  expect(parseShortstat(' 1 file changed, 2 deletions(-)')).toEqual({ linesAdded: 0, linesDeleted: 2 })
+  // A clean tree prints nothing: no lines changed.
+  expect(parseShortstat('')).toEqual({ linesAdded: 0, linesDeleted: 0 })
+  expect(parseShortstat('fatal: bad revision')).toBe(undefined)
+  expect(parseCommitTime('1791024000\n')).toBe(1_791_024_000_000)
+  expect(parseCommitTime('')).toBe(undefined)
+  expect(parseCommitTime('-5')).toBe(undefined)
+  expect(parseCommitTime('fatal: your current branch has no commits yet')).toBe(undefined)
+})
+
+test('cacheTtlOf infers the main prompt cache\'s TTL the way the engine picks it', () => {
+  // Automatic: 1h on a subscription, 5m on an API key, a token, a gateway or a partner cloud.
+  expect(cacheTtlOf({}, undefined)).toBe('1h')
+  for (const name of ['ANTHROPIC_API_KEY', 'ANTHROPIC_AUTH_TOKEN', 'ANTHROPIC_BASE_URL']) expect(cacheTtlOf({ [name]: 'x' }, undefined), name).toBe('5m')
+  for (const name of ['CLAUDE_CODE_USE_BEDROCK', 'CLAUDE_CODE_USE_VERTEX', 'CLAUDE_CODE_USE_FOUNDRY']) {
+    expect(cacheTtlOf({ [name]: '1' }, undefined), name).toBe('5m')
+    expect(cacheTtlOf({ [name]: '0' }, undefined), `${name}=0`).toBe('1h')
+  }
+  expect(cacheTtlOf({ ANTHROPIC_API_KEY: '  ' }, undefined)).toBe('1h')
+  // The setting, else ENABLE_PROMPT_CACHING_1H, beat automatic; the env variable beats the setting.
+  expect(cacheTtlOf({}, '5m')).toBe('5m')
+  expect(cacheTtlOf({ ANTHROPIC_API_KEY: 'x' }, '1h')).toBe('1h')
+  expect(cacheTtlOf({ ANTHROPIC_API_KEY: 'x', ENABLE_PROMPT_CACHING_1H: '1' }, undefined)).toBe('1h')
+  expect(cacheTtlOf({ CLAUDE_CODE_PROMPT_CACHE_TTL: '5m' }, '1h')).toBe('5m')
+  expect(cacheTtlOf({ CLAUDE_CODE_PROMPT_CACHE_TTL: '10m' }, '1h')).toBe('1h')
+  expect(cacheTtlOf({}, 'forever')).toBe('1h')
+  // FORCE_PROMPT_CACHING_5M beats them all; DISABLE_PROMPT_CACHING, no cache at all.
+  expect(cacheTtlOf({ FORCE_PROMPT_CACHING_5M: 'true', CLAUDE_CODE_PROMPT_CACHE_TTL: '1h' }, '1h')).toBe('5m')
+  expect(cacheTtlOf({ DISABLE_PROMPT_CACHING: '1', FORCE_PROMPT_CACHING_5M: '1' }, '1h')).toBe('off')
+  expect(CACHE_TTL_MS).toEqual({ '5m': 300_000, '1h': 3_600_000 })
+})
+
+test('a main request restarts the cache clock and counts the turn\'s tokens; a turn\'s end keeps it as the last turn', () => {
+  const spent = { input_tokens: 10, output_tokens: 5, cache_read_input_tokens: 100, cache_creation_input_tokens: 20 }
+  const base: HudUsageFacts = { ...NO_FACTS.usage, costUsd: 1, costAtTurnEnd: 0.6, contextTokens: 50_000 }
+  // A subagent's request: tokens only.
+  const sub = addTokens(base, spent)
+  expect(sub.mainRequestAt).toBe(undefined)
+  expect(sub.turnTokens).toBe(undefined)
+  // Two main requests: the clock at the last, fresh input, cache writes and output summed (cache reads left out).
+  const main = addTokens(addTokens(base, spent, NOW), spent, NOW + 5)
+  expect(main.mainRequestAt).toBe(NOW + 5)
+  expect(main.turnTokens).toBe(70)
+  const ended = afterMainTurn(main, 72_000)
+  expect(ended.lastTurn).toEqual({ costUsd: 0.4, durationMs: 72_000, tokens: 70 })
+  expect(ended.costAtTurnEnd).toBe(1)
+  expect(ended.turnTokens).toBe(undefined)
+  expect(ended.mainRequestAt).toBe(NOW + 5)
+  // With no cost known, the last turn keeps its time alone; with nothing at all, none.
+  expect(afterMainTurn({ ...NO_FACTS.usage }, 900).lastTurn).toEqual({ durationMs: 900 })
+  expect(afterMainTurn({ ...NO_FACTS.usage }).lastTurn).toBe(undefined)
+  // A cost below the last mark (a fresh ledger) reads 0, never negative.
+  expect(afterMainTurn({ ...NO_FACTS.usage, costUsd: 0.1, costAtTurnEnd: 2 }).lastTurn).toEqual({ costUsd: 0 })
+  // /clear starts the cache clock and the last turn over.
+  const cleared = afterClear({ ...ended, costUsd: 0.25 })
+  expect([cleared.mainRequestAt, cleared.lastTurn, cleared.turnTokens, cleared.costAtTurnEnd]).toEqual([undefined, undefined, undefined, 0.25])
+})
+
+test('assembleHudData draws the cache once a main request answered, under the option\'s TTL unless auto', () => {
+  const facts = { ...NO_FACTS, session: { cacheTtl: '1h' as const }, usage: { ...NO_FACTS.usage, mainRequestAt: NOW - 1000, turnTokens: 5, costAtTurnEnd: 1, lastTurn: { costUsd: 0.2 } } }
+  const data = assembleHudData(facts, NOW)
+  expect(data.cache).toEqual({ ttl: '1h', lastAt: NOW - 1000 })
+  // The bookkeeping stays home; the last turn is the renderer's.
+  expect(data.usage).toEqual({ rateLimits: [], compactions: 0, lastTurn: { costUsd: 0.2 } })
+  expect(data.session).toEqual({})
+  expect(assembleHudData(facts, NOW, '5m').cache).toEqual({ ttl: '5m', lastAt: NOW - 1000 })
+  expect(assembleHudData({ ...facts, session: { cacheTtl: 'off' } }, NOW).cache).toBe(undefined)
+  expect(assembleHudData({ ...facts, session: { cacheTtl: 'off' } }, NOW, '1h').cache).toEqual({ ttl: '1h', lastAt: NOW - 1000 })
+  expect(assembleHudData({ ...facts, session: {} }, NOW).cache).toBe(undefined)
+  expect(assembleHudData({ ...facts, usage: NO_FACTS.usage }, NOW).cache).toBe(undefined)
+})
+
+test('a main step stamps the cache clock and the turn\'s tokens in its one usage write; a subagent\'s does not', async ($, on) => {
+  const { clock, fact, held, world } = arrange(on)
+  await started($, clock)
+  world.stepUsage = { input_tokens: 10, output_tokens: 5, cache_read_input_tokens: 100, cache_creation_input_tokens: 20, model: 'claude-opus-5-5' }
+  await clock.advance(2000)
+  await step($, { agentId: 'sub-9' })
+  expect(fact<HudUsageFacts>('usage').mainRequestAt).toBe(undefined)
+  const version = held.get('usage')?.version ?? 0
+  await step($)
+  expect(held.get('usage')?.version).toBe(version + 1)
+  expect(fact<HudUsageFacts>('usage')).toMatchObject({ mainRequestAt: clock.now(), turnTokens: 35 })
+  await completeTurn($, { durationMs: 3000 })
+  expect(fact<HudUsageFacts>('usage')).toMatchObject({ lastTurn: { costUsd: 0.5, durationMs: 3000, tokens: 35 }, mainRequestAt: clock.now() })
+  expect(fact<HudUsageFacts>('usage').turnTokens).toBe(undefined)
+})
+
+test('session start infers the cache TTL from the environment and the settings; an unreadable environment leaves it out', async ($, on) => {
+  const subscription = arrange(on)
+  await started($, subscription.clock)
+  expect(subscription.fact<HudSessionFacts>('session').cacheTtl).toBe('1h')
+  subscription.world.env.ANTHROPIC_API_KEY = 'sk-test'
+  subscription.world.settings = { promptCacheTtl: '1h' }
+  await started($, subscription.clock)
+  expect(subscription.fact<HudSessionFacts>('session').cacheTtl).toBe('1h')
+  subscription.world.settings = {}
+  await started($, subscription.clock)
+  expect(subscription.fact<HudSessionFacts>('session').cacheTtl).toBe('5m')
+  // The key's value is never kept.
+  expect(JSON.stringify([...subscription.held.values()])).not.toContain('sk-test')
+  subscription.world.refuse = new Set(['env.get'])
+  await started($, subscription.clock)
+  expect(subscription.fact<HudSessionFacts>('session').cacheTtl).toBe(undefined)
 })

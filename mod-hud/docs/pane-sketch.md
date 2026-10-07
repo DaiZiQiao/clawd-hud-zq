@@ -2,306 +2,521 @@
 
 The HUD is the block at the top of the `hud` pane, above the agent
 list. `renderHud()` in `hooks/hud.tsx` draws it from one `HudData` value.
-Every sketch below is the renderer's own output (`hudLines()`) for the
-fixtures in `hooks/hud.fixtures.ts`, in UTC. The `full` fixture is:
+Every sketch below is the renderer's own output (`hudLines()`, with
+`todoLines()` for the TODO section) for the fixtures in
+`hooks/hud.fixtures.ts`, in UTC. The `full` fixture is:
 - opus 5.5 at xhigh effort through a gateway, 72 minutes in, $4.21 spent;
   the main loop working for 42 s
 - two subagents waiting on a permission ask
+- `main` dirty (3 paths added, 1 deleted; +142 −37 lines against HEAD),
+  2 commits ahead, last commit 48 minutes ago
+- `npm test -- hud` running in Bash for 4 s
 - 412k of a 1M context window used, growing 65k a turn, auto-compaction at
-  800k
+  800k; the main loop's last request 18 minutes ago on a 1-hour prompt cache
 - 5h limit at 31 % (up from 11 % 35 minutes ago, so it runs out at ~13:43,
   before its 14:20 reset), 7d limit at 12 %
-- `main` dirty (3 paths added, 1 deleted), 2 commits ahead
-- `npm test -- hud` running in Bash for 4 s; 7 files edited this
-  conversation (its five-item todo list is drawn by the TODO section under
-  the HUD, below)
+- the last main turn: $0.38, 1m 12s, 24k tokens of its own; 87 % of the
+  session's input served by the cache; the agents 38 % of the estimated spend
+- a five-item todo list, three done, one in progress
 
 The sketches leave the motto out: since 1.2.0 the `motto` option defaults to
 empty. A motto set is drawn dim and italic as the HUD's last row.
 
 ## Wide: 60 columns and up (shown at 72)
 
+The HUD reads top to bottom: who and whether it is working, what needs
+attention, then four sections in a left gutter (`session`, `context`,
+`limits`, `usage`), each row with a dim sub-label and its value in one
+column (cell 18), one idea per row. The TODO section follows under its own
+`todo` label:
+
 ```
-◆ opus 5.5 · xhigh · gateway          ● working 00:42   1h 12m   $4.21
+◆ opus 5.5 · xhigh · gateway                           ● working 00:42
   ⚠ 2 agents waiting for permission · 5h out ~13:43, before ↻14:20
-  ~/.claude/mods · main* +3 −1 ↑2
-  ctx   ━━━━━━━━────────┃───  41%  412k / 1.0M     compact in ~6 turns
-  5h    ━━──────  31% ↻14:20    7d  ━───────  12% ↻Tue
-  now   Bash  npm test -- hud                   00:04 · 7 files edited
+
+ session  repo    ~/.claude/mods
+          branch  main* ↑2   +142 −37 lines · last commit 48m ago
+          now     Bash · npm test -- hud                         00:04
+ context  used    ━━━━━━━━────────┃───  41%   412k / 1.0M
+          growth  +65k / turn        compact in ~6 turns
+          cache   ━━━━━━━━━━━━━━──────  warm · 42m left (1h)
+ limits   5h      ━━━━━━──────────────  31%   ↻ 14:20   out ~13:43
+          7d      ━━──────────────────  12%   ↻ Tue
+ usage    cost    $4.21              $3.51 / h · 1h 12m
+          last    $0.38              1m 12s · 24k tokens
+          cache   87% hit            agents 38% of spend
+
+ todo ▸   ━━━━━━────  3/5
+          ◐ Wiring the status line
 ```
 
 Row by row:
-- **Identity.** The model, effort and provider, then three right-hand
-  cells: the main loop `● working 00:42` (the accent; how long this turn
-  has run) or `○ idle 3m` (dim; how long since it stopped), the session's
-  age, and its cost. Working/idle is read from the main loop's facts, kept
-  with mascots on; nothing shows before either is known. When the row runs
-  short the provider gives way first, then the working cell, then the
-  effort.
+- **Header.** The model, effort and provider, and at the edge the main loop
+  `● working 00:42` (the accent; how long this turn has run) or `○ idle 3m`
+  (dim; how long since it stopped), read from the main loop's facts, kept
+  with mascots on. When the row runs short the provider gives way first,
+  then the working cell, then the effort. The session's clock and cost moved
+  to `usage · cost`.
 - **Alerts** (`⚠`). Drawn only while something needs attention; otherwise
-  the row is not there at all. The alerts, most severe first, joined by
-  ` · ` and cut to the card with `…`:
-  1. `N agents waiting for permission`: running subagents with a lingering
-     permission ask (`error`).
+  the row is not there at all. Most severe first, joined by ` · ` and cut to
+  the card with `…`:
+  1. `N agents waiting for permission` (`error`).
   2. `5h out ~13:43, before ↻14:20`: a window whose burn over the last 30
-     minutes reaches 100 % before it resets (`error`; the 7d and spend
-     windows the same).
+     minutes reaches 100 % before it resets (`error`; 7d and spend alike).
   3. `N agents stalled`: running subagents and workflow agents quiet past
      `stalledAfterSec` (`warning`).
   4. `compact in ~N turns`: the context compacts within three turns
      (`warning`).
-  5. `N calls denied or failed`: tool calls, in any loop, that ended denied
-     or in an error this conversation, from the ledger (dim `warning`).
-  6. `↓3 behind`: the branch is behind its upstream (dim `warning`).
+  5. `cache cools in 2m · next turn rewrites 412k`: the prompt cache goes
+     cold within two minutes of a 1-hour TTL, or within its last minute of a
+     5-minute one (the smaller of 2 minutes and 20 % of the TTL), and the
+     next turn would write the whole context to the cache again (`warning`).
+     A cache already cold is no alert: the cache row says so, calmly.
+  6. `N calls denied or failed`: from the ledger (dim `warning`).
+  7. `↓3 behind`: the branch is behind its upstream (dim `warning`).
 
   The `⚠` takes the colour of the most severe.
-- **Place.** The path, the branch and its marks.
-- **ctx.** The bar marks the auto-compact threshold with a dim `┃` when the
-  context breakdown names one below the window. After the token counts,
-  `compact in ~N turns`: the turns until the context reaches that threshold
-  (else the window) at its mean growth over the last ten main turns. With no
-  growth known it shows the compaction count, as before.
-- **Limits.** Wide, the 5h and 7d windows share one row: 8-cell bars, the
-  resets tight against their percent (`↻14:20`), the 7d half always starting
-  at the same column. A spend limit keeps a 20-cell gauge of its own. With
-  only one of the 5h and 7d windows known, it takes its own 20-cell gauge.
-- **now.** The main loop's tool running now and its main argument (a path
-  from `~`, losing its leading directories first; a command or pattern cut
-  with `…`), its elapsed time, and `N files edited`: the distinct
-  `file_path`/`notebook_path` of the main loop's Edit, Write, MultiEdit and
-  NotebookEdit calls that ended ok (starts over at `/clear`). Between tools
-  it reads `—` with the count; with neither, no row. `showTools` switches it
-  off.
+- A blank row, then the sections.
+- **session · repo.** The working directory from `~`, losing its leading
+  directories first.
+- **session · branch.** The branch, `*` when dirty (`warning`), `↑2 ↓1`
+  commits ahead and behind, then the lines changed against HEAD
+  (`git diff --shortstat HEAD`; the path counts `+3 ~1 −1` stand in when
+  there are none) and `last commit 48m ago` (`git log -1 --format=%ct`).
+  Both run on the debounced git timer beside `git status`, never the tick.
+- **session · now.** The main loop's tool running now and its main argument
+  (a path from `~`, losing its leading directories first; a command or
+  pattern cut with `…`), its elapsed time at the edge. Between tools a dim
+  `—`; before any tool, no row. `showTools` switches it off. The count of
+  files edited moved to the Session tab's Overview.
+- **context · used.** The bar marks the auto-compact threshold with a dim `┃`
+  when the context breakdown names one below the window; then the percent
+  and the tokens of the window.
+- **context · growth.** The context's mean growth per main turn over the
+  last ten, and `compact in ~N turns` at that growth to the threshold (else
+  the window). No growth seen, no row.
+- **context · cache.** The main conversation's prompt cache, counted from
+  the main loop's last request: the bar drains as the TTL runs out (`success`,
+  `warning` once cooling), then `warm · 42m left (1h)`, the TTL in parens.
+  Cold, an empty track and `cold · next turn rewrites 412k`, all dim. See
+  "The prompt cache's TTL" below for how the TTL is known.
+- **limits · 5h / 7d / spend.** Each window on its own row, its bar as wide
+  as the context's, its reset, and `out ~13:43` (`error`) only while the
+  window runs out before it resets.
+- **usage · cost.** The session's cost (bold), its rate an hour (once the
+  session is five minutes old) and the session's clock.
+- **usage · last.** The last main turn: what the session spent while it ran
+  (from one main turn's end to the next), how long it ran (`turn.complete`'s
+  `durationMs`) and its own tokens (fresh input, cache writes and output of
+  its main-loop requests; cache reads left out).
+- **usage · cache.** The share of the session's input the prompt cache
+  served, and the subagents', workflow agents' and forks' share of the
+  ledger's estimated spend (with `inspect` on).
+- **todo.** See "TODO" below.
 
-The token and cache rows, the per-tool counts (`tools Read ×41 …`) and the
-MCP/skill counts are no longer drawn. The Session tab's Overview has the
-tokens; `/mod-hud facts` has the tool counts and the inventory.
+The session's tokens by kind, cache writes, the compaction count, the files
+edited, the per-tool counts and the MCP/skill counts are not drawn: the
+Session tab's Overview has the tokens, compactions and files edited;
+`/mod-hud facts` has the tool counts and the inventory.
 
 The HUD is a card at most 72 cells wide. On a 100-column pane it draws
-exactly as at 74: the right-hand cells stay next to what they describe
-instead of drifting to the far edge. At 74 the whole card fits beside the
-close button's reserve:
+exactly as at 74, where the whole card fits beside the close button's
+reserve:
 
 ```
-◆ opus 5.5 · xhigh · gateway            ● working 00:42   1h 12m   $4.21
+◆ opus 5.5 · xhigh · gateway                             ● working 00:42
   ⚠ 2 agents waiting for permission · 5h out ~13:43, before ↻14:20
-  ~/.claude/mods · main* +3 −1 ↑2
-  ctx   ━━━━━━━━────────┃───  41%  412k / 1.0M       compact in ~6 turns
-  5h    ━━──────  31% ↻14:20    7d  ━───────  12% ↻Tue
-  now   Bash  npm test -- hud                     00:04 · 7 files edited
+
+ session  repo    ~/.claude/mods
+          branch  main* ↑2   +142 −37 lines · last commit 48m ago
+          now     Bash · npm test -- hud                           00:04
+ context  used    ━━━━━━━━────────┃───  41%   412k / 1.0M
+          growth  +65k / turn        compact in ~6 turns
+          cache   ━━━━━━━━━━━━━━──────  warm · 42m left (1h)
+ limits   5h      ━━━━━━──────────────  31%   ↻ 14:20   out ~13:43
+          7d      ━━──────────────────  12%   ↻ Tue
+ usage    cost    $4.21              $3.51 / h · 1h 12m
+          last    $0.38              1m 12s · 24k tokens
+          cache   87% hit            agents 38% of spend
 ```
 
-At 60, the narrowest wide layout, the provider and the runway give way, the
-alerts are cut, and every right-aligned cell stops two cells short of the
-pane's edge (see "Close button" below):
+At 60, the narrowest wide layout, pieces that no longer fit whole are left
+out (the last commit, the limit ETA; the alerts are cut), and every
+right-aligned cell stops two cells short of the pane's edge (see "Close
+button" below):
 
 ```
-◆ opus 5.5 · xhigh        ● working 00:42   1h 12m   $4.21
+◆ opus 5.5 · xhigh · gateway               ● working 00:42
   ⚠ 2 agents waiting for permission · 5h out ~13:43, before…
-  ~/.claude/mods · main* +3 −1 ↑2
-  ctx   ━━━━━━━━────────┃───  41%  412k / 1.0M
-  5h    ━━──────  31% ↻14:20    7d  ━───────  12% ↻Tue
-  now   Bash  npm test -- hud       00:04 · 7 files edited
+
+ session  repo    ~/.claude/mods
+          branch  main* ↑2   +142 −37 lines
+          now     Bash · npm test -- hud             00:04
+ context  used    ━━━━━━━━────────┃───  41%   412k / 1.0M
+          growth  +65k / turn        compact in ~6 turns
+          cache   ━━━━━━━━━━━━━━──────  warm · 42m left (1h)
+ limits   5h      ━━━━━━──────────────  31%   ↻ 14:20
+          7d      ━━──────────────────  12%   ↻ Tue
+ usage    cost    $4.21              $3.51 / h · 1h 12m
+          last    $0.38              1m 12s · 24k tokens
+          cache   87% hit            agents 38% of spend
 ```
+
+## The prompt cache
+
+The cache row counts down from the main loop's last request (each main
+`turn.step` that answered stamps `usage.mainRequestAt`, in the usage write
+the request makes anyway). The cold-cache variant (`coldCache`, an hour and
+ten minutes after that request):
+
+```
+◆ opus 5.5 · xhigh · gateway                           ● working 00:42
+
+ session  repo    ~/.claude/mods
+          branch  main* ↑2   +142 −37 lines · last commit 48m ago
+          now     Bash · npm test -- hud                         00:04
+ context  used    ━━━━━━━━────────┃───  41%   412k / 1.0M
+          growth  +65k / turn        compact in ~6 turns
+          cache   ────────────────────  cold · next turn rewrites 412k
+ limits   5h      ━━━━━━──────────────  31%   ↻ 14:20
+          7d      ━━──────────────────  12%   ↻ Tue
+ usage    cost    $4.21              $3.51 / h · 1h 12m
+          last    $0.38              1m 12s · 24k tokens
+          cache   87% hit            agents 38% of spend
+```
+
+With 90 seconds left (`coolingCache`) the row turns `warning` and the alert
+strip says what is at stake:
+
+```
+◆ opus 5.5 · xhigh · gateway                           ● working 00:42
+  ⚠ cache cools in 2m · next turn rewrites 412k
+
+ session  repo    ~/.claude/mods
+          branch  main* ↑2   +142 −37 lines · last commit 48m ago
+          now     Bash · npm test -- hud                         00:04
+ context  used    ━━━━━━━━────────┃───  41%   412k / 1.0M
+          growth  +65k / turn        compact in ~6 turns
+          cache   ━───────────────────  cooling · 2m left (1h)
+ limits   5h      ━━━━━━──────────────  31%   ↻ 14:20
+          7d      ━━──────────────────  12%   ↻ Tue
+ usage    cost    $4.21              $3.51 / h · 1h 12m
+          last    $0.38              1m 12s · 24k tokens
+          cache   87% hit            agents 38% of spend
+```
+
+### The prompt cache's TTL
+
+The mod infers the main conversation's TTL the way the engine picks it
+(`cacheTtlOf` in `hooks/facts.ts`), once at start:
+1. `DISABLE_PROMPT_CACHING` set: no cache, no row.
+2. `FORCE_PROMPT_CACHING_5M` set: 5m.
+3. `CLAUDE_CODE_PROMPT_CACHE_TTL` (`5m` or `1h`), else the `promptCacheTtl`
+   setting.
+4. `ENABLE_PROMPT_CACHING_1H` set: 1h.
+5. Otherwise automatic: 1h on a Claude subscription (no `ANTHROPIC_API_KEY`,
+   `ANTHROPIC_AUTH_TOKEN` or `ANTHROPIC_BASE_URL`, not Bedrock, Vertex or
+   Foundry), else 5m.
+
+Only whether each variable is set is read; no value is kept. The
+`cacheTtl` option (`auto`, `5m`, `1h`) overrides the inference. A
+subscription that has run past its limits and draws on usage credits drops
+to the 5-minute cache, which nothing the mod can read shows: there the row
+still counts an hour, so set `cacheTtl: 5m` while that lasts.
+
+## More states, wide
 
 The context full and the limits hot (`fullContext`). Bars below 60 % are
 `success`, 60 to 84 % `warning`, and 85 % and up `error`. With no growth
-samples the runway is unknown and the compaction count stands in; a spend
-limit gets its own gauge:
+samples the growth row goes; a spend limit gets its own row:
 
 ```
-◆ opus 5.5 · xhigh · gateway            ● working 00:42   1h 12m   $4.21
+◆ opus 5.5 · xhigh · gateway                           ● working 00:42
   ⚠ 2 agents waiting for permission
-  ~/.claude/mods · main* +3 −1 ↑2
-  ctx   ━━━━━━━━━━━━━━━━┃━━━ 100%  1.0M / 1.0M             3 compactions
-  5h    ━━━━━━━─  92% ↻14:20    7d  ━━━━━───  64% ↻Tue
-  spend ━━━━━━━━━━━━━━━━━───  85%  ↻ Nov 1
-  now   Bash  npm test -- hud                     00:04 · 7 files edited
+
+ session  repo    ~/.claude/mods
+          branch  main* ↑2   +142 −37 lines · last commit 48m ago
+          now     Bash · npm test -- hud                         00:04
+ context  used    ━━━━━━━━━━━━━━━━┃━━━ 100%   1.0M / 1.0M
+          cache   ━━━━━━━━━━━━━━──────  warm · 42m left (1h)
+ limits   5h      ━━━━━━━━━━━━━━━━━━──  92%   ↻ 14:20
+          7d      ━━━━━━━━━━━━━───────  64%   ↻ Tue
+          spend   ━━━━━━━━━━━━━━━━━───  85%   ↻ Nov 1
+ usage    cost    $4.21              $3.51 / h · 1h 12m
+          last    $0.38              1m 12s · 24k tokens
+          cache   87% hit            agents 38% of spend
 ```
 
-Everything at once (`alarmed`, at 74): the main loop idle three minutes, a
-stalled agent, a compaction two turns off, three failed calls and the branch
-three behind. The strip is cut to the card; the least severe go first:
+Everything at once (`alarmed`): the main loop idle three minutes, a stalled
+agent, a compaction two turns off, three failed calls and the branch three
+behind. The strip is cut to the card; the least severe go first:
 
 ```
-◆ opus 5.5 · xhigh · gateway                  ○ idle 3m   1h 12m   $4.21
+◆ opus 5.5 · xhigh · gateway                                 ○ idle 3m
   ⚠ 2 agents waiting for permission · 5h out ~13:43, before ↻14:20 · 1…
-  ~/.claude/mods · main* +3 −1 ↑2 ↓3
-  ctx   ━━━━━━━━━━━━━━──┃───  70%  700k / 1.0M       compact in ~2 turns
-  5h    ━━──────  31% ↻14:20    7d  ━───────  12% ↻Tue
-  now   Bash  npm test -- hud                     00:04 · 7 files edited
+
+ session  repo    ~/.claude/mods
+          branch  main* ↑2 ↓3   +142 −37 lines · last commit 48m ago
+          now     Bash · npm test -- hud                         00:04
+ context  used    ━━━━━━━━━━━━━━──┃───  70%   700k / 1.0M
+          growth  +65k / turn        compact in ~2 turns
+          cache   ━━━━━━━━━━━━━━──────  warm · 42m left (1h)
+ limits   5h      ━━━━━━──────────────  31%   ↻ 14:20   out ~13:43
+          7d      ━━──────────────────  12%   ↻ Tue
+ usage    cost    $4.21              $3.51 / h · 1h 12m
+          last    $0.38              1m 12s · 24k tokens
+          cache   87% hit            agents 38% of spend
 ```
 
 Nothing needing attention (`calm`): no alert row at all.
 
 ```
-◆ opus 5.5 · xhigh · gateway            ● working 00:42   1h 12m   $4.21
-  ~/.claude/mods · main* +3 −1 ↑2
-  ctx   ━━━━━━━━────────┃───  41%  412k / 1.0M       compact in ~6 turns
-  5h    ━━──────  31% ↻14:20    7d  ━───────  12% ↻Tue
-  now   Bash  npm test -- hud                     00:04 · 7 files edited
+◆ opus 5.5 · xhigh · gateway                           ● working 00:42
+
+ session  repo    ~/.claude/mods
+          branch  main* ↑2   +142 −37 lines · last commit 48m ago
+          now     Bash · npm test -- hud                         00:04
+ context  used    ━━━━━━━━────────┃───  41%   412k / 1.0M
+          growth  +65k / turn        compact in ~6 turns
+          cache   ━━━━━━━━━━━━━━──────  warm · 42m left (1h)
+ limits   5h      ━━━━━━──────────────  31%   ↻ 14:20
+          7d      ━━──────────────────  12%   ↻ Tue
+ usage    cost    $4.21              $3.51 / h · 1h 12m
+          last    $0.38              1m 12s · 24k tokens
+          cache   87% hit            agents 38% of spend
 ```
 
 ## Narrow: below 60 columns, at 56
 
-The narrow layout is the wide one stacked: every section the wide layout
-shows, in the same order, one per row, the 5h and 7d windows each a gauge of
-its own. The bars are 10 cells and the token count reads `412k/1.0M`:
+The narrow layout keeps every row, in the same order. The gutter takes the
+short labels (`sess`, `ctx`, `lim`, `use`; six cells), the sub-labels seven,
+so values start at cell 13. Bars are 10 cells, the token count reads
+`412k/1.0M`, pieces are two cells apart, and a piece that does not fit whole
+is left out:
 
 ```
-◆ opus 5.5 · xhigh    ● working 00:42   1h 12m   $4.21
+◆ opus 5.5 · xhigh · gateway           ● working 00:42
   ⚠ 2 agents waiting for permission · 5h out ~13:43, be…
-  ~/.claude/mods · main* +3 −1 ↑2
-  ctx   ━━━━────┃─  41%  412k/1.0M
-  5h    ━━━───────  31%  ↻ 14:20
-  7d    ━─────────  12%  ↻ Tue
-  now   Bash  npm test -- hud   00:04 · 7 files edited
-```
 
-Right-hand cells (the runway, the elapsed time and files edited) end where
-the identity row ends, two cells short of the edge, so they line up in one
-column and the close button stands alone.
+ sess repo   ~/.claude/mods
+      branch main* ↑2  +142 −37 lines
+      now    Bash · npm test -- hud              00:04
+ ctx  used   ━━━━────┃─  41%  412k/1.0M
+      growth +65k/turn  compact in ~6 turns
+      cache  ━━━━━━━───  warm · 42m left (1h)
+ lim  5h     ━━━───────  31%  ↻ 14:20  out ~13:43
+      7d     ━─────────  12%  ↻ Tue
+ use  cost   $4.21  $3.51 / h · 1h 12m
+      last   $0.38  1m 12s · 24k tokens
+      cache  87% hit  agents 38% of spend
+```
 
 ## Narrow at 48
 
-Here the working cell would leave the model and its effort too little room,
-so it gives way; with it gone the provider fits again. The `now` row's
-argument is cut to what is left beside its right-hand cells:
-
 ```
-◆ opus 5.5 · xhigh · gateway    1h 12m   $4.21
+◆ opus 5.5 · xhigh · gateway   ● working 00:42
   ⚠ 2 agents waiting for permission · 5h out ~1…
-  ~/.claude/mods · main* +3 −1 ↑2
-  ctx   ━━━━────┃─  41%  412k/1.0M
-  5h    ━━━───────  31%  ↻ 14:20
-  7d    ━─────────  12%  ↻ Tue
-  now   Bash  npm te…   00:04 · 7 files edited
+
+ sess repo   ~/.claude/mods
+      branch main* ↑2  +142 −37 lines
+      now    Bash · npm test -- hud      00:04
+ ctx  used   ━━━━────┃─  41%  412k/1.0M
+      growth +65k/turn  compact in ~6 turns
+      cache  ━━━━━━━───  warm · 42m left (1h)
+ lim  5h     ━━━───────  31%  ↻ 14:20
+      7d     ━─────────  12%  ↻ Tue
+ use  cost   $4.21  $3.51 / h · 1h 12m
+      last   $0.38  1m 12s · 24k tokens
+      cache  87% hit  agents 38% of spend
+
+ todo ▸ ━━━━━━────  3/5
+        ◐ Wiring the status line
 ```
 
 ## Narrow at 40
 
-Below 44 columns the bars are 8 cells. The provider gives way first, then
-the effort; an argument with fewer than four cells left goes:
+Below 44 columns the bars are 8 cells:
 
 ```
-◆ opus 5.5 · xhigh      1h 12m   $4.21
+◆ opus 5.5 · xhigh     ● working 00:42
   ⚠ 2 agents waiting for permission · 5…
-  ~/.claude/mods · main* +3 −1 ↑2
-  ctx   ━━━───┃─  41%  412k/1.0M
-  5h    ━━──────  31%  ↻ 14:20
-  7d    ━───────  12%  ↻ Tue
-  now   Bash    00:04 · 7 files edited
+
+ sess repo   ~/.claude/mods
+      branch main* ↑2  +142 −37 lines
+      now    Bash · npm test…    00:04
+ ctx  used   ━━━───┃─  41%  412k/1.0M
+      growth +65k/turn
+      cache  ━━━━━━──  warm · 42m left
+ lim  5h     ━━──────  31%  ↻ 14:20
+      7d     ━───────  12%  ↻ Tue
+ use  cost   $4.21  $3.51 / h · 1h 12m
+      last   $0.38  1m 12s · 24k tokens
+      cache  87% hit
 ```
 
 ## Narrow at 36
 
-At 36 columns and under there is no room for a bar worth reading: the
-gauges keep their label and right-aligned percent. With no room for its
-right-hand cells beside the tool, the `now` row keeps the argument instead:
+At 36 columns and under there is no room for a bar worth reading: the gauges
+keep their right-aligned percent. The working cell and the provider gave way
+in the header:
 
 ```
-◆ opus 5.5          1h 12m   $4.21
+◆ opus 5.5 · xhigh
   ⚠ 2 agents waiting for permission…
-  ~/.claude/mods · main* +3 −1 ↑2
-  ctx    41%  412k/1.0M
-  5h     31%  ↻ 14:20
-  7d     12%  ↻ Tue
-  now   Bash  npm test -- hud
+
+ sess repo   ~/.claude/mods
+      branch main* ↑2
+      now    Bash · npm t…   00:04
+ ctx  used    41%  412k/1.0M
+      growth +65k/turn
+      cache  warm · 42m left (1h)
+ lim  5h      31%  ↻ 14:20
+      7d      12%  ↻ Tue
+ use  cost   $4.21  $3.51 / h
+      last   $0.38  1m 12s
+      cache  87% hit
 ```
 
-A long branch and motto at 48 (`longBranch`). The path gives way first, the
-branch keeps at least eight cells, and free text ends in `…`:
+A long branch and motto at 48 (`longBranch`). The branch keeps at least eight
+cells, and free text ends in `…`:
 
 ```
-◆ opus 5.5 · xhigh · gateway    1h 12m   $4.21
+◆ opus 5.5 · xhigh · gateway   ● working 00:42
   ⚠ 2 agents waiting for permission · 5h out ~1…
-  …/mods · feature/very-long-branch-n…* +3 −1 ↑2
-  ctx   ━━━━────┃─  41%  412k/1.0M
-  5h    ━━━───────  31%  ↻ 14:20
-  7d    ━─────────  12%  ↻ Tue
-  now   Bash  npm te…   00:04 · 7 files edited
+
+ sess repo   ~/.claude/mods
+      branch feature/very-long-branch-name-…* ↑2
+      now    Bash · npm test -- hud      00:04
+ ctx  used   ━━━━────┃─  41%  412k/1.0M
+      growth +65k/turn  compact in ~6 turns
+      cache  ━━━━━━━───  warm · 42m left (1h)
+ lim  5h     ━━━───────  31%  ↻ 14:20
+      7d     ━─────────  12%  ↻ Tue
+ use  cost   $4.21  $3.51 / h · 1h 12m
+      last   $0.38  1m 12s · 24k tokens
+      cache  87% hit  agents 38% of spend
   a motto long enough to run past the edge of e…
+```
+
+## Short panes
+
+Given the pane's rows, the HUD takes at most half (never fewer than four).
+Rows go by rank: the alerts, the header, `context · used`, the limits,
+`session · now`, `context · cache`, `usage · cost`, then the rest (branch,
+repo, growth, last turn, cache use, the motto, the blank row). A section's
+label moves to its first row still shown. At 72 columns in 16 rows (eight for
+the HUD):
+
+```
+◆ opus 5.5 · xhigh · gateway                           ● working 00:42
+  ⚠ 2 agents waiting for permission · 5h out ~13:43, before ↻14:20
+ session  now     Bash · npm test -- hud                         00:04
+ context  used    ━━━━━━━━────────┃───  41%   412k / 1.0M
+          cache   ━━━━━━━━━━━━━━──────  warm · 42m left (1h)
+ limits   5h      ━━━━━━──────────────  31%   ↻ 14:20   out ~13:43
+          7d      ━━──────────────────  12%   ↻ Tue
+ usage    cost    $4.21              $3.51 / h · 1h 12m
+```
+
+At 48 columns in 10 rows (five for the HUD):
+
+```
+◆ opus 5.5 · xhigh · gateway   ● working 00:42
+  ⚠ 2 agents waiting for permission · 5h out ~1…
+ ctx  used   ━━━━────┃─  41%  412k/1.0M
+ lim  5h     ━━━───────  31%  ↻ 14:20
+      7d     ━─────────  12%  ↻ Tue
 ```
 
 ## Sparse and early states
 
-A session twelve seconds old, with a model and a clock and nothing
-measured yet, is two rows. Nothing prints a zero for a fact that has not
-arrived. `ctx —` holds the context's place until the first response:
+A session twelve seconds old, with a model and a clock and nothing measured
+yet. Nothing prints a zero for a fact that has not arrived; `used —` holds
+the context's place until the first response:
 
 ```
-◆ opus 5.5 · xhigh                                         00:12   $0.00
-  ctx   —
+◆ opus 5.5 · xhigh
+
+ context  used    —
+ usage    cost    $0.00              00:12
 ```
 
-Each missing fact removes only its own row or cell, wide and narrow alike:
+Each missing fact removes only its own row or piece, wide and narrow alike,
+and a section with no rows left loses its label:
 - Nothing needing attention: no alert row.
-- No rate-limit data: no limits or spend row.
-- No git: the place row is just the path.
+- No rate-limit data: no limits section.
+- No git: no branch row. No commit yet: no `last commit`.
 - No auto-compact threshold (or the breakdown not read): no `┃`, and the
-  runway runs to the window. No context growth: no runway.
-- No tool running and no file edited: no `now` row. No main-loop activity
-  known: no working/idle cell. No todos: no TODO section.
+  runway runs to the window. No context growth: no growth row.
+- No main request yet, or prompt caching off: no cache row.
+- No main turn ended: no `last` row. No tokens and no ledger: no cache-use row.
+- No tool called yet: no `now` row. No main-loop activity known: no
+  working/idle cell. No todos: no TODO section.
 - No data at all: the HUD draws nothing and the agent list stands alone.
-  A motto is the HUD's last row, never a HUD of its own: with nothing
-  else known it is not drawn either.
+  A motto is the HUD's last row, never a HUD of its own.
 
 `/mod-hud facts` prints the `HudData` the HUD is drawing from as JSON (the
-alert counts under `alerts`, the main loop's activity under `main`, the tool
-counts and the inventory included), with the workflow agents' record
-(`shadows`), the ledger's summary (`ledger`: each model's estimated cost and
-tokens, the loops counted, the failed calls) and the lists' expansion
-(`listView`), each left out while empty, and says whether the last
-`session.measure` carried any rate limits. Use it when a row you expect is
-missing.
+alert counts under `alerts`, the main loop's activity under `main`, the cache
+under `cache`, the last turn under `usage.lastTurn`, the tool counts and the
+inventory included), with the workflow agents' record (`shadows`), the
+ledger's summary (`ledger`) and the lists' expansion (`listView`), each left
+out while empty, and says whether the last `session.measure` carried any rate
+limits. Use it when a row you expect is missing.
 
 ## TODO
 
 The main conversation's todo list is a section of its own between the HUD
-and the agents, one blank row above and below. Folded (the default) it is
-one line: a `▸` Button (dim), `TODO` bold, a bar of the items done (10 cells;
-8 below 44 columns, none at 36 and under; the fill `success`, the track
-dim), `done/total`, then the item in progress (its active form, `◐` in the
-accent), else the next pending (`☐`), cut to the pane with `…`. Seven
-items, three done, one in progress (`sevenTodos`), at 72 and 48 columns:
+and the agents, one blank row above and below, in the HUD's gutter. Folded
+(the default) it is two rows: ` todo`, the `▸` Button (dim), a bar of the
+items done from the value gutter (10 cells; 8 below 44 columns, none at 36
+and under; the fill `success`, the track dim) and `done/total`; under it the
+item in progress (its active form, `◐` in the accent), else the next pending
+(`☐`), cut to the pane with `…`. All done: the label row alone. Seven items,
+three done, one in progress (`sevenTodos`), at 72 and 48 columns:
 
 ```
-▸ TODO  ━━━━────── 3/7  ◐ Wiring the detail view
+ todo ▸   ━━━━──────  3/7
+          ◐ Wiring the detail view
 ```
 
-A press on `▸` opens it (`mod-hud.listView.todosExpanded`, written on a
-press only, like the lists' expansion): the line turns `▾`, drops the item
-after the count, and lists every item under it, one per row, two cells in.
-In progress first, then pending (`☐`), then completed (`☑`, the whole row
-struck through and dim). At most `todoRows` items (6 by default), then a dim
-`+n more`. `▾` folds it again:
-
 ```
-▾ TODO  ━━━━────── 3/7
-  ◐ Wiring the detail view
-  ☐ Test the scenes
-  ☐ Update the sprite sheet
-  ☐ Sketch the pane at 72 and 48 columns
-  ☑ Read the brief
-  ☑ Split the sprites out
-  +1 more
+ todo ▸ ━━━━──────  3/7
+        ◐ Wiring the detail view
 ```
 
-At 48 the rows are the same, each cut to the pane. No todos (or `showTodos`
-off): no section. Its rows count like the agent list: they never shrink the
-HUD, and the mascot scene gets what is left.
+A press on `▸` opens it (`mod-hud.listView.todosExpanded`, written on a press
+only): the toggle turns `▾` and every item is listed under the label row, in
+progress first, then pending (`☐`), then completed (`☑`, struck through and
+dim). At most `todoRows` items (6 by default), then a dim `+n more`. `▾`
+folds it again:
+
+```
+ todo ▾   ━━━━──────  3/7
+          ◐ Wiring the detail view
+          ☐ Test the scenes
+          ☐ Update the sprite sheet
+          ☐ Sketch the pane at 72 and 48 columns
+          ☑ Read the brief
+          ☑ Split the sprites out
+          +1 more
+```
+
+No todos (or `showTodos` off): no section. Its rows count like the agent
+list: they never shrink the HUD, and the mascot scene gets what is left.
 
 ## Status line (opt-in helper)
 
 `statusLineText(data)` returns plain text. Segments are joined by ` │ `,
-absent facts are dropped, and the result is at most 100 characters; the
-last segments give way first (todo, then git, then cost). `⚠ n` counts the
-alert strip's alerts, right after who, when there are any. The caller
-appends its agents summary. The pane is the HUD's real surface; this line
-is only for a caller that opts in.
+absent facts are dropped, and the result is at most 100 characters; the last
+segments give way first (the cache, then todo, then git, then cost). `⚠ n`
+counts the alert strip's alerts, right after who, when there are any; the
+prompt cache's time left (`cache 42m`, `cache cold`) comes last, when it
+fits. The caller appends its agents summary. The pane is the HUD's real
+surface; this line is only for a caller that opts in.
 
 ```
-opus 5.5 · xhigh │ ⚠ 2 │ ctx 41% │ 5h 31% · 7d 12% │ $4.21 │ main* +3 −1 ↑2 │ todo 3/5
+opus 5.5 · xhigh │ ⚠ 2 │ ctx 41% │ 5h 31% · 7d 12% │ $4.21 │ main* +3 −1 ↑2 │ todo 3/5 │ cache 42m
+opus 5.5 · xhigh │ ctx 41% │ 5h 31% · 7d 12% │ $4.21 │ main* +3 −1 ↑2 │ todo 3/5 │ cache cold
 ```
 
 ## Inspect view (click to inspect)
@@ -494,6 +709,9 @@ with mascots on), its age and its turns; its tabs are **Overview**,
     auto-compact threshold the inventory's breakdown names, else the
     window).
   - `tokens`: in, out, cache read and write, and the cache hit share.
+  - (on `turns`) the files the main loop edited this conversation (the
+    distinct paths of its Edit, Write, MultiEdit and NotebookEdit calls that
+    ended ok), moved here from the HUD's `now` row in 1.2.0.
   - `limits`: each window's percent, the time to its cap at the burn of the
     last 30 minutes (`usage.limitSamples`: each change of its percent, the
     one before the window kept as its base), `resets before the cap` when
@@ -627,67 +845,70 @@ estimated list-price shares.
 
 **Hierarchy.** One glyph heads the card: `◆` at column 0, in the same
 gutter as the agent list's `●`, `✓` and `✗`, so the pane reads as "the
-session, then its agents". Every other row hangs two cells in.
+session, then its agents". The alert strip hangs two cells in. Below a blank
+row, every section's label sits one cell in, in a ten-cell gutter (six
+narrow), on its first row only; the sub-labels (`repo`, `used`, `5h`, `cost`)
+follow in a dim eight-cell column (seven narrow), and every value starts in
+one column. The eye finds a section by its label, a fact by its sub-label,
+and reads values down one edge.
 
-The identity row is the only bold row (model, effort, cost), and the model
-name alone carries the accent. Below it, rows follow how often you need
-them: what needs attention now, where you are, how full the context is and
-how soon it compacts, how close the limits are, what is running, what is
-next. Labels (`ctx`, `5h`, `now`) sit in one dim six-cell gutter, so the eye
-can skip them once learned.
+The header and the cost are the only bold text, and the model name alone
+carries the accent. Sections follow how often you need them: where you are
+and what is running, how full the context is and how warm its cache, how
+close the limits are, what it all costs.
 
 **Close button.** The engine draws the pane's close button (`×`) over the
-last cell of the first body row. The first row, the identity row whenever
-it draws, ends at least two cells short of the pane's edge (`CLOSE_RESERVE`),
-so the `×` never covers the cost. Every right-aligned cell shares that edge;
-free text on later rows may use the full width. From
-74 columns up, the 72-cell card fits whole beside the reserve.
+last cell of the first body row. The first row, the header whenever it
+draws, ends at least two cells short of the pane's edge (`CLOSE_RESERVE`), so
+the `×` never covers the working cell. Every right-aligned cell (the `now`
+row's elapsed time) shares that edge; free text on later rows may use the
+full width. From 74 columns up, the 72-cell card fits whole beside the
+reserve.
 
-**Alignment and stability.** The gauges share one grid: label 6, then the
-bar (20 cells wide; 10 narrow, 8 below 44 columns, none at 36 and under),
-then the percent right-aligned in 4, then the detail after two spaces. The
-bars stack into one column and the percentages line up.
+**Alignment and stability.** The gauges share one grid: the value column,
+then the bar (20 cells wide; 10 narrow, 8 below 44 columns, none at 36 and
+under; the cache's bar the same), then the percent right-aligned in 4, then
+the detail after three spaces (two narrow). A text row's second value starts
+at one column wide (cell 37: `$3.51 / h`, `compact in ~6 turns`,
+`agents 38% of spend`). The bars stack into one column and the percentages
+line up.
 
 Every value that changes on the 1 s tick sits in a fixed cell:
-- working/idle: 16 cells (`● working 1h 12m` at its widest), right-anchored
-  before the clock
-- session clock: 7 cells, right-anchored
-- cost: 6 cells below $100, always two decimals (`$0.07`, `$52.60`,
-  `$123.45`); it changes on a measurement, never on the tick
-- the `now` row's elapsed time: 6 cells, before `N files edited`, which
-  ends at the identity's edge
+- working/idle: 16 cells (`● working 1h 12m` at its widest), at the edge
+- the `now` row's elapsed time: 6 cells, at the edge
+- cost: always two decimals (`$0.07`, `$52.60`); it changes on a
+  measurement, never on the tick
 - token count: 4 cells
 
-A tick can change a digit but never moves a neighbour. The files-edited
-count stays at the edge whether or not a tool runs. A long MCP tool name
+A tick can change a digit but never moves a neighbour. A long MCP tool name
 keeps its tool half (`browser_tak…`, not `playwright:…`).
 
 **Colour.** Colour is reserved for the bars, the status glyphs, the model
-name, `● working`, and the alert strip. It is all theme keys, so the HUD follows the
-person's theme (Dracula's purple accent, Latte's darker greens on white)
-instead of hard-coding ANSI colours that wash out on a light background:
+name, `● working`, `out ~HH:MM`, a cooling cache and the alert strip. It is
+all theme keys, so the HUD follows the person's theme:
 
 | What | Theme key |
 | --- | --- |
 | `◆`, model name, `● working`, in-progress `◐` | `claude` |
-| alert strip: asks, a limit running out (and `⚠` when one leads) | `error` |
-| alert strip: stalled agents, a compaction soon | `warning` |
+| alert strip: asks, a limit running out (and `⚠` when one leads); a limit row's `out ~HH:MM` | `error` |
+| alert strip: stalled agents, a compaction soon, the cache cooling | `warning` |
 | alert strip: failed calls, behind upstream | `warning`, dim |
-| TODO progress fill | `success` |
+| TODO progress fill, a warm cache's fill | `success` |
+| a cooling cache's fill and `cooling` | `warning` |
 | bar fill below 60 % | `success` |
 | 60 to 84 % | `warning` |
 | 85 % and up | `error` |
 | dirty-tree `*` | `warning` |
-| in-progress todo `◐` (TODO section) | `claude` |
 | active tab `[ Task ]`, the trail's current call (inspect view) | `claude` |
 | a `denied` call (Trail tab) | `warning` |
 | an `error` call (Trail tab) | `error` |
 
 The threshold uses the percent as displayed, so a value shown as `85%` is
-always red. The bar's track, the compaction mark `┃`, labels, paths, reset
-times, token counts, the runway, `○ idle`, the tool's argument and elapsed
-time, git marks and the motto are dim. No element sets a background colour or
-`inverse`, and no text is both bold and dim (the two share one reset code
+always red. The bar's track, the compaction mark `┃`, sub-labels, paths,
+reset times, token counts, the runway, the cache's time left and a cold
+cache, `○ idle`, the tool's argument and elapsed time, git marks, the
+rate, the clock and the motto are dim. No element sets a background colour
+or `inverse`, and no text is both bold and dim (the two share one reset code
 in most terminals).
 
 **Bar glyphs.** The fill is `━` and the empty track `─`, drawn as separate
@@ -699,31 +920,29 @@ distinct weights in any font, and leaves a gap between rows.
 **Redundant encoding.** Nothing depends on colour alone:
 - Bars show level by length: a heavy `━` against a light `─`.
 - At 36 columns and under, where no bar fits, the percent itself is the
-  reading.
+  reading; the cache's state is written out (`warm`, `cooling`, `cold`).
 - Todo items show state by shape: `☑` done (and struck through), `◐` doing,
   `☐` pending.
 - A dirty tree shows as `*`.
 - The alert strip is words, led by `⚠`; colour only ranks them.
 - The compaction threshold is a `┃` in the bar, and the runway is written
   out.
-- The git marks are `+` paths added, `~` modified, `−` deleted, `↑`/`↓`
-  commits ahead and behind.
 
-**Density.** The wide layout is eight rows at most (alerts, a spend limit
-and a motto); the narrow one is nine, since the 5h and 7d windows take a
-row each. Given `rows`, the HUD takes at most half the pane (never fewer
-than four rows). It drops the motto first, then `now`, the place row, and
-then the limits, the spend gauge first. It never drops the identity, the
-alert strip or ctx.
+**Density.** One idea per row: the full sketch is fourteen rows, fifteen
+with a motto, plus the TODO section. Given `rows`, the HUD takes at most
+half the pane (never fewer than four rows) and drops rows by rank (see
+"Short panes"); it never drops the alerts or the header first.
 
 The HUD never depends on how many agents run. Its root and rows set
 `flexShrink={0}`, so the agent list scrolls instead of squeezing it.
 
 **Truncation.** Every row is measured in terminal cells (CJK and emoji
-count two) and fits both `columns` and the 72-cell card. Free text (path,
-branch, alerts, the tool's argument, motto) is cut with `…`. A path loses its leading directories
-first (`…/mods`), and the branch keeps at least eight cells. Newlines and
-control characters in any text are flattened to spaces.
+count two) and fits both `columns` and the 72-cell card. A value's
+secondary pieces are left out whole when they do not fit; free text (path,
+branch, alerts, the tool's argument, motto) is cut with `…`. A path loses
+its leading directories first (`…/mods`), and the branch keeps at least
+eight cells. Newlines and control characters in any text are flattened to
+spaces.
 
 **Wiring note.** The caller should leave one blank row between the HUD and
 the agent list (`gap={1}` on their shared column, or `marginBottom={1}`

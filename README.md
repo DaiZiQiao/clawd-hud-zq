@@ -1,6 +1,6 @@
 # clawd-hud-zq
 
-A HUD side pane for Claude Code. It shows your session facts, what needs your attention, context and rate-limit bars, cost, git state, the tool running now, TODO progress and every running subagent, including ultracode and Workflow agents, next to a live, animated scene of Claude mascots. The mascots work, sleep, hop, fly and collide, and you can grab them with the mouse and throw them.
+A HUD side pane for Claude Code. It shows your session facts, what needs your attention, git state and the tool running now, context and prompt-cache bars, rate limits, cost, TODO progress and every running subagent, including ultracode and Workflow agents, next to a live, animated scene of Claude mascots. The mascots work, sleep, hop, fly and collide, and you can grab them with the mouse and throw them.
 
 This repository is a Claude Code marketplace that ships one mod, `mod-hud`.
 
@@ -58,10 +58,10 @@ Change any option from `/plugin` (select mod-hud, then its settings).
 | `stalledAfterSec` | `240` | A running subagent with no activity for this many seconds is drawn as stalled. |
 | `statusLine` | `false` | Show the HUD and a count of running, done, failed and stalled subagents as one line in the status line. |
 | `maxRows` | `40` | The pane lists at most this many subagents and workflow agents together and counts the rest. |
-| `showGit` | `true` | Show the branch and its changes in the HUD. |
-| `showTools` | `true` | Show the `now` row: the main conversation's tool running now, its main argument and elapsed time, and how many files it edited. |
-| `showTodos` | `true` | Show the main conversation's todo list: one progress line, which its `▸` opens to every item. |
-| `showInventory` | `true` | Read the session's context breakdown (MCP servers, skills, the auto-compact threshold): it marks the compaction threshold on the ctx bar and gives its runway, and `/mod-hud facts` prints it. Since 1.2.0 the HUD no longer draws the MCP and skill counts. |
+| `showGit` | `true` | Show the branch, its lines changed and its last commit in the HUD (`session · branch`). |
+| `showTools` | `true` | Show the `session · now` row: the main conversation's tool running now, its main argument and elapsed time. |
+| `showTodos` | `true` | Show the main conversation's todo list: a progress row and the item in progress, which its `▸` opens to every item. |
+| `showInventory` | `true` | Read the session's context breakdown (MCP servers, skills, the auto-compact threshold): it marks the compaction threshold on the context bar and gives its runway, and `/mod-hud facts` prints it. Since 1.2.0 the HUD no longer draws the MCP and skill counts. |
 | `motto` | empty | A line drawn dim under the HUD; empty (the default since 1.2.0) for none. |
 | `mascots` | `true` | Fill the pane's spare rows with mascots: the session's own, and one per subagent in its own colour. |
 | `character` | `clawd` | Who the mascots are. `clawd`: Claude Code's Clawd, each agent in its own colour with its role letter and an accessory. `usagi`: Usagi from Chiikawa (fan art), each agent's role shown by its hat and the session's by a crown on the side of its head. |
@@ -72,31 +72,42 @@ Change any option from `/plugin` (select mod-hud, then its settings).
 | `collisions` | `rare` | `off`: wanderers that meet step back. `rare`: only two moving mascots collide, falling over dizzy, at most once per pair in 30 s. `normal`: a moving mascot knocks over a standing one too, once per pair in 10 s. In `rare` and `normal` a thrown mascot knocks over whoever it hits. |
 | `motion` | `smooth` | `smooth`: on the terminal and desktop the scene runs at 20 frames a second, gliding between cells, with click, pick up, drag and throw. `classic`: the Box/Text scene at 4 frames a second everywhere, with a pick button under each mascot. |
 | `todoRows` | `6` | Opened, the TODO section lists at most this many items and counts the rest. |
+| `cacheTtl` | `auto` | The main conversation's prompt-cache TTL the `context · cache` row counts down: `auto` infers it as Claude Code picks it (1h on a Claude subscription, 5m on an API key, a gateway, Bedrock, Vertex or Foundry; `FORCE_PROMPT_CACHING_5M`, `CLAUDE_CODE_PROMPT_CACHE_TTL`, the `promptCacheTtl` setting and `ENABLE_PROMPT_CACHING_1H` honoured). A subscription drawing on usage credits past its limits drops to 5m, which the mod cannot detect: set `5m` while that lasts. |
 
 ## What the pane shows
 
-A card at the top of the pane, at most 72 cells wide, then the agent list, then the mascot scene in the spare rows.
+A card at the top of the pane, at most 72 cells wide, then the TODO section, the agent list, and the mascot scene in the spare rows.
 
 ```
-◆ opus 5.5 · xhigh · gateway          ● working 00:42   1h 12m   $4.21
+◆ opus 5.5 · xhigh · gateway                           ● working 00:42
   ⚠ 2 agents waiting for permission · 5h out ~13:43, before ↻14:20
-  ~/.claude/mods · main* +3 −1 ↑2
-  ctx   ━━━━━━━━────────┃───  41%  412k / 1.0M     compact in ~6 turns
-  5h    ━━──────  31% ↻14:20    7d  ━───────  12% ↻Tue
-  now   Bash  npm test -- hud                   00:04 · 7 files edited
 
-▸ TODO  ━━━━────── 3/7  ◐ Wiring the detail view
+ session  repo    ~/.claude/mods
+          branch  main* ↑2   +142 −37 lines · last commit 48m ago
+          now     Bash · npm test -- hud                         00:04
+ context  used    ━━━━━━━━────────┃───  41%   412k / 1.0M
+          growth  +65k / turn        compact in ~6 turns
+          cache   ━━━━━━━━━━━━━━──────  warm · 42m left (1h)
+ limits   5h      ━━━━━━──────────────  31%   ↻ 14:20   out ~13:43
+          7d      ━━──────────────────  12%   ↻ Tue
+ usage    cost    $4.21              $3.51 / h · 1h 12m
+          last    $0.38              1m 12s · 24k tokens
+          cache   87% hit            agents 38% of spend
+
+ todo ▸   ━━━━━━────  3/5
+          ◐ Wiring the status line
 ```
 
-- Identity: model, effort, provider, whether the main loop is working (`● working 00:42`) or idle (`○ idle 3m`), elapsed time and cost.
-- Alerts (`⚠`), only when something needs attention, most severe first: agents waiting for permission, a rate limit that runs out before it resets, stalled agents, a compaction within three turns, denied or failed tool calls, and the branch behind its upstream. Nothing to report, no row.
-- Place: working directory, git branch, changes and commits ahead.
-- Bars: context, with the auto-compact threshold marked `┃` and the turns left until it (`compact in ~6 turns`); the 5h and 7d limits side by side; a spend limit on its own row when there is one. Green below 60 %, amber from 60 to 84 %, red from 85 %.
-- `now`: the tool running in the main conversation, its argument and how long it has run, and how many files the conversation has edited.
-- TODO: one progress line with the item in progress; press `▸` to list every item, `▾` to fold it again.
+- Header: model, effort, provider, and whether the main loop is working (`● working 00:42`) or idle (`○ idle 3m`).
+- Alerts (`⚠`), only when something needs attention, most severe first: agents waiting for permission, a rate limit that runs out before it resets, stalled agents, a compaction within three turns, the prompt cache about to go cold (`cache cools in 2m · next turn rewrites 412k`), denied or failed tool calls, and the branch behind its upstream. Nothing to report, no row.
+- `session`: the working directory (`repo`); the branch, dirty mark, commits ahead/behind, lines changed against HEAD and the last commit's age (`branch`); the tool running in the main conversation, its argument and how long it has run (`now`).
+- `context`: the context used, with the auto-compact threshold marked `┃` (`used`); its growth per turn and the turns left until it compacts (`growth`); the prompt cache counting down from the main loop's last request, `cold · next turn rewrites 412k` once it has expired (`cache`). Green below 60 %, amber from 60 to 84 %, red from 85 %.
+- `limits`: the 5h and 7d windows (and a spend limit) each on its own row, with the reset, and `out ~13:43` when one runs out before it resets.
+- `usage`: the session's cost, its rate an hour and the session clock (`cost`); the last main turn's cost, length and tokens (`last`); the cache hit rate and the agents' share of the spend (`cache`).
+- `todo`: the share done and the item in progress; press `▸` to list every item, `▾` to fold it again.
 - One row per subagent (type, model, status, elapsed time, tool calls, current tool, result).
-- Below 60 columns the card stacks into one section per row (the 5h and 7d limits each on their own) and degrades gracefully down to 36 columns.
-- The token and cache counts moved to the session's inspect view (Overview tab); per-tool counts and the MCP/skill inventory are in `/mod-hud facts`.
+- Below 60 columns the labels shorten (`sess`, `ctx`, `lim`, `use`), the bars shrink, and pieces that no longer fit are left out, down to 36 columns. On a short pane the HUD keeps the most needed rows: alerts, header, context used, limits, the tool running now, the cache, the cost, then the rest.
+- The session's tokens by kind, the compaction count and the files edited are in the session's inspect view (Overview tab); per-tool counts and the MCP/skill inventory are in `/mod-hud facts`.
 
 ## The mascots
 

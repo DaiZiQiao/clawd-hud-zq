@@ -5,7 +5,7 @@
     "name": "Dai Zi Qiao",
     "url": "https://github.com/DaiZiQiao"
   },
-  "description": "A side pane, toggled by /mod-hud: a HUD of the session (session, alerts, context, limits, cost, git, the tool running now, todos) above every subagent in it (type, model, status, elapsed time, tool calls, current tool, result), with an opt-in status line.",
+  "description": "A side pane, toggled by /mod-hud: a HUD of the session (header, alerts, then session, context and prompt cache, limits, usage and todos in labelled sections) above every subagent in it (type, model, status, elapsed time, tool calls, current tool, result), with an opt-in status line.",
   "types": "./types/index.d.ts",
   "userConfig": {
     "stalledAfterSec": {
@@ -29,25 +29,25 @@
     "showGit": {
       "type": "boolean",
       "title": "Show git",
-      "description": "Show the branch and its changes in the HUD.",
+      "description": "Show the branch in the HUD's session section: dirty mark, commits ahead and behind, lines changed against HEAD and the last commit's age.",
       "default": true
     },
     "showTools": {
       "type": "boolean",
       "title": "Show tools",
-      "description": "Show the HUD's now row: the main conversation's tool running now, its main argument and elapsed time, and how many files it edited.",
+      "description": "Show the HUD's session · now row: the main conversation's tool running now, its main argument and elapsed time.",
       "default": true
     },
     "showTodos": {
       "type": "boolean",
       "title": "Show todos",
-      "description": "Show the main conversation's todo list under the HUD: one progress line, which its ▸ opens to every item.",
+      "description": "Show the main conversation's todo list under the HUD: a progress row and the item in progress, which its ▸ opens to every item.",
       "default": true
     },
     "showInventory": {
       "type": "boolean",
       "title": "Read the context breakdown",
-      "description": "Read the session's context breakdown (MCP servers, skills, the auto-compact threshold) at most every five minutes: it marks the compaction threshold on the ctx bar and gives its runway, and /mod-hud facts prints it. Since 1.2.0 the HUD no longer draws the MCP and skill counts.",
+      "description": "Read the session's context breakdown (MCP servers, skills, the auto-compact threshold) at most every five minutes: it marks the compaction threshold on the context bar and gives its runway, and /mod-hud facts prints it. Since 1.2.0 the HUD no longer draws the MCP and skill counts.",
       "default": true
     },
     "motto": {
@@ -109,6 +109,12 @@
       "title": "Most todos listed",
       "description": "Opened, the TODO section lists at most this many items and counts the rest.",
       "default": 6
+    },
+    "cacheTtl": {
+      "type": "string",
+      "title": "Prompt cache TTL",
+      "description": "auto (default): infer the main conversation's prompt-cache TTL as Claude Code picks it (1h on a Claude subscription; 5m on an API key, a gateway, Bedrock, Vertex or Foundry; FORCE_PROMPT_CACHING_5M, CLAUDE_CODE_PROMPT_CACHE_TTL, the promptCacheTtl setting and ENABLE_PROMPT_CACHING_1H honoured). 5m or 1h: count down that instead. A subscription drawing on usage credits past its limits drops to 5m, which the mod cannot detect: set 5m while that lasts.",
+      "default": "auto"
     }
   }
 }
