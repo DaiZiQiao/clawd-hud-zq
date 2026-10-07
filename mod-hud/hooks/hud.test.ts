@@ -1091,6 +1091,22 @@ describe('the context section', () => {
     expect(cache(full, 36)).toBe('      cache  warm · 42m left (1h)')
     // No main request yet (or no TTL): no row.
     expect(cache({ ...full, cache: undefined })).toBeUndefined()
+    // A TTL inferred where what decides it cannot be read: marked as a guess, here and on the status line.
+    const guessed: HudData = { ...full, cache: { ...full.cache!, assumed: true } }
+    expect(cache(guessed)).toBe('          cache   ━━━━━━━━━━━━━━──────  warm · 42m left (1h?)')
+    expect(statusLineText(guessed)).toEndWith(' │ cache 42m?')
+    expect(statusLineText({ ...coldCache, cache: { ...coldCache.cache!, assumed: true } })).toEndWith(' │ cache cold')
+  })
+
+  test('auto-compaction off: no ┃ on the bar, no runway on the growth row, no compaction alert', () => {
+    const near: HudData = { ...full, usage: { ...full.usage!, contextTokens: 700_000, contextPercent: 70, contextSamples: [570_000, 635_000, 700_000] } }
+    expect(rowsById(near)['context.growth']).toContain('compact in ~2 turns')
+    expect(alertsOf(near).map(one => one.id)).toContain('compact')
+    const off: HudData = { ...near, inventory: { mcpServers: [], autoCompact: false } }
+    expect(rowsById(off)['context.used']).not.toContain('┃')
+    expect(rowsById(off)['context.growth']).toBe('          growth  +65k / turn')
+    expect(alertsOf(off).map(one => one.id)).not.toContain('compact')
+    expect(compactRunway(off)).toBe(undefined)
   })
 })
 

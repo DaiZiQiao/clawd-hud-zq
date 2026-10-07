@@ -3,7 +3,7 @@ import { describe, expect, mock, test } from 'claude-code/testing'
 import type { Engine } from 'claude-code/testing'
 
 import type { AgentBoardEntry, HudData, HudMainFacts } from '../types'
-import { hudLines } from './hud'
+import { alertsOf, hudLines } from './hud'
 import { CROWN, FRAME_TABLES, HEADS, SLOT, TORSOS } from './mascot-sprites'
 import { register } from './register'
 import { PALETTE, SCENE_COLOURS, colourFor, sceneOf } from './scene-model'
@@ -337,17 +337,25 @@ describe('in the pane', () => {
     }
   })
 
-  test('with mascots off, no scene, no name colours, and nothing written for them', {
+  test('with mascots off, no scene, no name colours, and nothing written for them; the header\'s working/idle cell still is', {
     options: { mascots: false },
   }, async ($, on) => {
-    const { clock, world } = arrange(on)
+    const { clock, world, main } = arrange(on)
     await $.session.start(START)
     await clock.settle()
     await spawn($)
     await step($)
+    // The main loop at work: one write, read by the header.
+    expect(main()).toEqual({ busySince: clock.now() })
+    const { text = '' } = await $.command.run({ ...TOGGLE, args: 'facts' })
+    const data = JSON.parse(text.split('\n').slice(0, -1).join('\n')) as HudData
+    expect(data.main).toEqual({ busySince: clock.now() })
+    expect(hudLines(data, { columns: 72, isNarrow: false })[0]).toMatch(/● working 00:00$/)
     await completeTurn($)
     await $.session.compact({ trigger: 'manual', messages: [{ role: 'user', text: 'x', toolUses: [] }] } as Parameters<Engine['session']['compact']>[0])
-    expect(world.writes).not.toContain('main')
+    // Busy, then idle: two writes, and no compaction stamp (that one is the mascot's alone).
+    expect(world.writes.filter(key => key === 'main')).toHaveLength(2)
+    expect(main()).toEqual({ idleSince: clock.now() })
     for (const surface of SURFACES) {
       const ui = await mountPane($, surface, 72, 30)
       expect(await orderOf(ui)).toEqual(['hud', 'agents'])
@@ -826,10 +834,22 @@ describe('permission', () => {
     expect((await run('ask', 'ghost', 'tu-10')).during?.awaitingPermission).toBe(undefined)
   })
 
-  test('with mascots off there is no tool.check hook at all', async () => {
+  test('with mascots off a lingering ask still marks its agent waiting: the alert strip counts it', async () => {
     const d = direct()
     await register(d.on, { mascots: false })
-    expect(d.hooks.has('tool.check')).toBe(false)
+    expect(d.hooks.has('tool.check')).toBe(true)
+    const spawned = d.hooks.get('agent.spawn') as Hook<'agent.spawn'>
+    await spawned(d.$, { tool_use_id: 'tu-1', description: 'Dig', subagentType: 'Explore', background: false } as never, (async () => ({ agentId: 'sub-1' })) as never)
+    const finish = await pendingCall(d, 'tu-9')
+    await d.advance(3000)
+    expect(d.board()['sub-1']?.awaitingPermission).toBe(true)
+    // What the alert strip draws from, in `/mod-hud facts`.
+    const run = d.hooks.get('command.run{"command":"mod-hud"}') as (($: unknown, e: unknown) => Promise<{ text: string }>)
+    const facts = JSON.parse((await run(d.$, { command: 'mod-hud', args: 'facts' })).text.split('\n').slice(0, -1).join('\n')) as HudData
+    expect(facts.alerts).toEqual({ asks: 1 })
+    expect(alertsOf(facts)[0]?.text).toBe('1 agent waiting for permission')
+    await finish()
+    expect(d.board()['sub-1']?.awaitingPermission).toBe(undefined)
   })
 })
 

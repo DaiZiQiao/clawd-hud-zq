@@ -268,7 +268,8 @@ test('a quiet agent is drawn stalled until it is heard from', { options: { stall
   }
 
   await clock.advance(7000)
-  expect(lastStatus(world)).toBe('⚠ 1 │ agents · 1 running · 0 done · 1 stalled')
+  // The summary counts the stalled agent; the HUD's ⚠ does not count it again.
+  expect(lastStatus(world)).toBe('agents · 1 running · 0 done · 1 stalled')
   for (const surface of SURFACES) {
     const ui = await mountPane($, surface)
     const lines = await linesOf(ui)

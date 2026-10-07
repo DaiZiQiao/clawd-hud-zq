@@ -43,6 +43,8 @@ import {
   applyMeasure,
   assembleHudData,
   CACHE_ENV,
+  COMPACT_ENV,
+  autoCompactOf,
   cacheTtlOf,
   debouncer,
   editedPathOf,
@@ -58,13 +60,15 @@ import {
   parseShortstat,
   providerOf,
   sameFacts,
+  seedTurnBaseline,
   throttleDue,
   todoFactsOf,
   toolSettled,
   toolStarted,
 } from './facts'
-import { renderHudBlock, renderTodos, statusLineText } from './hud'
-import { NO_LEDGER, agentShareOf, costTree, ledgerBooked, ledgerEnded, ledgerFailed, ledgerSummary } from './hud-ledger'
+import type { CacheSettings } from './facts'
+import { cacheStateOf, renderHudBlock, renderTodos, statusLineText } from './hud'
+import { NO_LEDGER, agentShareOf, costTree, ledgerBooked, ledgerEnded, ledgerFailed, ledgerSummary, recentFailures } from './hud-ledger'
 import type { LedgerWho } from './hud-ledger'
 import { settingsOf } from './hud-options'
 import type { Settings } from './hud-options'
@@ -127,7 +131,7 @@ const hudGit = atom({ plugin: 'mod-hud', key: 'git' } as const, NO_FACTS.git)
 const hudTools = atom({ plugin: 'mod-hud', key: 'tools' } as const, NO_FACTS.tools)
 const hudTodos = atom({ plugin: 'mod-hud', key: 'todos' } as const, NO_FACTS.todos)
 const hudInventory = atom({ plugin: 'mod-hud', key: 'inventory' } as const, NO_FACTS.inventory)
-// The main loop's activity, written with mascots on; /clear also drops stale facts.
+// The main loop's activity (busy and idle whatever the options; its compactions with mascots on); /clear also drops stale facts.
 const NO_MAIN: HudMainFacts = {}
 const mainFacts = atom({ plugin: 'mod-hud', key: 'main' } as const, NO_MAIN)
 // Click to inspect: the selection (on a press or when its agent goes), the selected
@@ -171,19 +175,59 @@ const firstLine = (text: string): string | undefined => {
 }
 
 // The status line, when switched on: the HUD's line, then the agents' summary.
-// A HUD that cannot be read leaves the summary alone.
-const statusTextOf = async ($: EngineInterface, settings: Settings, all: Agents, now: number): Promise<string | null> => {
-  if (!settings.statusLine) return null
+// A HUD that cannot be read leaves the summary alone. The summary counts the
+// stalled agents itself, so the HUD's `⚠ n` then leaves that alert out. With
+// it, how long the prompt cache stays warm, for the status line's own timer.
+const statusOf = async ($: EngineInterface, settings: Settings, all: Agents, now: number): Promise<{ text: string | null; cacheLeftMs?: number }> => {
+  if (!settings.statusLine) return { text: null }
   const data = await attempt(() => hudDataOf($, settings, now))
   const held = settings.showWorkflows ? await attempt(() => read($, shadows)) : undefined
-  const parts = [data === undefined ? '' : statusLineText(data), summarize(Object.values(all), workflowOf(held, all, now), now, settings.stalledMs) ?? '']
-    .filter(part => part !== '')
+  const summary = summarize(Object.values(all), workflowOf(held, all, now), now, settings.stalledMs) ?? ''
+  const skip = /\d+ stalled/.test(summary) ? ['stalled'] : []
+  const parts = [data === undefined ? '' : statusLineText(data, skip), summary].filter(part => part !== '')
+  const cache = data === undefined ? undefined : cacheStateOf(data)
 
-  return parts.length === 0 ? null : parts.join(' │ ')
+  return { text: parts.length === 0 ? null : parts.join(' │ '), cacheLeftMs: cache?.leftMs }
+}
+
+const statusTextOf = async ($: EngineInterface, settings: Settings, all: Agents, now: number): Promise<string | null> =>
+  (await statusOf($, settings, all, now)).text
+
+// The status line's own timer: while the prompt cache is warm, its countdown
+// is redrawn each minute and once more as it goes cold, even with the pane
+// closed and nothing running (when the tick is stopped). One timer at a time,
+// re-armed by each redraw; none once the cache is cold or the line is off.
+let statusTimer: Timer | undefined
+let statusDueAt: number | undefined
+const STATUS_CACHE_EVERY_MS = 60_000
+
+const stopStatusTimer = (): void => {
+  statusTimer?.cancel()
+  statusTimer = undefined
+  statusDueAt = undefined
+}
+
+const armStatusTimer = ($: EngineInterface, settings: Settings, now: number, leftMs: number | undefined): void => {
+  if (!settings.statusLine || leftMs === undefined || leftMs <= 0) return stopStatusTimer()
+  // The countdown reads in whole minutes (rounded up) until its last one, in
+  // seconds then: the next redraw is where the minute shown changes, else at the cold mark.
+  const wait = leftMs <= STATUS_CACHE_EVERY_MS ? leftMs : leftMs % STATUS_CACHE_EVERY_MS || STATUS_CACHE_EVERY_MS
+  const dueAt = now + wait
+  if (statusTimer !== undefined && statusDueAt === dueAt) return
+  stopStatusTimer()
+  const mine = $.clock.after(wait, () => {
+    if (statusTimer !== mine) return
+    statusTimer = undefined
+    statusDueAt = undefined
+    void quietly($, () => refreshStatus($, settings))
+  })
+  statusTimer = mine
+  statusDueAt = dueAt
 }
 
 const showStatus = async ($: EngineInterface, settings: Settings, all: Agents, now: number, mine?: Timer): Promise<void> => {
-  const text = await statusTextOf($, settings, all, now)
+  const { text, cacheLeftMs } = await statusOf($, settings, all, now)
+  if (mine === undefined || timer === mine) armStatusTimer($, settings, now, cacheLeftMs)
   const held = await $.state.get(STATUS_TEXT)
   if ((held.value ?? null) === text || (mine !== undefined && timer !== mine)) return
   const written = await $.state.set(STATUS_TEXT, text, { ifVersion: held.version })
@@ -497,43 +541,51 @@ const gitWindow = (ms: number): void => {
   gitRuns.setWindow(ms)
 }
 
+// A promise's outcome, never a rejection: a git run that timed out (or could not start) reads as undefined.
+const settled = <T,>(work: Promise<T>): Promise<{ value: T } | undefined> => work.then(value => ({ value }), () => undefined)
+
+// One git reading: `git status` first, written as soon as it answers (with the
+// line counts and the last commit as held), then the lines changed against
+// HEAD and HEAD's commit time, which run beside it and are folded in when they
+// answer. Any of the three timing out (or git missing) backs the timer off to
+// GIT_BACKOFF_MS until a reading where all three answer.
 const refreshGit = async ($: EngineInterface): Promise<void> => {
   const cwd = (await attempt(() => $.session.cwd())) ?? (await read($, hudSession)).cwd
   if (cwd === undefined || cwd === '') return
   // No index refresh, so these reads never hold a lock the agent's git wants.
   const git = (args: string[]): Promise<ProcessRunResult> =>
     $.process.run(['git', '-C', cwd, ...args], { timeoutMs: GIT_TIMEOUT_MS, env: { GIT_OPTIONAL_LOCKS: '0' } })
-  let ran: ProcessRunResult
-  let lines: ProcessRunResult | undefined
-  let commit: ProcessRunResult | undefined
-  try {
-    // The status, the lines changed against HEAD and HEAD's commit time, side by side.
-    const [status, diff, log] = await Promise.all([
-      git(['status', '--porcelain=v2', '--branch']),
-      attempt(() => git(['diff', '--shortstat', 'HEAD'])),
-      attempt(() => git(['log', '-1', '--format=%ct'])),
-    ])
-    ran = status
-    lines = diff
-    commit = log
-  } catch {
+  const statusRun = settled(git(['status', '--porcelain=v2', '--branch']))
+  const diffRun = settled(git(['diff', '--shortstat', 'HEAD']))
+  // A signature check (log.showSignature) would print before the time: off for this read.
+  const logRun = settled(git(['-c', 'log.showSignature=false', 'log', '-1', '--format=%ct']))
+  const ran = (await statusRun)?.value
+  if (ran === undefined) {
     // Git missing, or slower than its timeout: keep the reading and back off.
     gitWindow(GIT_BACKOFF_MS)
     return
   }
   // Not a repository (or git refused it): nothing to draw.
-  if (ran.exitCode !== 0) return reviseGit($, () => NO_FACTS.git)
-  gitWindow(GIT_DEBOUNCE_MS)
-  // A repository with no commit yet has neither: those cells stay away.
-  const changed = lines?.exitCode === 0 ? parseShortstat(lines.stdout) : undefined
-  const reading = defined({
-    ...parseGitStatus(ran.stdout),
-    linesAdded: changed?.linesAdded,
-    linesDeleted: changed?.linesDeleted,
-    lastCommitAt: commit?.exitCode === 0 ? parseCommitTime(commit.stdout) : undefined,
-  })
+  if (ran.exitCode !== 0) {
+    gitWindow(GIT_DEBOUNCE_MS)
+    return reviseGit($, () => NO_FACTS.git)
+  }
+  const status = parseGitStatus(ran.stdout)
+  const at = await $.clock.now()
+  // The status now, the line counts and the last commit as held until theirs answer.
+  await reviseGit($, held => gitFactsOf(held, defined({ ...status, linesAdded: held.linesAdded, linesDeleted: held.linesDeleted, lastCommitAt: held.lastCommitAt }), at))
+  const [lines, commit] = await Promise.all([diffRun, logRun])
+  gitWindow(lines === undefined || commit === undefined ? GIT_BACKOFF_MS : GIT_DEBOUNCE_MS)
+  // A repository with no commit yet has neither: those cells stay away. One that timed out keeps what is held.
+  const changed = lines === undefined ? undefined : lines.value.exitCode === 0 ? parseShortstat(lines.value.stdout) ?? null : null
+  const committed = commit === undefined ? undefined : commit.value.exitCode === 0 ? parseCommitTime(commit.value.stdout) ?? null : null
   const now = await $.clock.now()
-  await reviseGit($, held => gitFactsOf(held, reading, now))
+  await reviseGit($, held => gitFactsOf(held, defined({
+    ...status,
+    linesAdded: changed === undefined ? held.linesAdded : changed?.linesAdded,
+    linesDeleted: changed === undefined ? held.linesDeleted : changed?.linesDeleted,
+    lastCommitAt: committed === undefined ? held.lastCommitAt : committed ?? undefined,
+  }), now))
 }
 
 // Asks for a git reading: every ask until the timer fires is the same run.
@@ -573,38 +625,69 @@ const requestInventory = async ($: EngineInterface): Promise<void> => {
   $.clock.after(0, () => void quietly($, () => refreshInventory($)))
 }
 
+// Environment variables read by name: each key beside its own `$.env.get`
+// (the engine lists a module's variables from those literal names), the
+// record typed by the names facts.ts lists, so none can be missed or crossed.
+// Undefined when any read is refused: then nothing inferred from them can be trusted.
+type EnvReads<N extends string> = Record<N, () => Promise<string | undefined>>
+
+const readEnv = async <N extends string>(reads: EnvReads<N>): Promise<Record<N, string | undefined> | undefined> => {
+  const read = await Promise.all((Object.keys(reads) as N[]).map(async name => [name, await read1(reads[name])] as const))
+  if (read.some(([, one]) => one === undefined)) return undefined
+
+  return Object.fromEntries(read.map(([name, one]) => [name, one?.value])) as Record<N, string | undefined>
+}
+
+// What picks the prompt cache's TTL (facts.ts CACHE_ENV): only whether each is set is used, never a key's value.
+const cacheEnvReads = ($: EngineInterface): EnvReads<(typeof CACHE_ENV)[number]> => ({
+  DISABLE_PROMPT_CACHING: () => $.env.get('DISABLE_PROMPT_CACHING'),
+  FORCE_PROMPT_CACHING_5M: () => $.env.get('FORCE_PROMPT_CACHING_5M'),
+  CLAUDE_CODE_PROMPT_CACHE_TTL: () => $.env.get('CLAUDE_CODE_PROMPT_CACHE_TTL'),
+  ENABLE_PROMPT_CACHING_1H: () => $.env.get('ENABLE_PROMPT_CACHING_1H'),
+  ENABLE_PROMPT_CACHING_1H_BEDROCK: () => $.env.get('ENABLE_PROMPT_CACHING_1H_BEDROCK'),
+  ANTHROPIC_API_KEY: () => $.env.get('ANTHROPIC_API_KEY'),
+  ANTHROPIC_AUTH_TOKEN: () => $.env.get('ANTHROPIC_AUTH_TOKEN'),
+  CLAUDE_CODE_API_KEY_FILE_DESCRIPTOR: () => $.env.get('CLAUDE_CODE_API_KEY_FILE_DESCRIPTOR'),
+  ANTHROPIC_BASE_URL: () => $.env.get('ANTHROPIC_BASE_URL'),
+  CLAUDE_CODE_USE_BEDROCK: () => $.env.get('CLAUDE_CODE_USE_BEDROCK'),
+  CLAUDE_CODE_USE_VERTEX: () => $.env.get('CLAUDE_CODE_USE_VERTEX'),
+  CLAUDE_CODE_USE_FOUNDRY: () => $.env.get('CLAUDE_CODE_USE_FOUNDRY'),
+  CLAUDE_CODE_USE_ANTHROPIC_AWS: () => $.env.get('CLAUDE_CODE_USE_ANTHROPIC_AWS'),
+  CLAUDE_CODE_USE_ANTHROPIC_GOOGLE_CLOUD: () => $.env.get('CLAUDE_CODE_USE_ANTHROPIC_GOOGLE_CLOUD'),
+  CLAUDE_CODE_USE_MANTLE: () => $.env.get('CLAUDE_CODE_USE_MANTLE'),
+})
+
+// What switches auto-compaction off (facts.ts COMPACT_ENV).
+const compactEnvReads = ($: EngineInterface): EnvReads<(typeof COMPACT_ENV)[number]> => ({
+  DISABLE_AUTO_COMPACT: () => $.env.get('DISABLE_AUTO_COMPACT'),
+  DISABLE_COMPACT: () => $.env.get('DISABLE_COMPACT'),
+})
+
 // The session's facts at start and at each reload: who, where, and what the
 // engine has measured so far. Git and the inventory follow from timers.
 const startHud = async ($: EngineInterface, settings: Settings, startCwd: string): Promise<void> => {
-  const [model, cwd, repo, usage, env, stored] = await Promise.all([
+  const [model, cwd, repo, usage, env, compactEnv, stored] = await Promise.all([
     attempt(() => $.session.model()),
     attempt(() => $.session.cwd()),
     attempt(() => $.session.repo()),
     attempt(() => $.session.usage()),
-    // What picks the prompt cache's TTL (facts.ts CACHE_ENV): only whether each is set is used, never a key's value.
-    Promise.all([
-      read1(() => $.env.get('DISABLE_PROMPT_CACHING')),
-      read1(() => $.env.get('FORCE_PROMPT_CACHING_5M')),
-      read1(() => $.env.get('CLAUDE_CODE_PROMPT_CACHE_TTL')),
-      read1(() => $.env.get('ENABLE_PROMPT_CACHING_1H')),
-      read1(() => $.env.get('ANTHROPIC_API_KEY')),
-      read1(() => $.env.get('ANTHROPIC_AUTH_TOKEN')),
-      read1(() => $.env.get('ANTHROPIC_BASE_URL')),
-      read1(() => $.env.get('CLAUDE_CODE_USE_BEDROCK')),
-      read1(() => $.env.get('CLAUDE_CODE_USE_VERTEX')),
-      read1(() => $.env.get('CLAUDE_CODE_USE_FOUNDRY')),
-    ]).then(values => (values.some(one => one === undefined) ? undefined : Object.fromEntries(CACHE_ENV.map((name, index) => [name, values[index]?.value])) as Record<string, string | undefined>)),
+    readEnv(cacheEnvReads($)),
+    readEnv(compactEnvReads($)),
     attempt(() => $.settings.read()),
   ])
   const baseUrl = env?.ANTHROPIC_BASE_URL
+  const settingsRead = stored as (CacheSettings & { autoCompactEnabled?: unknown }) | undefined
+  // An environment that cannot be read leaves the TTL unknown (the option may still name one).
+  const ttl = env === undefined ? undefined : cacheTtlOf(env, settingsRead)
   await reviseSession($, held => defined({
     ...held,
     model: model ?? held.model,
     // A main step's effort is the one in use; the settings' stand in before one.
     effort: held.effort ?? effortFromSettings(stored, model ?? held.model),
     provider: providerOf(baseUrl),
-    // An environment that cannot be read leaves the TTL unknown (the option may still name one).
-    cacheTtl: env === undefined ? undefined : cacheTtlOf(env, (stored as { promptCacheTtl?: unknown } | undefined)?.promptCacheTtl),
+    cacheTtl: ttl?.ttl,
+    cacheTtlAssumed: ttl?.assumed,
+    autoCompact: autoCompactOf(compactEnv, settingsRead),
     startedAt: usage?.startedAt ?? held.startedAt,
     cwd: cwd ?? startCwd,
     // null is outside a repository; undefined, a failed call that changes nothing.
@@ -612,10 +695,12 @@ const startHud = async ($: EngineInterface, settings: Settings, startCwd: string
   }))
   if (usage !== undefined) {
     const now = await $.clock.now()
-    await reviseUsage($, held => applyMeasure(held, usage, now))
+    // The cost first read is the next turn's baseline (a load mid-session), unless one is held.
+    await reviseUsage($, held => seedTurnBaseline(applyMeasure(held, usage, now)))
   }
   await requestGit($, settings, true)
-  if (settings.showInventory) await requestInventory($)
+  // Read whatever the options: its auto-compact threshold bounds the runway.
+  await requestInventory($)
 }
 
 // What the HUD draws, every fact read so a drawing that calls this redraws
@@ -632,16 +717,17 @@ const readHudData = async ($: EngineInterface, now: number, cacheTtl: Settings['
 
 // What the alert strip counts that no HUD fact carries: running subagents
 // waiting on a permission ask, subagents and workflow agents stalled, and the
-// calls the ledger counted denied or failed (kept with inspect on). Undefined
-// while every count is 0.
+// calls the ledger counted denied or failed in the last ten minutes (kept with
+// inspect on). Undefined while every count is 0.
 const alertCountsOf = async ($: EngineInterface, settings: Settings, now: number): Promise<HudAlerts | undefined> => {
   const all = await read($, agents)
   const board = Object.values(all)
   const asks = board.filter(entry => isRunning(entry) && entry.awaitingPermission === true).length
   const flow = settings.showWorkflows ? shadowCounts(workflowOf(await read($, shadows), all, now), now, settings.stalledMs).stalled : 0
   const stalled = board.filter(entry => isStalled(entry, now, settings.stalledMs)).length + flow
+  // Calls denied or failed in the last ten minutes (FAILURE_WINDOW_MS): the alert clears on its own.
   const failed = settings.inspect ? (await read($, ledger)).failures : undefined
-  const failures = (failed?.denied ?? 0) + (failed?.error ?? 0)
+  const failures = recentFailures(failed?.recent, now).length
   const alerts = defined<HudAlerts>({
     asks: asks > 0 ? asks : undefined,
     stalled: stalled > 0 ? stalled : undefined,
@@ -652,10 +738,10 @@ const alertCountsOf = async ($: EngineInterface, settings: Settings, now: number
 }
 
 // The HUD as the pane and the status line show it: the parts switched off
-// left out, the main loop working or idle (kept with mascots on), what needs
-// attention, and the motto, if any. The inventory is no longer drawn; with
-// `showInventory` on it is still read for the ctx bar's compaction mark and
-// runway, and printed by `/mod-hud facts`.
+// left out, the main loop working or idle, what needs attention, and the
+// motto, if any. The inventory is no longer drawn: its auto-compact threshold
+// (read whatever the options) marks the ctx bar and bounds the runway; with
+// `showInventory` on, its MCP servers and skills are printed by `/mod-hud facts`.
 const hudDataOf = async ($: EngineInterface, settings: Settings, now: number): Promise<HudData> => {
   const data = await readHudData($, now, settings.cacheTtl)
   // The agents' share of the spend, from the ledger (kept with inspect on).
@@ -671,12 +757,18 @@ const hudDataOf = async ($: EngineInterface, settings: Settings, now: number): P
     git: settings.showGit ? data.git : undefined,
     tools: settings.showTools ? data.tools : undefined,
     todos: settings.showTodos ? data.todos : undefined,
-    inventory: settings.showInventory ? data.inventory : undefined,
+    inventory: settings.showInventory ? data.inventory : compactOnly(data.inventory),
     main: working,
     alerts: await attempt(() => alertCountsOf($, settings, now)),
     motto: settings.motto === '' ? undefined : settings.motto,
   })
 }
+
+// With `showInventory` off, the inventory's threshold alone (none when it is unknown).
+const compactOnly = (inventory: HudData['inventory']): HudData['inventory'] =>
+  inventory?.compactAt === undefined && inventory?.autoCompact === undefined
+    ? undefined
+    : defined({ mcpServers: [], compactAt: inventory.compactAt, autoCompact: inventory.autoCompact })
 
 // A HUD fact the status line shows changed: redraw it, when it is on.
 const refreshStatus = async ($: EngineInterface, settings: Settings): Promise<void> => {
@@ -688,7 +780,8 @@ const refreshStatus = async ($: EngineInterface, settings: Settings): Promise<vo
 // where the session is, git and the inventory stay. The engine may still be
 // reporting the old conversation, so accept its clock and cost only together.
 const clearHud = async ($: EngineInterface, settings: Settings): Promise<void> => {
-  if (settings.showTools) await reviseTools($, () => NO_FACTS.tools)
+  // With `showTools` off only the files edited (the Overview's) were kept: they start over too.
+  await reviseTools($, held => (settings.showTools ? NO_FACTS.tools : held.edited === undefined ? held : defined({ ...held, edited: undefined })))
   if (settings.showTodos) await reviseTodos($, () => NO_FACTS.todos)
   const usage = await attempt(() => $.session.usage())
   const heldStart = (await read($, hudSession)).startedAt
@@ -1111,6 +1204,7 @@ export const register: Register = (on, options) => {
   // already ran one drops what that left running.
   stopTicking()
   stopSceneClock()
+  stopStatusTimer()
   resetHud()
   listedIds = new Set()
 
@@ -1194,7 +1288,8 @@ export const register: Register = (on, options) => {
       ? await attempt(() => recordTrail($, settings, loop, label, e as unknown as Readonly<Record<string, unknown>>))
       : undefined
     if (name === 'SendMessage') await quietly($, () => noteMessage($, settings, loop, (e as { to?: unknown }).to))
-    const callId = isKnown && settings.mascots && typeof e.tool_use_id === 'string' ? e.tool_use_id : undefined
+    // A known subagent's call is tracked for its permission asks: the alert strip's and the mascot's raised hand alike.
+    const callId = isKnown && typeof e.tool_use_id === 'string' ? e.tool_use_id : undefined
     if (callId !== undefined && loop !== undefined) await trackCall($, callId, loop)
     if (loop === undefined && settings.showTools) {
       await quietly($, async () => {
@@ -1216,14 +1311,18 @@ export const register: Register = (on, options) => {
       // Its trail step ends; a call denied or failed, in any loop, counts.
       const ended = outcomeOf(outcome)
       if (trailAt !== undefined && loop !== undefined) await quietly($, () => endTrail($, loop, label, trailAt, ended))
-      if (settings.inspect && ended !== 'ok') await quietly($, () => reviseLedger($, held => ledgerFailed(held, ended)))
+      if (settings.inspect && ended !== 'ok') await quietly($, async () => {
+        const now = await $.clock.now()
+        await reviseLedger($, held => ledgerFailed(held, ended, now))
+      })
       await quietly($, async () => {
         const isDone = outcome !== undefined && outcome.deny === undefined && outcome.isError !== true
         // A main-loop edit that ended ok counts its file, in the same write that settles the call.
         const edited = loop === undefined && isDone ? editedPathOf(name, e as unknown as Readonly<Record<string, unknown>>) : undefined
-        if (loop === undefined && settings.showTools) {
+        // The files edited are the Session tab's Overview's: counted whatever `showTools` says.
+        if (loop === undefined && (settings.showTools || edited !== undefined)) {
           await reviseTools($, held => {
-            const settled = toolSettled(held, label, e.tool_use_id)
+            const settled = settings.showTools ? toolSettled(held, label, e.tool_use_id) : held
 
             return edited === undefined ? settled : fileEdited(settled, edited)
           })
@@ -1245,19 +1344,19 @@ export const register: Register = (on, options) => {
     return ran
   })
 
-  // Only a lingering ask raises a hand; the verdict passes through untouched.
-  if (settings.mascots) {
-    on('tool.check', async ($, e, next) => {
-      const verdict = await next(e)
-      await quietly($, async () => {
-        const callId = e.tool_use_id
-        const loop = callId === undefined ? undefined : subagentCalls.get(callId)
-        if (callId !== undefined && loop !== undefined && verdict?.decision === 'ask') markAsking($, callId, loop)
-      })
-
-      return verdict
+  // Only a lingering ask marks its agent waiting (the alert strip's count, and
+  // with mascots on a raised hand), whatever the options; the verdict passes
+  // through untouched.
+  on('tool.check', async ($, e, next) => {
+    const verdict = await next(e)
+    await quietly($, async () => {
+      const callId = e.tool_use_id
+      const loop = callId === undefined ? undefined : subagentCalls.get(callId)
+      if (callId !== undefined && loop !== undefined && verdict?.decision === 'ask') markAsking($, callId, loop)
     })
-  }
+
+    return verdict
+  })
 
   on('turn.complete', async ($, e, next) => {
     const id = e.agentId
@@ -1287,17 +1386,18 @@ export const register: Register = (on, options) => {
         await reviseLedger($, held => ledgerEnded(held, id, e.reason, now))
       })
     }
-    // The main loop's end leaves no tool current and asks for a git reading
-    // and, when due, the inventory.
-    if (id === undefined && settings.mascots && mainBusy !== false) await quietly($, () => markMainIdle($))
+    // The header's working/idle cell (and the session's mascot) read it: kept whatever the options.
+    if (id === undefined && mainBusy !== false) await quietly($, () => markMainIdle($))
     // One more turn for the Session tab, its time busy and the context's size: in one usage write.
     // With the usage section's last turn and the context's runway, kept whatever the options.
     if (id === undefined) await quietly($, () => reviseUsage($, held => afterMainTurn(held, e.durationMs)))
+    // The main loop's end leaves no tool current and asks for a git reading
+    // and, when due, the inventory.
     await quietly($, async () => {
       if (id !== undefined) return
       if (settings.showTools) await reviseTools($, noCurrentTool)
       await requestGit($, settings)
-      if (settings.showInventory) await requestInventory($)
+      await requestInventory($)
     })
 
     return next(e)
@@ -1319,7 +1419,7 @@ export const register: Register = (on, options) => {
   // before the request goes: the chunks then stream through untouched.
   on('turn.step', async function* ($, e, next) {
     if (e.agentId === undefined) {
-      if (settings.mascots && mainBusy !== true) await quietly($, () => markMainBusy($))
+      if (mainBusy !== true) await quietly($, () => markMainBusy($))
       const effort = effortOf(e.effort)
       const step = `${e.model}\n${effort ?? ''}`
       if (step !== lastStep) {
@@ -1340,6 +1440,12 @@ export const register: Register = (on, options) => {
         await patch($, id, one => defined({ ...one, effort, model: one.model ?? e.model }))
       })
     }
+    // The prompt cache's clock runs from when the main request is sent: the
+    // API reads and refreshes (or writes) the cached prefix as it starts on the
+    // request, not when the response has streamed out. This is the last point
+    // the hooks see before that; it errs early, so the countdown never
+    // overstates the time left.
+    const sentAt = e.agentId === undefined ? await attempt(() => $.clock.now()) : undefined
     const result = yield* next(e)
     // What the request read, wrote and cached, whichever loop made it: the
     // session's tokens, and the ledger's for that loop and model.
@@ -1347,7 +1453,7 @@ export const register: Register = (on, options) => {
     if (spent !== null && spent !== undefined) {
       // A main request restarts the prompt cache's clock, in the same write.
       await quietly($, async () => {
-        const at = e.agentId === undefined ? await $.clock.now() : undefined
+        const at = e.agentId === undefined ? (sentAt ?? await $.clock.now()) : undefined
         await reviseUsage($, held => addTokens(held, spent, at))
       })
       if (settings.inspect) await quietly($, async () => {
@@ -1541,7 +1647,9 @@ export const register: Register = (on, options) => {
             body = tab === 'task' ? taskRows(agentBody, columns) : tab === 'trail' ? trailRows(agentBody, columns, now) : saidRows(agentBody, columns)
           } else if (usage !== undefined && tab === 'overview') {
             const held = settings.showWorkflows ? await read($, shadows) : {}
-            body = overviewRows(overviewOf(usage, main, await read($, ledger), (await read($, hudInventory)).compactAt, hudData?.session?.startedAt, all, held, now, hudData?.tools?.edited), columns)
+            // The files edited, from the facts: kept, and shown here, whatever `showTools` says.
+            const edited = (await read($, hudTools)).edited?.length
+            body = overviewRows(overviewOf(usage, main, await read($, ledger), hudData?.inventory?.compactAt, hudData?.session?.startedAt, all, held, now, edited === 0 ? undefined : edited), columns)
           } else if (usage !== undefined && tab === 'cost') {
             const startedAt = hudData?.session?.startedAt
             body = costRows({ totalUsd: usage.costUsd, duration: startedAt === undefined ? undefined : now - startedAt, models: costTree(await read($, ledger)) }, columns, new Set(view.models ?? []))

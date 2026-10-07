@@ -54,13 +54,15 @@ Row by row:
 - **Header.** The model, effort and provider, and at the edge the main loop
   `● working 00:42` (the accent; how long this turn has run) or `○ idle 3m`
   (dim; how long since it stopped), read from the main loop's facts, kept
-  with mascots on. When the row runs short the provider gives way first,
+  whatever the options (mascots on or off). When the row runs short the provider gives way first,
   then the working cell, then the effort. The session's clock and cost moved
   to `usage · cost`.
 - **Alerts** (`⚠`). Drawn only while something needs attention; otherwise
   the row is not there at all. Most severe first, joined by ` · ` and cut to
   the card with `…`:
-  1. `N agents waiting for permission` (`error`).
+  1. `N agents waiting for permission` (`error`): running subagents whose
+     tool call was put to the person and is still waiting after three
+     seconds (`tool.check` answered `ask`), tracked whatever `mascots` says.
   2. `5h out ~13:43, before ↻14:20`: a window whose burn over the last 30
      minutes reaches 100 % before it resets (`error`; 7d and spend alike).
   3. `N agents stalled`: running subagents and workflow agents quiet past
@@ -72,7 +74,11 @@ Row by row:
      5-minute one (the smaller of 2 minutes and 20 % of the TTL), and the
      next turn would write the whole context to the cache again (`warning`).
      A cache already cold is no alert: the cache row says so, calmly.
-  6. `N calls denied or failed`: from the ledger (dim `warning`).
+  6. `N calls denied or failed`: tool calls, in any loop, that ended denied
+     or in an error in the last ten minutes (`FAILURE_WINDOW_MS`, from the
+     ledger's `failures.recent`; dim `warning`). The alert clears on its own
+     ten minutes after the last one; the conversation's totals stay in the
+     Session tab's Overview.
   7. `↓3 behind`: the branch is behind its upstream (dim `warning`).
 
   The `⚠` takes the colour of the most severe.
@@ -82,8 +88,13 @@ Row by row:
 - **session · branch.** The branch, `*` when dirty (`warning`), `↑2 ↓1`
   commits ahead and behind, then the lines changed against HEAD
   (`git diff --shortstat HEAD`; the path counts `+3 ~1 −1` stand in when
-  there are none) and `last commit 48m ago` (`git log -1 --format=%ct`).
-  Both run on the debounced git timer beside `git status`, never the tick.
+  there are none) and `last commit 48m ago` (`git -c log.showSignature=false
+  log -1 --format=%ct`, its last all-digit line, so a signature check printed
+  first does not hide it). Both run on the debounced git timer beside `git
+  status`, never the tick. The status is written as soon as it answers (the
+  line counts and the last commit as held), the other two folded in when
+  they answer; any of the three timing out backs the timer off to 30 s until
+  a reading where all three answer.
 - **session · now.** The main loop's tool running now and its main argument
   (a path from `~`, losing its leading directories first; a command or
   pattern cut with `…`), its elapsed time at the edge. Between tools a dim
@@ -91,13 +102,19 @@ Row by row:
   files edited moved to the Session tab's Overview.
 - **context · used.** The bar marks the auto-compact threshold with a dim `┃`
   when the context breakdown names one below the window; then the percent
-  and the tokens of the window.
+  and the tokens of the window. The breakdown is read (at most every five
+  minutes) whatever `showInventory` says.
 - **context · growth.** The context's mean growth per main turn over the
   last ten, and `compact in ~N turns` at that growth to the threshold (else
-  the window). No growth seen, no row.
+  the window). No growth seen, no row. With auto-compaction off
+  (`DISABLE_AUTO_COMPACT`, `DISABLE_COMPACT`, the `autoCompactEnabled`
+  setting, or the breakdown's `isAutoCompactEnabled: false`) there is no
+  `┃`, no runway and no compaction alert: the context never compacts on its
+  own.
 - **context · cache.** The main conversation's prompt cache, counted from
   the main loop's last request: the bar drains as the TTL runs out (`success`,
-  `warning` once cooling), then `warm · 42m left (1h)`, the TTL in parens.
+  `warning` once cooling), then `warm · 42m left (1h)`, the TTL in parens,
+  `(1h?)` when the TTL is assumed (see below).
   Cold, an empty track and `cold · next turn rewrites 412k`, all dim. See
   "The prompt cache's TTL" below for how the TTL is known.
 - **limits · 5h / 7d / spend.** Each window on its own row, its bar as wide
@@ -108,10 +125,15 @@ Row by row:
 - **usage · last.** The last main turn: what the session spent while it ran
   (from one main turn's end to the next), how long it ran (`turn.complete`'s
   `durationMs`) and its own tokens (fresh input, cache writes and output of
-  its main-loop requests; cache reads left out).
+  its main-loop requests; cache reads left out). The first cost the mod
+  reads (at start, or loaded mid-session) is the next turn's baseline, so
+  that turn shows only its own cost; when no cost could be read then, the
+  first turn shows none rather than the whole session's.
 - **usage · cache.** The share of the session's input the prompt cache
   served, and the subagents', workflow agents' and forks' share of the
-  ledger's estimated spend (with `inspect` on).
+  ledger's estimated spend (with `inspect` on). The share is left out while
+  any model the ledger booked has no price entry (the main loop's model
+  unpriced would otherwise read as `agents 100% of spend`).
 - **todo.** See "TODO" below.
 
 The session's tokens by kind, cache writes, the compaction count, the files
@@ -166,7 +188,12 @@ button" below):
 
 The cache row counts down from the main loop's last request (each main
 `turn.step` that answered stamps `usage.mainRequestAt`, in the usage write
-the request makes anyway). The cold-cache variant (`coldCache`, an hour and
+the request makes anyway). The stamp is the time the request was sent (read
+before the hook hands the request on), not when its answer finished
+streaming: the API reads and refreshes the cached prefix as it starts on the
+request, so this errs early and never overstates the time left. Both the row
+and the status line compute the time left from that stamp when they are
+drawn. The cold-cache variant (`coldCache`, an hour and
 ten minutes after that request):
 
 ```
@@ -207,22 +234,31 @@ strip says what is at stake:
 
 ### The prompt cache's TTL
 
-The mod infers the main conversation's TTL the way the engine picks it
-(`cacheTtlOf` in `hooks/facts.ts`), once at start:
+The mod infers the main conversation's TTL the way Claude Code 2.1.292 picks
+it for the main thread (`cacheTtlOf` in `hooks/facts.ts`, checked against the
+engine's own code), once at start:
 1. `DISABLE_PROMPT_CACHING` set: no cache, no row.
 2. `FORCE_PROMPT_CACHING_5M` set: 5m.
 3. `CLAUDE_CODE_PROMPT_CACHE_TTL` (`5m` or `1h`), else the `promptCacheTtl`
    setting.
-4. `ENABLE_PROMPT_CACHING_1H` set: 1h.
-5. Otherwise automatic: 1h on a Claude subscription (no `ANTHROPIC_API_KEY`,
-   `ANTHROPIC_AUTH_TOKEN` or `ANTHROPIC_BASE_URL`, not Bedrock, Vertex or
-   Foundry), else 5m.
+4. `ENABLE_PROMPT_CACHING_1H` set (any provider), or on Bedrock
+   `ENABLE_PROMPT_CACHING_1H_BEDROCK`: 1h.
+5. Otherwise automatic: 1h only for a Claude subscription's OAuth login
+   within its limits, else 5m.
+   - `ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN`,
+     `CLAUDE_CODE_API_KEY_FILE_DESCRIPTOR`, an `apiKeyHelper` setting, or a
+     partner cloud (`CLAUDE_CODE_USE_BEDROCK`, `_VERTEX`, `_FOUNDRY`,
+     `_ANTHROPIC_AWS`, `_ANTHROPIC_GOOGLE_CLOUD`, `_MANTLE`): 5m, certain.
+   - `ANTHROPIC_BASE_URL` alone: 5m, assumed (most likely a gateway; a
+     proxy in front of a subscription keeps 1h).
+   - None of these: 1h, assumed. A Console (API-key) login and a
+     subscription drawing on usage credits past its limits both get 5m,
+     and neither is something a mod can read.
 
-Only whether each variable is set is read; no value is kept. The
-`cacheTtl` option (`auto`, `5m`, `1h`) overrides the inference. A
-subscription that has run past its limits and draws on usage credits drops
-to the 5-minute cache, which nothing the mod can read shows: there the row
-still counts an hour, so set `cacheTtl: 5m` while that lasts.
+An assumed TTL is drawn as a guess: `(1h?)` on the cache row, `cache 42m?` on
+the status line. Only whether each variable is set is read; no value is
+kept. The `cacheTtl` option (`auto`, `5m`, `1h`) overrides the inference and
+is never drawn as a guess: set it when the guess is wrong.
 
 ## More states, wide
 
@@ -446,8 +482,9 @@ and a section with no rows left loses its label:
 - Nothing needing attention: no alert row.
 - No rate-limit data: no limits section.
 - No git: no branch row. No commit yet: no `last commit`.
-- No auto-compact threshold (or the breakdown not read): no `┃`, and the
-  runway runs to the window. No context growth: no growth row.
+- No auto-compact threshold (or the breakdown not read yet): no `┃`, and
+  the runway runs to the window. Auto-compaction off: no `┃` and no runway
+  at all. No context growth: no growth row.
 - No main request yet, or prompt caching off: no cache row.
 - No main turn ended: no `last` row. No tokens and no ledger: no cache-use row.
 - No tool called yet: no `now` row. No main-loop activity known: no
@@ -509,9 +546,14 @@ list: they never shrink the HUD, and the mascot scene gets what is left.
 `statusLineText(data)` returns plain text. Segments are joined by ` │ `,
 absent facts are dropped, and the result is at most 100 characters; the last
 segments give way first (the cache, then todo, then git, then cost). `⚠ n`
-counts the alert strip's alerts, right after who, when there are any; the
-prompt cache's time left (`cache 42m`, `cache cold`) comes last, when it
-fits. The caller appends its agents summary. The pane is the HUD's real
+counts the alert strip's alerts, right after who, when there are any (the
+hooks leave the stalled alert out of that count when the agents summary they
+append already says `N stalled`, so it is not counted twice); the prompt
+cache's time left (`cache 42m`, `cache 42m?` on an assumed TTL, `cache cold`)
+comes last, when it fits. The caller appends its agents summary. While the
+cache is warm the hooks redraw the line where the minute shown changes and
+once more as it goes cold, from a timer of its own, so it never freezes on a
+warm value with the pane closed and nothing running. The pane is the HUD's real
 surface; this line is only for a caller that opts in.
 
 ```
@@ -693,7 +735,7 @@ error, fixing it now.
 
 `▸◆ Session` heads the lists (with `inspect` on). Its view's header is the
 session's model, effort, `busy` or `idle` (from the main loop's facts, kept
-with mascots on), its age and its turns; its tabs are **Overview**,
+whatever the options), its age and its turns; its tabs are **Overview**,
 **Cost** and **Agents**.
 
 - **Overview:** a dim label column, then ` · `-joined facts, flowing onto
@@ -711,14 +753,16 @@ with mascots on), its age and its turns; its tabs are **Overview**,
   - `tokens`: in, out, cache read and write, and the cache hit share.
   - (on `turns`) the files the main loop edited this conversation (the
     distinct paths of its Edit, Write, MultiEdit and NotebookEdit calls that
-    ended ok), moved here from the HUD's `now` row in 1.2.0.
+    ended ok), moved here from the HUD's `now` row in 1.2.0; counted
+    whatever `showTools` says.
   - `limits`: each window's percent, the time to its cap at the burn of the
     last 30 minutes (`usage.limitSamples`: each change of its percent, the
     one before the window kept as its base), `resets before the cap` when
     the reset comes first, `—` without at least three changed samples
     spanning five minutes or when no rising rate is known; and its reset.
   - `asks`: subagents waiting on a permission ask.
-  - `failures`: tool calls, in any loop, that ended denied or in an error.
+  - `failures`: tool calls, in any loop, that ended denied or in an error,
+    this conversation.
   - `agents`: subagents and workflow agents spawned, running, done, failed,
     and their minutes (the engine's one-request forks left out).
 - **Cost:** the session's total (`costUsd`, from `$.session.usage()`: the

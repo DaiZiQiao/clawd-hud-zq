@@ -35,7 +35,7 @@
     "showTools": {
       "type": "boolean",
       "title": "Show tools",
-      "description": "Show the HUD's session · now row: the main conversation's tool running now, its main argument and elapsed time.",
+      "description": "Show the HUD's session · now row: the main conversation's tool running now, its main argument and elapsed time. The files edited (Session tab, Overview) are counted either way.",
       "default": true
     },
     "showTodos": {
@@ -46,8 +46,8 @@
     },
     "showInventory": {
       "type": "boolean",
-      "title": "Read the context breakdown",
-      "description": "Read the session's context breakdown (MCP servers, skills, the auto-compact threshold) at most every five minutes: it marks the compaction threshold on the context bar and gives its runway, and /mod-hud facts prints it. Since 1.2.0 the HUD no longer draws the MCP and skill counts.",
+      "title": "Show the inventory in /mod-hud facts",
+      "description": "Print the context breakdown's MCP servers and skills in /mod-hud facts. The breakdown is read either way, at most every five minutes, for the auto-compact threshold that marks the context bar and bounds the compaction runway. Since 1.2.0 the HUD no longer draws the MCP and skill counts.",
       "default": true
     },
     "motto": {
@@ -113,7 +113,7 @@
     "cacheTtl": {
       "type": "string",
       "title": "Prompt cache TTL",
-      "description": "auto (default): infer the main conversation's prompt-cache TTL as Claude Code picks it (1h on a Claude subscription; 5m on an API key, a gateway, Bedrock, Vertex or Foundry; FORCE_PROMPT_CACHING_5M, CLAUDE_CODE_PROMPT_CACHE_TTL, the promptCacheTtl setting and ENABLE_PROMPT_CACHING_1H honoured). 5m or 1h: count down that instead. A subscription drawing on usage credits past its limits drops to 5m, which the mod cannot detect: set 5m while that lasts.",
+      "description": "auto (default): infer the main conversation's prompt-cache TTL as Claude Code picks it (FORCE_PROMPT_CACHING_5M, CLAUDE_CODE_PROMPT_CACHE_TTL, the promptCacheTtl setting, ENABLE_PROMPT_CACHING_1H on any provider and ENABLE_PROMPT_CACHING_1H_BEDROCK on Bedrock honoured; else 5m on an API key, auth token, apiKeyHelper or partner cloud, 1h otherwise). Where the mod cannot tell (a Console API-key login, a subscription drawing on usage credits past its limits, a base URL that may be a gateway) the TTL is drawn as a guess, (1h?). 5m or 1h: count down that instead, as certain.",
       "default": "auto"
     }
   }

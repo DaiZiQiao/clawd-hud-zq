@@ -170,7 +170,8 @@ test('the closed-pane status stalls, recovers, and emits only changed text', {
   await clock.advance(1000)
   expect(world.statuses.length).toBe(statuses)
   await clock.advance(5000)
-  expect(lastStatus(world)).toBe('⚠ 1 │ agents · 1 running · 0 done · 1 stalled')
+  // The summary counts the stalled agent; the HUD's ⚠ does not count it again.
+  expect(lastStatus(world)).toBe('agents · 1 running · 0 done · 1 stalled')
   expect(world.statuses.length).toBe(statuses + 1)
   await callTool($, 'sub-1')
   await clock.advance(5000)

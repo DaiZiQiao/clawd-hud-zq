@@ -707,6 +707,24 @@ describe('the session tab', () => {
     }
   })
 
+  test('with showTools off the Overview still counts the files edited', { options: { showTools: false } }, async ($, on) => {
+    const { held, clock } = arrange(on)
+    await $.session.start(START)
+    await clock.settle()
+    seedHud(held)
+    held.delete('tools')
+    await $.command.run(TOGGLE)
+    await $.tool.call({ tool: 'Edit', file_path: '/work/a.ts', old_string: 'a', new_string: 'b' } as never)
+    await $.tool.call({ tool: 'Write', file_path: '/work/b.ts', content: '' } as never)
+    const ui = await mount($, 'terminal', 72)
+    await press(ui, 'inspect:main')
+    const rows = await viewOf(ui)
+    expect(rows.find(row => row.startsWith('turns'))).toContain('2 files edited')
+    // The HUD itself still leaves the tools out.
+    expect(rows.join('\n')).not.toContain('Edit ·')
+    await ui.unmount()
+  })
+
   test('the limits\' burn names the time to the cap when it comes before the reset', () => {
     const rows = overviewRows({
       compactions: 0, limits: [{ label: '5h', percent: 60, eta: 130 * MINUTE, untilReset: 200 * MINUTE, reset: '↻ 16:00' }], asks: 2, failures: { denied: 0, error: 0 },

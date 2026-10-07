@@ -143,8 +143,12 @@ export type HudLedger = {
   others: Record<string, HudTokenFacts & { agents: number }>
   /** The compacted loops counted: how many, how they ended, and their running time. */
   gone?: { agents: number; done: number; failed: number; ms: number }
-  /** Tool calls, in any loop, that ended denied or in an error. */
-  failures?: { denied: number; error: number }
+  /**
+   * Tool calls, in any loop, that ended denied or in an error: counted for the
+   * conversation, and the recent ones' end times (at most 32, those inside
+   * FAILURE_WINDOW_MS) for the alert strip.
+   */
+  failures?: { denied: number; error: number; recent?: number[] }
 }
 
 /**
@@ -182,9 +186,10 @@ export type ShadowAgentEntry = {
 }
 
 /**
- * The main loop's activity, for the mascot scene (hooks/scene-model.ts): written
- * once when a main turn starts its first request and once when it ends, and
- * at each main compaction; nothing per tick.
+ * The main loop's activity, for the HUD header's working/idle cell and the
+ * mascot scene (hooks/scene-model.ts): busy and idle written once when a main
+ * turn starts its first request and once when it ends, whatever the options;
+ * the compaction (with mascots on) at each main compaction; nothing per tick.
  */
 export type HudMainFacts = {
   /** When the main loop started working; absent while it is idle. */
@@ -216,6 +221,10 @@ export type HudSessionFacts = {
    * `cacheTtlOf`): `off` with prompt caching disabled; absent before it is read.
    */
   cacheTtl?: '5m' | '1h' | 'off'
+  /** The TTL above is a guess (automatic, where what decides it cannot be read): drawn `(1h?)`. */
+  cacheTtlAssumed?: true
+  /** False when the environment (DISABLE_AUTO_COMPACT, DISABLE_COMPACT) or the `autoCompactEnabled` setting switch auto-compaction off, read at start. */
+  autoCompact?: false
 }
 
 /** One rate-limit window, of a kind the HUD knows. */
@@ -346,6 +355,8 @@ export type HudInventoryFacts = {
   skills?: number
   /** The context's token count at which auto-compaction runs; absent when it is off or unknown. */
   compactAt?: number
+  /** False when the breakdown says auto-compaction is off. */
+  autoCompact?: false
   /** When the breakdown was read. */
   at?: number
 }
@@ -407,7 +418,10 @@ export type HudUsage = {
 /** The main conversation's prompt cache: its TTL, and when the main loop's last request answered. */
 export type HudCache = {
   ttl: '5m' | '1h'
+  /** When the main loop's last request was sent. */
   lastAt: number
+  /** The TTL is inferred and could be wrong: drawn `(1h?)` and `cache 42m?`. */
+  assumed?: true
 }
 
 export type HudGit = {
@@ -451,6 +465,8 @@ export type HudInventory = {
   skills?: number
   /** The context's token count at which auto-compaction runs: marked on the ctx bar. */
   compactAt?: number
+  /** False when auto-compaction is off: no mark, no runway, no compaction alert. */
+  autoCompact?: false
 }
 
 /** The main loop working or idle (HudMainFacts): the header's `● working 00:42` / `○ idle 3m`. */
@@ -469,7 +485,7 @@ export type HudAlerts = {
   asks?: number
   /** Running subagents and workflow agents quiet past `stalledAfterSec`. */
   stalled?: number
-  /** Tool calls, in any loop, that ended denied or in an error this conversation. */
+  /** Tool calls, in any loop, that ended denied or in an error in the last ten minutes (FAILURE_WINDOW_MS). */
   failures?: number
 }
 

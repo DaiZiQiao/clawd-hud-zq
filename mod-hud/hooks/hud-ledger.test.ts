@@ -3,6 +3,7 @@ import { expect, test } from 'claude-code/testing'
 import type { HudLedger } from '../types'
 import { shortModel } from './facts'
 import {
+  FAILURE_WINDOW_MS,
   LEDGER_COMPACT_MS,
   LEDGER_MAX,
   NO_LEDGER,
@@ -15,6 +16,7 @@ import {
   ledgerFailed,
   ledgerSummary,
   priceOf,
+  recentFailures,
   runCounts,
 } from './hud-ledger'
 
@@ -132,6 +134,26 @@ test('agentShareOf: the share of the estimated spend that is not the main loop\'
   const later = ledgerCompacted(ledgerEnded(ledger, 'sub-1', 'answer', NOW), NOW + LEDGER_COMPACT_MS)
   expect(Object.keys(later.entries)).toEqual(['main'])
   expect(Math.round((agentShareOf(later) ?? 0) * 1e6)).toBe(250_000)
-  // An unpriced model adds nothing to either side.
+  // An unpriced model alone: nothing to split.
   expect(agentShareOf(ledgerBooked(NO_LEDGER, 'sub-2', spent(1_000, 0, 'gpt-6'), { kind: 'agent' }, NOW))).toBe(undefined)
+  // The main loop on a model with no price entry would read as $0, the agents as 100 % of the spend: no share at all.
+  const unpricedMain = ledgerBooked(ledgerBooked(NO_LEDGER, 'main', spent(3_000_000, 0, 'claude-opus-99'), who, NOW), 'sub-1', spent(1_000, 0), { kind: 'agent', name: 'Explore' }, NOW)
+  expect(agentShareOf(unpricedMain)).toBe(undefined)
+  // An agent's unpriced model would understate the agents' share: none either.
+  expect(agentShareOf(ledgerBooked(ledger, 'sub-3', spent(1_000, 0, 'gpt-6'), { kind: 'agent' }, NOW))).toBe(undefined)
+})
+
+test('ledgerFailed counts a call denied or failed for the conversation, and keeps the recent ones\' times for the alert', () => {
+  let ledger = ledgerFailed(NO_LEDGER, 'denied', NOW)
+  ledger = ledgerFailed(ledger, 'error', NOW + 60_000)
+  expect(ledger.failures).toEqual({ denied: 1, error: 1, recent: [NOW, NOW + 60_000] })
+  expect(recentFailures(ledger.failures?.recent, NOW + FAILURE_WINDOW_MS)).toEqual([NOW, NOW + 60_000])
+  expect(recentFailures(ledger.failures?.recent, NOW + FAILURE_WINDOW_MS + 1)).toEqual([NOW + 60_000])
+  // A new one drops those past the window; the counts stay.
+  ledger = ledgerFailed(ledger, 'error', NOW + 20 * 60_000)
+  expect(ledger.failures).toEqual({ denied: 1, error: 2, recent: [NOW + 20 * 60_000] })
+  expect(ledgerSummary(ledger, NOW + 20 * 60_000).failures).toEqual({ denied: 1, error: 2, recent: 1 })
+  // At most 32 held.
+  for (let index = 0; index < 40; index += 1) ledger = ledgerFailed(ledger, 'denied', NOW + 20 * 60_000 + index)
+  expect(ledger.failures?.recent).toHaveLength(32)
 })

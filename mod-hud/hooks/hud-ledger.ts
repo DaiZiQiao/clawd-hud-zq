@@ -116,11 +116,20 @@ export const ledgerEnded = (ledger: HudLedger, id: string, reason: string, now: 
 }
 
 /** One more tool call ended denied or in an error. */
-export const ledgerFailed = (ledger: HudLedger, outcome: 'denied' | 'error'): HudLedger => {
+export const ledgerFailed = (ledger: HudLedger, outcome: 'denied' | 'error', now?: number): HudLedger => {
   const held = ledger.failures ?? { denied: 0, error: 0 }
+  const recent = now === undefined ? held.recent : [...recentFailures(held.recent, now), now].slice(-FAILURES_KEPT)
 
-  return { ...ledger, failures: { ...held, [outcome]: held[outcome] + 1 } }
+  return { ...ledger, failures: defined({ ...held, [outcome]: held[outcome] + 1, recent }) }
 }
+
+/** A call denied or failed raises the alert strip's `N calls denied or failed` for this long after it ended. */
+export const FAILURE_WINDOW_MS = 10 * 60_000
+const FAILURES_KEPT = 32
+
+/** The failures' end times inside FAILURE_WINDOW_MS of `now`. */
+export const recentFailures = (recent: readonly number[] | undefined, now: number): number[] =>
+  (recent ?? []).filter(at => at <= now && now - at <= FAILURE_WINDOW_MS)
 
 /**
  * Finished loops an hour past their end, then (past LEDGER_MAX) the oldest
@@ -216,10 +225,13 @@ export const costTree = (ledger: HudLedger): CostModel[] => {
 /**
  * The share of the ledger's estimated spend that is not the main loop's
  * (subagents, workflow agents, forks, the compacted), 0 to 1; undefined
- * before anything priced was booked.
+ * before anything priced was booked, or while any model booked has no price.
  */
 export const agentShareOf = (ledger: HudLedger): number | undefined => {
   const tree = costTree(ledger)
+  // A model with no price entry counts as $0: the split would be off (all of
+  // it the agents' when the main loop's model is the unpriced one), so none.
+  if (tree.some(model => !model.priced)) return undefined
   const total = tree.reduce((sum, model) => sum + model.usd, 0)
   if (total <= 0) return undefined
   const main = tree.reduce((sum, model) => sum + model.users.filter(user => user.key === 'main').reduce((one, user) => one + user.usd, 0), 0)
@@ -261,6 +273,6 @@ export const ledgerSummary = (ledger: HudLedger, now: number): Record<string, un
       users: one.users.length,
     })])),
     runs: runCounts(ledger, now),
-    failures: ledger.failures,
+    failures: ledger.failures === undefined ? undefined : { denied: ledger.failures.denied, error: ledger.failures.error, recent: recentFailures(ledger.failures.recent, now).length },
   })
 }

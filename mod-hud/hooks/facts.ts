@@ -121,10 +121,14 @@ export const parseShortstat = (stdout: string): { linesAdded: number; linesDelet
   return { linesAdded: added === null ? 0 : Number(added[1]), linesDeleted: deleted === null ? 0 : Number(deleted[1]) }
 }
 
-/** `git log -1 --format=%ct`: the commit time in milliseconds; undefined for anything else. */
+/**
+ * `git log -1 --format=%ct`: the commit time in milliseconds, from the last
+ * line that is all digits (with `log.showSignature` on, git prints the
+ * signature's check before it); undefined when there is none.
+ */
 export const parseCommitTime = (stdout: string): number | undefined => {
-  const text = stdout.trim()
-  if (!/^\d+$/.test(text)) return undefined
+  const text = stdout.split('\n').map(line => line.trim()).filter(line => /^\d+$/.test(line)).at(-1)
+  if (text === undefined) return undefined
   const ms = Number(text) * 1000
 
   return ms > 0 ? ms : undefined
@@ -246,34 +250,69 @@ export const CACHE_ENV = [
   'FORCE_PROMPT_CACHING_5M',
   'CLAUDE_CODE_PROMPT_CACHE_TTL',
   'ENABLE_PROMPT_CACHING_1H',
+  'ENABLE_PROMPT_CACHING_1H_BEDROCK',
   'ANTHROPIC_API_KEY',
   'ANTHROPIC_AUTH_TOKEN',
+  'CLAUDE_CODE_API_KEY_FILE_DESCRIPTOR',
   'ANTHROPIC_BASE_URL',
   'CLAUDE_CODE_USE_BEDROCK',
   'CLAUDE_CODE_USE_VERTEX',
   'CLAUDE_CODE_USE_FOUNDRY',
+  'CLAUDE_CODE_USE_ANTHROPIC_AWS',
+  'CLAUDE_CODE_USE_ANTHROPIC_GOOGLE_CLOUD',
+  'CLAUDE_CODE_USE_MANTLE',
 ] as const
 
-/**
- * The main conversation's prompt-cache TTL, inferred the way the engine picks
- * it: `off` with DISABLE_PROMPT_CACHING; 5m with FORCE_PROMPT_CACHING_5M;
- * else CLAUDE_CODE_PROMPT_CACHE_TTL, else the `promptCacheTtl` setting; 1h
- * with ENABLE_PROMPT_CACHING_1H; else automatic: 1h on a Claude subscription
- * (no API key or auth token, no base URL, not Bedrock, Vertex or Foundry),
- * 5m otherwise. A subscription drawing on usage credits past its limits drops
- * to 5m, which nothing the mod can read shows: then this still says 1h.
- */
-export const cacheTtlOf = (env: Readonly<Record<string, string | undefined>>, setting: unknown): '5m' | '1h' | 'off' => {
-  if (isOn(env.DISABLE_PROMPT_CACHING)) return 'off'
-  if (isOn(env.FORCE_PROMPT_CACHING_5M)) return '5m'
-  const chosen = ttlIn(env.CLAUDE_CODE_PROMPT_CACHE_TTL?.trim()) ?? ttlIn(setting)
-  if (chosen !== undefined) return chosen
-  if (isOn(env.ENABLE_PROMPT_CACHING_1H)) return '1h'
-  const viaApi = isSet(env.ANTHROPIC_API_KEY) || isSet(env.ANTHROPIC_AUTH_TOKEN) || isSet(env.ANTHROPIC_BASE_URL)
-    || isOn(env.CLAUDE_CODE_USE_BEDROCK) || isOn(env.CLAUDE_CODE_USE_VERTEX) || isOn(env.CLAUDE_CODE_USE_FOUNDRY)
+/** The partner clouds' switches: any of them on, no Claude subscription is in use. */
+const PARTNER_ENV = [
+  'CLAUDE_CODE_USE_BEDROCK',
+  'CLAUDE_CODE_USE_VERTEX',
+  'CLAUDE_CODE_USE_FOUNDRY',
+  'CLAUDE_CODE_USE_ANTHROPIC_AWS',
+  'CLAUDE_CODE_USE_ANTHROPIC_GOOGLE_CLOUD',
+  'CLAUDE_CODE_USE_MANTLE',
+] as const
 
-  return viaApi ? '5m' : '1h'
+/** The settings `cacheTtlOf` reads, as `$.settings.read()` hands them back. */
+export type CacheSettings = { promptCacheTtl?: unknown; apiKeyHelper?: unknown }
+
+/** The main prompt cache's TTL as inferred, and whether that is a guess (`assumed`). */
+export type CacheTtl = { ttl: '5m' | '1h' | 'off'; assumed?: true }
+
+/**
+ * The main conversation's prompt-cache TTL, inferred the way Claude Code
+ * 2.1.292 picks it for the main thread: `off` with DISABLE_PROMPT_CACHING;
+ * 5m with FORCE_PROMPT_CACHING_5M; else CLAUDE_CODE_PROMPT_CACHE_TTL, else the
+ * `promptCacheTtl` setting; 1h with ENABLE_PROMPT_CACHING_1H (any provider),
+ * or on Bedrock with ENABLE_PROMPT_CACHING_1H_BEDROCK. Else automatic: 1h only
+ * for a Claude subscription's OAuth login within its limits, 5m for anything
+ * else. An API key or auth token in the environment, an API key file
+ * descriptor, an `apiKeyHelper` setting or a partner cloud rule the
+ * subscription out: 5m, certain. A base URL usually means a gateway: 5m, but
+ * assumed (a proxy in front of a subscription still gets 1h). With none of
+ * these, 1h is assumed: a Console (API-key) login, or a subscription drawing on
+ * usage credits past its limits, gets 5m, and neither is readable by a mod.
+ */
+export const cacheTtlOf = (env: Readonly<Record<string, string | undefined>>, stored?: CacheSettings): CacheTtl => {
+  if (isOn(env.DISABLE_PROMPT_CACHING)) return { ttl: 'off' }
+  if (isOn(env.FORCE_PROMPT_CACHING_5M)) return { ttl: '5m' }
+  const chosen = ttlIn(env.CLAUDE_CODE_PROMPT_CACHE_TTL?.trim()) ?? ttlIn(stored?.promptCacheTtl)
+  if (chosen !== undefined) return { ttl: chosen }
+  if (isOn(env.ENABLE_PROMPT_CACHING_1H) || (isOn(env.CLAUDE_CODE_USE_BEDROCK) && isOn(env.ENABLE_PROMPT_CACHING_1H_BEDROCK))) return { ttl: '1h' }
+  const helper = typeof stored?.apiKeyHelper === 'string' && stored.apiKeyHelper.trim() !== ''
+  const viaApi = isSet(env.ANTHROPIC_API_KEY) || isSet(env.ANTHROPIC_AUTH_TOKEN) || isSet(env.CLAUDE_CODE_API_KEY_FILE_DESCRIPTOR)
+    || helper || PARTNER_ENV.some(name => isOn(env[name]))
+  if (viaApi) return { ttl: '5m' }
+
+  return isSet(env.ANTHROPIC_BASE_URL) ? { ttl: '5m', assumed: true } : { ttl: '1h', assumed: true }
 }
+
+/** The environment variables that switch auto-compaction off (DISABLE_COMPACT turns off `/compact` too). */
+export const COMPACT_ENV = ['DISABLE_AUTO_COMPACT', 'DISABLE_COMPACT'] as const
+
+/** False when the environment or the `autoCompactEnabled` setting switch auto-compaction off; undefined otherwise. */
+export const autoCompactOf = (env: Readonly<Record<string, string | undefined>> | undefined, stored?: { autoCompactEnabled?: unknown }): false | undefined =>
+  COMPACT_ENV.some(name => isOn(env?.[name])) || stored?.autoCompactEnabled === false ? false : undefined
 
 // --- usage -------------------------------------------------------------------
 
@@ -349,7 +388,8 @@ export const counted = (value: unknown): number => {
 /**
  * One response's token counts (a request's, a compaction's) added to the
  * session's; the usage as it was when the response reported none. With
- * `mainAt` (a main-loop request, answered then) the prompt cache's clock
+ * `mainAt` (a main-loop request: when it was sent, the best point the hooks
+ * see before the API reads or writes the cache) the prompt cache's clock
  * restarts and the turn's own tokens count it too.
  */
 export const addTokens = (usage: HudUsageFacts, spent: ModelUsage | null | undefined, mainAt?: number): HudUsageFacts => {
@@ -420,6 +460,9 @@ const LIMIT_SAMPLES_MAX = 32
  * A main turn ended after `durationMs`: one more turn, its time busy, the
  * context's tokens sampled when known, and the turn kept as `lastTurn` (what
  * the session spent since the turn before ended, how long it ran, its tokens).
+ * The cost is measured from `costAtTurnEnd`, seeded when the mod first reads
+ * the session's cost (`seedTurnBaseline`); with no baseline the turn's cost is
+ * left out, and this turn's end becomes the next one's baseline.
  */
 export const afterMainTurn = (usage: HudUsageFacts, durationMs?: number): HudUsageFacts => {
   const tokens = finite(usage.contextTokens)
@@ -427,7 +470,8 @@ export const afterMainTurn = (usage: HudUsageFacts, durationMs?: number): HudUsa
   const spent = finite(durationMs)
   const cost = finite(usage.costUsd)
   const lastTurn = defined({
-    costUsd: cost === undefined ? undefined : Math.max(0, cost - (usage.costAtTurnEnd ?? 0)),
+    // No baseline yet (the mod loaded mid-session and could not read the cost then): no cost, rather than the whole session's.
+    costUsd: cost === undefined || usage.costAtTurnEnd === undefined ? undefined : Math.max(0, cost - usage.costAtTurnEnd),
     durationMs: spent === undefined || spent <= 0 ? undefined : Math.round(spent),
     tokens: usage.turnTokens,
   })
@@ -441,6 +485,17 @@ export const afterMainTurn = (usage: HudUsageFacts, durationMs?: number): HudUsa
     turnTokens: undefined,
     lastTurn: Object.keys(lastTurn).length === 0 ? undefined : lastTurn,
   })
+}
+
+/**
+ * The first cost the mod reads (at start, or after a reload mid-session) is
+ * the next turn's baseline, so that turn's `last` is its own cost and not the
+ * whole session's; a baseline already held stays.
+ */
+export const seedTurnBaseline = (usage: HudUsageFacts): HudUsageFacts => {
+  const cost = finite(usage.costUsd)
+
+  return usage.costAtTurnEnd !== undefined || cost === undefined ? usage : { ...usage, costAtTurnEnd: cost }
 }
 
 /** The context's mean growth per turn over the samples (a compaction's drop left out); undefined with no growth seen. */
@@ -507,8 +562,8 @@ export const limitEta = (samples: readonly { at: number; percent: number }[] | u
 
 /**
  * The main loop's busy and idle time over the session's `duration`: its ended
- * turns' time, and the turn running now (`main.busySince`, kept with mascots
- * on); idle is the rest. Undefined before any time passed.
+ * turns' time, and the turn running now (`main.busySince`, kept
+ * whatever the options); idle is the rest. Undefined before any time passed.
  */
 export const busyIdleOf = (usage: HudUsageFacts, main: HudMainFacts | undefined, duration: number | undefined, now: number): { busy: number; idle: number } | undefined => {
   if (duration === undefined || duration <= 0) return undefined
@@ -614,6 +669,7 @@ export const inventoryOf = (breakdown: SessionContextBreakdown | undefined, now:
     mcpServers: [...new Set(servers)].sort(),
     skills: finite(breakdown.skills?.totalSkills),
     compactAt: breakdown.isAutoCompactEnabled === false ? undefined : finite(breakdown.autoCompactThreshold),
+    autoCompact: breakdown.isAutoCompactEnabled === false ? false as const : undefined,
     at: now,
   })
 }
@@ -628,14 +684,18 @@ export const inventoryOf = (breakdown: SessionContextBreakdown | undefined, now:
  */
 export const assembleHudData = (facts: HudFacts, now: number, cacheTtl: 'auto' | '5m' | '1h' = 'auto'): HudData => {
   const { at: _gitAt, ...git } = facts.git
-  const { cacheTtl: _ttl, ...session } = facts.session
+  const { cacheTtl: _ttl, cacheTtlAssumed: _assumed, autoCompact: sessionCompact, ...session } = facts.session
   const current = facts.tools.current
   // The Session tab's counts are not the HUD's to draw; the samples are: the
   // context's for the ctx row's runway, the limits' for the alert strip's ETA.
   const { turns: _turns, busyMs: _busyMs, mainRequestAt: _at, turnTokens: _turnTokens, costAtTurnEnd: _costAt, contextSamples, limitSamples, lastTurn, ...usage } = facts.usage
   const edited = facts.tools.edited?.length ?? 0
   const ttl = cacheTtl === 'auto' ? facts.session.cacheTtl : cacheTtl
+  // Only the inferred TTL can be a guess; one the option names is the person's word.
+  const assumed = cacheTtl === 'auto' && facts.session.cacheTtlAssumed === true
   const cacheAt = facts.usage.mainRequestAt
+  // Auto-compaction off (the environment, the settings, or the breakdown): no threshold, no runway.
+  const compactOff = sessionCompact === false || facts.inventory.autoCompact === false
 
   return {
     session: defined({ ...session }),
@@ -656,8 +716,13 @@ export const assembleHudData = (facts: HudFacts, now: number, cacheTtl: 'auto' |
       edited: edited > 0 ? edited : undefined,
     }),
     todos: { items: facts.todos.items.map(item => defined({ ...item })) },
-    inventory: defined({ mcpServers: [...facts.inventory.mcpServers], skills: facts.inventory.skills, compactAt: facts.inventory.compactAt }),
-    ...(cacheAt !== undefined && (ttl === '5m' || ttl === '1h') ? { cache: { ttl, lastAt: cacheAt } } : {}),
+    inventory: defined({
+      mcpServers: [...facts.inventory.mcpServers],
+      skills: facts.inventory.skills,
+      compactAt: compactOff ? undefined : facts.inventory.compactAt,
+      autoCompact: compactOff ? false as const : undefined,
+    }),
+    ...(cacheAt !== undefined && (ttl === '5m' || ttl === '1h') ? { cache: defined({ ttl, lastAt: cacheAt, assumed: assumed ? true as const : undefined }) } : {}),
     now,
   }
 }

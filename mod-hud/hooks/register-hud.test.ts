@@ -221,7 +221,8 @@ test('switches leave git, tools, todos and the inventory out of the pane and the
 }, async ($, on) => {
   const { clock, world } = await sketched($, on)
   await spawn($)
-  const shown: HudData = { ...sketchAt(clock.now(), 'keep going'), git: undefined, tools: undefined, todos: undefined, inventory: undefined }
+  // The inventory's auto-compact threshold stays (the runway and the ctx bar's mark read it); its MCP servers and skills go.
+  const shown: HudData = { ...sketchAt(clock.now(), 'keep going'), git: undefined, tools: undefined, todos: undefined, inventory: { mcpServers: [], compactAt: full.inventory?.compactAt } }
   expect(lastStatus(world)).toBe(`${statusLineText(shown)} │ agents · 1 running · 0 done`)
   expect(lastStatus(world)).toBe('opus 5.5 · xhigh │ ⚠ 1 │ ctx 41% │ 5h 31% · 7d 12% │ $4.21 │ cache 42m │ agents · 1 running · 0 done')
 
@@ -548,7 +549,7 @@ test('the alert strip counts asks and stalls from the board and failed calls fro
   const board = held.get('agents')?.value as Record<string, Record<string, unknown>>
   held.set('agents', { value: { ...board, 'sub-1': { ...board['sub-1'], awaitingPermission: true } }, version: (held.get('agents')?.version ?? 0) + 1 })
   const ledger = (held.get('ledger')?.value ?? { entries: {}, others: {} }) as Record<string, unknown>
-  held.set('ledger', { value: { ...ledger, failures: { denied: 1, error: 1 } }, version: (held.get('ledger')?.version ?? 0) + 1 })
+  held.set('ledger', { value: { ...ledger, failures: { denied: 1, error: 1, recent: [clock.now() - 1000, clock.now()] } }, version: (held.get('ledger')?.version ?? 0) + 1 })
 
   const ui = await mountPane($, 'terminal', 130)
   const alerts = (await paneOf(ui)).hud[1] ?? ''
@@ -567,4 +568,49 @@ test('the alert strip counts asks and stalls from the board and failed calls fro
   expect(JSON.parse((later.text ?? '').split('\n').slice(0, -1).join('\n')).alerts).toEqual({ asks: 1, stalled: 2, failures: 2 })
   await $.session.measure({ context: { tokens: 412_000, window: 1_000_000, percent: 41.2 }, rateLimits: [], cost: { usd: 4.21 }, changed: ['cost'] } as Parameters<Engine['session']['measure']>[0])
   expect(lastStatus(world)).toMatch(/^opus 5\.5 · xhigh │ ⚠ \d │ ctx 41%/)
+  // The summary says `2 stalled` itself, so the HUD's ⚠ leaves that alert out: the ask, the 5h window and the failures.
+  expect(lastStatus(world)).toMatch(/^opus 5\.5 · xhigh │ ⚠ 3 │ .* │ agents · 2 running · 0 done · 2 stalled$/)
+
+  // Ten minutes after the failures, with none since: that alert clears on its own.
+  await clock.advance(360_000)
+  const cleared = await $.command.run({ ...TOGGLE, args: 'facts' })
+  expect(JSON.parse((cleared.text ?? '').split('\n').slice(0, -1).join('\n')).alerts).toEqual({ asks: 1, stalled: 2 })
+})
+
+test('a call denied or failed raises the alert for ten minutes; the conversation\'s count stays for the Overview', async ($, on) => {
+  const { clock, held, world } = await sketched($, on)
+  const alertsNow = async () => JSON.parse(((await $.command.run({ ...TOGGLE, args: 'facts' })).text ?? '').split('\n').slice(0, -1).join('\n')).alerts
+  world.tool = async () => ({ deny: 'no' }) as never
+  await callTool($, undefined)
+  expect(await alertsNow()).toEqual({ failures: 1 })
+  await clock.advance(5 * 60_000)
+  world.tool = async () => ({ result: 'ok', isError: true }) as never
+  await callTool($, undefined)
+  expect(await alertsNow()).toEqual({ failures: 2 })
+  // Ten minutes after the first: only the second still counts; ten after that, none.
+  await clock.advance(5 * 60_000 + 1)
+  expect(await alertsNow()).toEqual({ failures: 1 })
+  await clock.advance(5 * 60_000)
+  expect(await alertsNow()).toBe(undefined)
+  expect((held.get('ledger')?.value as { failures?: { denied: number; error: number } }).failures).toMatchObject({ denied: 1, error: 1 })
+})
+
+test('with the status line on, a warm cache counts down and reads cold with the pane closed, nothing running and no redraws', STATUS_ON, async ($, on) => {
+  on('session.measure', (_$, e) => ({ changed: e.changed }))
+  const { clock, world, held } = await sketched($, on)
+  // Something the status line shows changed: it is drawn with 42 minutes left (the sketch's last request 18 minutes ago).
+  await $.session.measure({ context: { tokens: 412_000, window: 1_000_000, percent: 41.2 }, rateLimits: [], cost: { usd: 4.21 }, changed: ['cost'] } as Parameters<Engine['session']['measure']>[0])
+  expect(lastStatus(world)).toMatch(/│ cache 42m$/)
+  // No pane, no agents: the board's clock is not running.
+  expect(tickOf(held)).toBe(undefined)
+  await clock.advance(10 * 60_000)
+  expect(lastStatus(world)).toMatch(/│ cache 32m$/)
+  // Seventy minutes on, nothing else having happened: cold, not a frozen `cache 1h`.
+  await clock.advance(60 * 60_000)
+  expect(lastStatus(world)).toMatch(/│ cache cold$/)
+  expect(tickOf(held)).toBe(undefined)
+  // Cold, its timer is done: nothing more is written.
+  const writes = world.statuses.length
+  await clock.advance(60 * 60_000)
+  expect(world.statuses.length).toBe(writes)
 })

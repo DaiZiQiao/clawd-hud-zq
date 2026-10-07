@@ -2,8 +2,9 @@ import type { On, ProcessRunInit, SessionContextBreakdown, SessionUsage, UiPane 
 import { expect, mock, test } from 'claude-code/testing'
 import type { Engine } from 'claude-code/testing'
 
-import type { HudGitFacts, HudInventoryFacts, HudSessionFacts, HudTodoFacts, HudToolFacts, HudUsageFacts } from '../types'
+import type { HudData, HudGitFacts, HudInventoryFacts, HudSessionFacts, HudTodoFacts, HudToolFacts, HudUsageFacts } from '../types'
 import {
+  CACHE_ENV,
   CACHE_TTL_MS,
   EDITED_MAX,
   NO_FACTS,
@@ -14,6 +15,7 @@ import {
   applyMeasure,
   assembleHudData,
   busyIdleOf,
+  autoCompactOf,
   cacheTtlOf,
   contextGrowth,
   debouncer,
@@ -34,6 +36,7 @@ import {
   providerOf,
   rateLimitsOf,
   sameFacts,
+  seedTurnBaseline,
   throttleDue,
   todoFactsOf,
   toolSettled,
@@ -41,6 +44,7 @@ import {
   turnsUntil,
 } from './facts'
 import type { Cancellable } from './facts'
+import { alertsOf, compactRunway } from './hud'
 
 // The HUD's facts: parsed, folded in and assembled, and gathered by the hooks.
 
@@ -209,8 +213,9 @@ test('a main turn\'s end writes usage once (one more turn, its time, the context
   await completeTurn($, { usage, agentId: 'sub-9' })
   expect(held.get('usage')).toEqual(before)
   await completeTurn($, { usage, durationMs: 4000 })
-  // The turn's cost runs from the session's start: no turn ended before it.
-  const turn = { turns: 1, busyMs: 4000, contextSamples: [40_000], costAtTurnEnd: 0.5, lastTurn: { costUsd: 0.5, durationMs: 4000 } }
+  // The turn's cost runs from the cost first read at start (seeded then): nothing more was spent.
+  expect(before.value.costAtTurnEnd).toBe(0.5)
+  const turn = { turns: 1, busyMs: 4000, contextSamples: [40_000], costAtTurnEnd: 0.5, lastTurn: { costUsd: 0, durationMs: 4000 } }
   expect(held.get('usage')).toEqual({ value: { ...before.value, ...turn }, version: before.version + 1 })
 })
 
@@ -220,7 +225,7 @@ test('with inspect off a main turn\'s end still writes usage: the HUD\'s last tu
   const before = held.get('usage') as { value: HudUsageFacts; version: number }
   await completeTurn($, { durationMs: 4000 })
   expect(held.get('usage')?.version).toBe(before.version + 1)
-  expect((held.get('usage')?.value as HudUsageFacts).lastTurn).toEqual({ costUsd: 0.5, durationMs: 4000 })
+  expect((held.get('usage')?.value as HudUsageFacts).lastTurn).toEqual({ costUsd: 0, durationMs: 4000 })
 })
 
 test('a measurement replaces the context and cost, and leaves out what it lacks; the rate limits it reports replace those held', async () => {
@@ -388,6 +393,7 @@ const arrange = (on: On) => {
     diff: { exitCode: 0, stdout: ' 3 files changed, 142 insertions(+), 37 deletions(-)\n', stderr: '' },
     log: { exitCode: 0, stdout: '1791024000\n', stderr: '' },
     gitRefused: false,
+    diffHangs: false,
     usage: {
       startedAt: NOW - 60_000,
       context: { tokens: 40_000, window: 200_000, percent: 20 },
@@ -395,6 +401,8 @@ const arrange = (on: On) => {
       cost: { usd: 0.5 },
     } as SessionUsage,
     breakdowns: 0,
+    /** What the `summary` breakdown says beyond the inventory: the auto-compact threshold, when a test gives one. */
+    breakdown: {} as Record<string, unknown>,
     beforeUsage: () => {},
     env: {} as Record<string, string>,
     settings: { modelSettings: { 'claude-opus-5-5': { effortLevel: 'xhigh' } } } as Record<string, unknown>,
@@ -404,6 +412,7 @@ const arrange = (on: On) => {
     compacted: { messages: [{ role: 'assistant', text: 'summary', toolUses: [] }] } as unknown,
     /** What each step's request reports it cost: nothing, unless a test says. */
     stepUsage: null as (Record<string, number | string> | null),
+    stepMs: 0,
     tool: async (): Promise<unknown> => ({ result: 'ok' }),
   }
   const isHud = (key: string): boolean => ['session', 'usage', 'git', 'tools', 'todos', 'inventory'].includes(key)
@@ -434,13 +443,19 @@ const arrange = (on: On) => {
     if (e?.breakdown === undefined) return { value: world.usage }
     world.breakdowns += 1
 
-    return { value: { ...world.usage, context: { ...world.usage.context, breakdown: INVENTORY } } }
+    return { value: { ...world.usage, context: { ...world.usage.context, breakdown: { ...INVENTORY, ...world.breakdown } } } }
   })
   on('env.get', (_$, e) => (world.refuse.has('env.get') ? { deny: 'refused' } : { value: world.env[e.name] }))
   on('settings.read', () => (world.refuse.has('settings.read') ? { deny: 'refused' } : { value: world.settings }))
-  on('process.run', (_$, e) => {
+  on('process.run', async (_$, e) => {
     world.runs.push({ argv: [...e.argv], init: e.init })
     if (world.gitRefused) return { deny: 'git timed out' }
+    // A diff slower than its timeout, when a test says.
+    if (world.diffHangs && e.argv.includes('diff')) {
+      await clock.sleep(3000)
+
+      return { deny: 'git timed out' }
+    }
 
     const answer = e.argv.includes('diff') ? world.diff : e.argv.includes('log') ? world.log : world.git
 
@@ -462,6 +477,9 @@ const arrange = (on: On) => {
   on('session.measure', (_$, e) => ({ changed: e.changed }))
   on('session.compact', () => world.compacted as never)
   on('turn.step', async function* (_$, e) {
+    // A request that takes a while to answer, when a test says.
+    if (world.stepMs > 0) await clock.sleep(world.stepMs)
+
     return { turnId: e.turnId, index: e.index, answer: '', toolUses: [], stopReason: null, usage: world.stepUsage as never }
   })
 
@@ -527,8 +545,9 @@ test('session start gathers who, where and what was measured, then one git readi
     startedAt: NOW - 60_000,
     cwd: '/work',
     repoRoot: '/work',
-    // A gateway's base URL: the 5-minute prompt cache.
+    // A gateway's base URL: the 5-minute prompt cache, assumed (a proxy before a subscription keeps 1h).
     cacheTtl: '5m',
+    cacheTtlAssumed: true,
   })
   expect(fact<HudUsageFacts>('usage')).toEqual({
     contextTokens: 40_000,
@@ -536,13 +555,15 @@ test('session start gathers who, where and what was measured, then one git readi
     window: 200_000,
     rateLimits: [{ kind: 'five_hour', percentUsed: 12 }],
     costUsd: 0.5,
+    // The cost first read: the next turn's baseline.
+    costAtTurnEnd: 0.5,
     compactions: 0,
     // Sampled for the Session tab's burn rate.
     limitSamples: { five_hour: [{ at: NOW, percent: 12 }] },
   })
   expect(gitRuns()).toEqual([{ argv: GIT_ARGV, init: { timeoutMs: 3000, env: { GIT_OPTIONAL_LOCKS: '0' } } }])
   // Beside the status, the lines changed against HEAD and HEAD's commit time, read the same way.
-  expect(allGitRuns().map(run => run.argv)).toEqual([GIT_ARGV, ['git', '-C', '/work', 'diff', '--shortstat', 'HEAD'], ['git', '-C', '/work', 'log', '-1', '--format=%ct']])
+  expect(allGitRuns().map(run => run.argv)).toEqual([GIT_ARGV, ['git', '-C', '/work', 'diff', '--shortstat', 'HEAD'], ['git', '-C', '/work', '-c', 'log.showSignature=false', 'log', '-1', '--format=%ct']])
   expect(allGitRuns().every(run => run.init?.env?.GIT_OPTIONAL_LOCKS === '0' && run.init.timeoutMs === 3000)).toBe(true)
   expect(fact<HudGitFacts>('git')).toEqual({ branch: 'main', dirty: 6, added: 2, deleted: 1, ahead: 2, behind: 1, linesAdded: 142, linesDeleted: 37, lastCommitAt: 1_791_024_000_000, at: NOW })
   expect(fact<HudInventoryFacts>('inventory')).toEqual({ mcpServers: ['codex-relay', 'notion'], skills: 12, at: NOW })
@@ -747,7 +768,7 @@ test('compactions count only when the main conversation was compacted', async ($
   await started($, clock)
   await compact($)
   expect(fact<HudUsageFacts>('usage')).toEqual({
-    window: 200_000, rateLimits: [{ kind: 'five_hour', percentUsed: 12 }], costUsd: 0.5, compactions: 1, limitSamples: { five_hour: [{ at: NOW, percent: 12 }] },
+    window: 200_000, rateLimits: [{ kind: 'five_hour', percentUsed: 12 }], costUsd: 0.5, costAtTurnEnd: 0.5, compactions: 1, limitSamples: { five_hour: [{ at: NOW, percent: 12 }] },
   })
 
   await compact($, { trigger: 'precompute' })
@@ -902,16 +923,32 @@ test('/clear rejects a stale engine clock and cost, after resetting the board', 
   expect(boardAtUsage).toEqual({})
 })
 
-test('showInventory false never requests a summary at start or after a turn', {
-  options: { showInventory: false },
+test('showInventory false still reads the summary for the auto-compact threshold, and draws only that', {
+  options: { showInventory: false, statusLine: true },
 }, async ($, on) => {
   const { clock, world, held } = arrange(on)
+  world.usage = { ...world.usage, context: { tokens: 150_000, window: 200_000, percent: 75 } }
   await started($, clock)
+  expect(world.breakdowns).toBe(1)
+  expect((held.get('inventory')?.value as HudInventoryFacts).compactAt).toBe(undefined)
+  // The runway runs to the threshold, not the window: 150k growing 5k a turn compacts at 160k in 2 turns.
+  world.breakdown = { autoCompactThreshold: 160_000, isAutoCompactEnabled: true }
   await clock.advance(300_000)
   await completeTurn($)
   await clock.settle()
-  expect(world.breakdowns).toBe(0)
-  expect(held.has('inventory')).toBe(false)
+  expect(world.breakdowns).toBe(2)
+  const usage = held.get('usage') as { value: HudUsageFacts; version: number }
+  held.set('usage', { value: { ...usage.value, contextTokens: 150_000, contextSamples: [140_000, 145_000, 150_000] }, version: usage.version + 1 })
+  const { text = '' } = await $.command.run({ ...TOGGLE, args: 'facts' } as Parameters<Engine['command']['run']>[0])
+  const data = JSON.parse(text.split('\n').slice(0, -1).join('\n')) as HudData
+  // The threshold alone: no MCP servers or skills.
+  expect(data.inventory).toEqual({ mcpServers: [], compactAt: 160_000 })
+  expect(compactRunway(data)).toBe(2)
+  expect(alertsOf(data).map(one => one.id)).toContain('compact')
+  // Still at most once per five minutes.
+  await completeTurn($)
+  await clock.settle()
+  expect(world.breakdowns).toBe(2)
 })
 
 test('showTools false never writes tools, including at turn end and clear', {
@@ -1062,28 +1099,66 @@ test('git diff --shortstat reads the lines inserted and deleted; git log %ct the
   expect(parseCommitTime('')).toBe(undefined)
   expect(parseCommitTime('-5')).toBe(undefined)
   expect(parseCommitTime('fatal: your current branch has no commits yet')).toBe(undefined)
+  // With log.showSignature on, the signature's check comes first: the time is the last all-digit line.
+  const signed = ['gpg: Signature made Tue 06 Oct 2026 10:00:00 AM +08', 'gpg:                using RSA key 0123456789ABCDEF', 'gpg: Good signature from "Dai <dai@example.com>" [ultimate]', '1791024000', ''].join('\n')
+  expect(parseCommitTime(signed)).toBe(1_791_024_000_000)
+  expect(parseCommitTime('Good "git" signature for dai@example.com with ED25519 key SHA256:abc\n1791024000\n')).toBe(1_791_024_000_000)
 })
 
-test('cacheTtlOf infers the main prompt cache\'s TTL the way the engine picks it', () => {
-  // Automatic: 1h on a subscription, 5m on an API key, a token, a gateway or a partner cloud.
-  expect(cacheTtlOf({}, undefined)).toBe('1h')
-  for (const name of ['ANTHROPIC_API_KEY', 'ANTHROPIC_AUTH_TOKEN', 'ANTHROPIC_BASE_URL']) expect(cacheTtlOf({ [name]: 'x' }, undefined), name).toBe('5m')
-  for (const name of ['CLAUDE_CODE_USE_BEDROCK', 'CLAUDE_CODE_USE_VERTEX', 'CLAUDE_CODE_USE_FOUNDRY']) {
-    expect(cacheTtlOf({ [name]: '1' }, undefined), name).toBe('5m')
-    expect(cacheTtlOf({ [name]: '0' }, undefined), `${name}=0`).toBe('1h')
+test('cacheTtlOf infers the main prompt cache\'s TTL the way Claude Code 2.1.292 picks it, and says when it is a guess', () => {
+  const sure = (ttl: '5m' | '1h' | 'off') => ({ ttl })
+  const guess = (ttl: '5m' | '1h') => ({ ttl, assumed: true })
+  // Automatic: 1h only on a subscription's OAuth login, which cannot be told
+  // from a Console (API-key) login or a subscription past its limits: assumed.
+  expect(cacheTtlOf({}, undefined)).toEqual(guess('1h'))
+  expect(cacheTtlOf({}, {})).toEqual(guess('1h'))
+  // Anything that rules out a subscription: 5m, certain.
+  for (const name of ['ANTHROPIC_API_KEY', 'ANTHROPIC_AUTH_TOKEN', 'CLAUDE_CODE_API_KEY_FILE_DESCRIPTOR']) expect(cacheTtlOf({ [name]: 'x' }, undefined), name).toEqual(sure('5m'))
+  expect(cacheTtlOf({}, { apiKeyHelper: '~/bin/key.sh' }), 'apiKeyHelper').toEqual(sure('5m'))
+  expect(cacheTtlOf({}, { apiKeyHelper: '  ' }), 'blank apiKeyHelper').toEqual(guess('1h'))
+  for (const name of ['CLAUDE_CODE_USE_BEDROCK', 'CLAUDE_CODE_USE_VERTEX', 'CLAUDE_CODE_USE_FOUNDRY', 'CLAUDE_CODE_USE_ANTHROPIC_AWS', 'CLAUDE_CODE_USE_ANTHROPIC_GOOGLE_CLOUD', 'CLAUDE_CODE_USE_MANTLE']) {
+    expect(cacheTtlOf({ [name]: '1' }, undefined), name).toEqual(sure('5m'))
+    expect(cacheTtlOf({ [name]: '0' }, undefined), `${name}=0`).toEqual(guess('1h'))
   }
-  expect(cacheTtlOf({ ANTHROPIC_API_KEY: '  ' }, undefined)).toBe('1h')
-  // The setting, else ENABLE_PROMPT_CACHING_1H, beat automatic; the env variable beats the setting.
-  expect(cacheTtlOf({}, '5m')).toBe('5m')
-  expect(cacheTtlOf({ ANTHROPIC_API_KEY: 'x' }, '1h')).toBe('1h')
-  expect(cacheTtlOf({ ANTHROPIC_API_KEY: 'x', ENABLE_PROMPT_CACHING_1H: '1' }, undefined)).toBe('1h')
-  expect(cacheTtlOf({ CLAUDE_CODE_PROMPT_CACHE_TTL: '5m' }, '1h')).toBe('5m')
-  expect(cacheTtlOf({ CLAUDE_CODE_PROMPT_CACHE_TTL: '10m' }, '1h')).toBe('1h')
-  expect(cacheTtlOf({}, 'forever')).toBe('1h')
+  expect(cacheTtlOf({ ANTHROPIC_API_KEY: '  ' }, undefined)).toEqual(guess('1h'))
+  // A base URL is most likely a gateway, but a proxy in front of a subscription keeps 1h: 5m, assumed.
+  expect(cacheTtlOf({ ANTHROPIC_BASE_URL: 'https://gw.example' }, undefined)).toEqual(guess('5m'))
+  // ENABLE_PROMPT_CACHING_1H on any provider; ENABLE_PROMPT_CACHING_1H_BEDROCK on Bedrock only.
+  for (const name of ['', 'ANTHROPIC_API_KEY', 'ANTHROPIC_BASE_URL', 'CLAUDE_CODE_USE_BEDROCK', 'CLAUDE_CODE_USE_VERTEX']) {
+    expect(cacheTtlOf({ ENABLE_PROMPT_CACHING_1H: '1', ...(name === '' ? {} : { [name]: '1' }) }, undefined), name).toEqual(sure('1h'))
+  }
+  expect(cacheTtlOf({ CLAUDE_CODE_USE_BEDROCK: '1', ENABLE_PROMPT_CACHING_1H_BEDROCK: '1' }, undefined)).toEqual(sure('1h'))
+  expect(cacheTtlOf({ CLAUDE_CODE_USE_VERTEX: '1', ENABLE_PROMPT_CACHING_1H_BEDROCK: '1' }, undefined)).toEqual(sure('5m'))
+  expect(cacheTtlOf({ ENABLE_PROMPT_CACHING_1H_BEDROCK: '1' }, undefined)).toEqual(guess('1h'))
+  // The setting beats ENABLE_PROMPT_CACHING_1H and automatic; the env variable beats the setting.
+  expect(cacheTtlOf({}, { promptCacheTtl: '5m' })).toEqual(sure('5m'))
+  expect(cacheTtlOf({ ANTHROPIC_API_KEY: 'x' }, { promptCacheTtl: '1h' })).toEqual(sure('1h'))
+  expect(cacheTtlOf({ ENABLE_PROMPT_CACHING_1H: '1' }, { promptCacheTtl: '5m' })).toEqual(sure('5m'))
+  expect(cacheTtlOf({ CLAUDE_CODE_PROMPT_CACHE_TTL: '5m' }, { promptCacheTtl: '1h' })).toEqual(sure('5m'))
+  expect(cacheTtlOf({ CLAUDE_CODE_PROMPT_CACHE_TTL: '10m' }, { promptCacheTtl: '1h' })).toEqual(sure('1h'))
+  expect(cacheTtlOf({}, { promptCacheTtl: 'forever' })).toEqual(guess('1h'))
   // FORCE_PROMPT_CACHING_5M beats them all; DISABLE_PROMPT_CACHING, no cache at all.
-  expect(cacheTtlOf({ FORCE_PROMPT_CACHING_5M: 'true', CLAUDE_CODE_PROMPT_CACHE_TTL: '1h' }, '1h')).toBe('5m')
-  expect(cacheTtlOf({ DISABLE_PROMPT_CACHING: '1', FORCE_PROMPT_CACHING_5M: '1' }, '1h')).toBe('off')
+  expect(cacheTtlOf({ FORCE_PROMPT_CACHING_5M: 'true', CLAUDE_CODE_PROMPT_CACHE_TTL: '1h' }, { promptCacheTtl: '1h' })).toEqual(sure('5m'))
+  expect(cacheTtlOf({ DISABLE_PROMPT_CACHING: '1', FORCE_PROMPT_CACHING_5M: '1' }, { promptCacheTtl: '1h' })).toEqual(sure('off'))
   expect(CACHE_TTL_MS).toEqual({ '5m': 300_000, '1h': 3_600_000 })
+  // Every variable it reads is listed (the hooks read them by these names).
+  expect([...CACHE_ENV].sort()).toEqual([
+    'ANTHROPIC_API_KEY', 'ANTHROPIC_AUTH_TOKEN', 'ANTHROPIC_BASE_URL', 'CLAUDE_CODE_API_KEY_FILE_DESCRIPTOR', 'CLAUDE_CODE_PROMPT_CACHE_TTL',
+    'CLAUDE_CODE_USE_ANTHROPIC_AWS', 'CLAUDE_CODE_USE_ANTHROPIC_GOOGLE_CLOUD', 'CLAUDE_CODE_USE_BEDROCK', 'CLAUDE_CODE_USE_FOUNDRY', 'CLAUDE_CODE_USE_MANTLE',
+    'CLAUDE_CODE_USE_VERTEX', 'DISABLE_PROMPT_CACHING', 'ENABLE_PROMPT_CACHING_1H', 'ENABLE_PROMPT_CACHING_1H_BEDROCK', 'FORCE_PROMPT_CACHING_5M',
+  ])
+})
+
+test('autoCompactOf: DISABLE_AUTO_COMPACT, DISABLE_COMPACT or the autoCompactEnabled setting switch auto-compaction off', () => {
+  expect(autoCompactOf({}, {})).toBe(undefined)
+  expect(autoCompactOf(undefined, undefined)).toBe(undefined)
+  expect(autoCompactOf({ DISABLE_AUTO_COMPACT: '1' }, {})).toBe(false)
+  expect(autoCompactOf({ DISABLE_COMPACT: 'true' }, {})).toBe(false)
+  expect(autoCompactOf({ DISABLE_AUTO_COMPACT: '0' }, {})).toBe(undefined)
+  expect(autoCompactOf({}, { autoCompactEnabled: false })).toBe(false)
+  expect(autoCompactOf({}, { autoCompactEnabled: true })).toBe(undefined)
+  // The breakdown says so too.
+  expect(inventoryOf({ isAutoCompactEnabled: false, autoCompactThreshold: 160_000 } as unknown as SessionContextBreakdown, NOW)).toEqual({ mcpServers: [], autoCompact: false, at: NOW })
 })
 
 test('a main request restarts the cache clock and counts the turn\'s tokens; a turn\'s end keeps it as the last turn', () => {
@@ -1138,24 +1213,159 @@ test('a main step stamps the cache clock and the turn\'s tokens in its one usage
   expect(held.get('usage')?.version).toBe(version + 1)
   expect(fact<HudUsageFacts>('usage')).toMatchObject({ mainRequestAt: clock.now(), turnTokens: 35 })
   await completeTurn($, { durationMs: 3000 })
-  expect(fact<HudUsageFacts>('usage')).toMatchObject({ lastTurn: { costUsd: 0.5, durationMs: 3000, tokens: 35 }, mainRequestAt: clock.now() })
+  expect(fact<HudUsageFacts>('usage')).toMatchObject({ lastTurn: { costUsd: 0, durationMs: 3000, tokens: 35 }, mainRequestAt: clock.now() })
   expect(fact<HudUsageFacts>('usage').turnTokens).toBe(undefined)
 })
 
 test('session start infers the cache TTL from the environment and the settings; an unreadable environment leaves it out', async ($, on) => {
   const subscription = arrange(on)
+  const ttl = () => {
+    const { cacheTtl, cacheTtlAssumed } = subscription.fact<HudSessionFacts>('session')
+
+    return { cacheTtl, cacheTtlAssumed }
+  }
   await started($, subscription.clock)
-  expect(subscription.fact<HudSessionFacts>('session').cacheTtl).toBe('1h')
+  // Nothing rules a subscription out: 1h, but assumed.
+  expect(ttl()).toEqual({ cacheTtl: '1h', cacheTtlAssumed: true })
   subscription.world.env.ANTHROPIC_API_KEY = 'sk-test'
   subscription.world.settings = { promptCacheTtl: '1h' }
   await started($, subscription.clock)
-  expect(subscription.fact<HudSessionFacts>('session').cacheTtl).toBe('1h')
+  expect(ttl()).toEqual({ cacheTtl: '1h', cacheTtlAssumed: undefined })
   subscription.world.settings = {}
   await started($, subscription.clock)
-  expect(subscription.fact<HudSessionFacts>('session').cacheTtl).toBe('5m')
+  expect(ttl()).toEqual({ cacheTtl: '5m', cacheTtlAssumed: undefined })
+  // An apiKeyHelper in the settings: no subscription, 5m.
+  delete subscription.world.env.ANTHROPIC_API_KEY
+  subscription.world.settings = { apiKeyHelper: '~/bin/key.sh' }
+  await started($, subscription.clock)
+  expect(ttl()).toEqual({ cacheTtl: '5m', cacheTtlAssumed: undefined })
+  // Bedrock with its 1-hour switch.
+  subscription.world.settings = {}
+  subscription.world.env.CLAUDE_CODE_USE_BEDROCK = '1'
+  subscription.world.env.ENABLE_PROMPT_CACHING_1H_BEDROCK = '1'
+  await started($, subscription.clock)
+  expect(ttl()).toEqual({ cacheTtl: '1h', cacheTtlAssumed: undefined })
+  subscription.world.env.ANTHROPIC_API_KEY = 'sk-test'
+  await started($, subscription.clock)
   // The key's value is never kept.
   expect(JSON.stringify([...subscription.held.values()])).not.toContain('sk-test')
   subscription.world.refuse = new Set(['env.get'])
   await started($, subscription.clock)
   expect(subscription.fact<HudSessionFacts>('session').cacheTtl).toBe(undefined)
+})
+
+// ---------------------------------------------------------------------------
+// Review fixes: the cache clock, the first turn's baseline, git, compaction off.
+// ---------------------------------------------------------------------------
+
+test('the cache clock starts when the main request is sent, not when its answer has streamed out', async ($, on) => {
+  const { clock, fact, world } = arrange(on)
+  await started($, clock)
+  world.stepUsage = { input_tokens: 10, output_tokens: 5, cache_read_input_tokens: 100, cache_creation_input_tokens: 20, model: 'claude-opus-5-5' }
+  world.stepMs = 90_000
+  const sentAt = clock.now()
+  const running = step($)
+  await clock.advance(90_000)
+  await running
+  expect(fact<HudUsageFacts>('usage').mainRequestAt).toBe(sentAt)
+  // A subagent's request still leaves it alone.
+  const sub = step($, { agentId: 'sub-9' })
+  await clock.advance(90_000)
+  await sub
+  expect(fact<HudUsageFacts>('usage').mainRequestAt).toBe(sentAt)
+})
+
+test('the first turn after a load mid-session costs only itself: the cost first read is its baseline', async ($, on) => {
+  const { clock, fact, world } = arrange(on)
+  // Loaded an hour into a session that has spent $12.
+  world.usage = { ...world.usage, cost: { usd: 12 } }
+  await started($, clock)
+  expect(fact<HudUsageFacts>('usage').costAtTurnEnd).toBe(12)
+  await $.session.measure({ context: { tokens: 40_000, window: 200_000, percent: 20 }, rateLimits: [], cost: { usd: 12.4 }, changed: ['cost'] } as Parameters<Engine['session']['measure']>[0])
+  await completeTurn($, { durationMs: 2000 })
+  expect(Math.round((fact<HudUsageFacts>('usage').lastTurn?.costUsd ?? 0) * 100)).toBe(40)
+  // A reload keeps the baseline it holds.
+  await started($, clock)
+  expect(fact<HudUsageFacts>('usage').costAtTurnEnd).toBe(12.4)
+})
+
+test('with no cost read at start the first turn shows no cost, never the whole session\'s; the next turn has its baseline', () => {
+  expect(seedTurnBaseline({ ...NO_FACTS.usage })).toEqual(NO_FACTS.usage)
+  expect(seedTurnBaseline({ ...NO_FACTS.usage, costUsd: 3 }).costAtTurnEnd).toBe(3)
+  expect(seedTurnBaseline({ ...NO_FACTS.usage, costUsd: 3, costAtTurnEnd: 1 }).costAtTurnEnd).toBe(1)
+  const first = afterMainTurn({ ...NO_FACTS.usage, costUsd: 12 }, 1000)
+  expect(first.lastTurn).toEqual({ durationMs: 1000 })
+  expect(first.costAtTurnEnd).toBe(12)
+  expect(afterMainTurn({ ...first, costUsd: 12.5 }, 1000).lastTurn).toEqual({ costUsd: 0.5, durationMs: 1000 })
+})
+
+test('a git diff or log that times out backs off to thirty seconds, and the status is written before it answers', async ($, on) => {
+  const { clock, world, fact, gitRuns } = arrange(on)
+  await started($, clock)
+  expect(fact<HudGitFacts>('git').linesAdded).toBe(142)
+  // The diff hangs to its timeout and is refused; the status changes meanwhile.
+  world.diffHangs = true
+  world.git = { ...world.git, stdout: world.git.stdout.replace('+2 -1', '+3 -1') }
+  await completeTurn($)
+  await clock.advance(3000)
+  await clock.settle()
+  expect(gitRuns()).toHaveLength(2)
+  // The status is in before the diff answers; the line counts are kept as held.
+  expect(fact<HudGitFacts>('git')).toMatchObject({ ahead: 3, linesAdded: 142, linesDeleted: 37 })
+  await clock.advance(3000)
+  expect(fact<HudGitFacts>('git')).toMatchObject({ ahead: 3, linesAdded: 142, linesDeleted: 37, lastCommitAt: 1_791_024_000_000 })
+  // Backed off: the next turn's reading waits thirty seconds from the last.
+  await completeTurn($)
+  await clock.advance(20_000)
+  expect(gitRuns()).toHaveLength(2)
+  await clock.advance(10_000)
+  expect(gitRuns()).toHaveLength(3)
+})
+
+test('auto-compaction off: no threshold, no runway, no compaction alert', () => {
+  const usage: HudUsageFacts = { ...NO_FACTS.usage, contextTokens: 150_000, window: 200_000, contextSamples: [140_000, 145_000, 150_000] }
+  const on = assembleHudData({ ...NO_FACTS, usage, inventory: { mcpServers: [], compactAt: 160_000 } }, NOW)
+  expect(compactRunway(on)).toBe(2)
+  expect(alertsOf(on).map(one => one.id)).toEqual(['compact'])
+  // Off by the environment or the settings (read at start), or by the breakdown.
+  for (const facts of [
+    { ...NO_FACTS, usage, session: { autoCompact: false as const }, inventory: { mcpServers: [], compactAt: 160_000 } },
+    { ...NO_FACTS, usage, inventory: { mcpServers: [], autoCompact: false as const } },
+  ]) {
+    const off = assembleHudData(facts, NOW)
+    expect(off.inventory).toEqual({ mcpServers: [], autoCompact: false })
+    expect(off.session).toEqual({})
+    // It would reach the window in 10 turns; with no auto-compaction that is no runway at all.
+    expect(compactRunway(off)).toBe(undefined)
+    expect(alertsOf(off)).toEqual([])
+  }
+})
+
+test('session start reads DISABLE_AUTO_COMPACT and the autoCompactEnabled setting', async ($, on) => {
+  const { clock, world, fact } = arrange(on)
+  world.env.DISABLE_AUTO_COMPACT = '1'
+  await started($, clock)
+  expect(fact<HudSessionFacts>('session').autoCompact).toBe(false)
+  delete world.env.DISABLE_AUTO_COMPACT
+  world.settings = { autoCompactEnabled: false }
+  await started($, clock)
+  expect(fact<HudSessionFacts>('session').autoCompact).toBe(false)
+  world.settings = {}
+  await started($, clock)
+  expect(fact<HudSessionFacts>('session').autoCompact).toBe(undefined)
+})
+
+test('showTools off still counts the files edited for the Overview, and /clear starts them over', {
+  options: { showTools: false },
+}, async ($, on) => {
+  const { clock, held } = arrange(on)
+  await started($, clock)
+  await callTool($, 'Read', { file_path: '/work/a.ts' })
+  expect(held.has('tools')).toBe(false)
+  await callTool($, 'Edit', { file_path: '/work/a.ts', old_string: 'a', new_string: 'b' })
+  await callTool($, 'Write', { file_path: '/work/b.ts', content: '' })
+  // The edits alone: no current tool, no counts.
+  expect(held.get('tools')?.value).toEqual({ counts: {}, edited: ['/work/a.ts', '/work/b.ts'] })
+  await $.session.end({ reason: 'clear', sessionId: 's1' } as Parameters<Engine['session']['end']>[0])
+  expect(held.get('tools')?.value).toEqual({ counts: {} })
 })

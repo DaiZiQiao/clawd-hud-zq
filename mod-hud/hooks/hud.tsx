@@ -321,7 +321,7 @@ const todoItemsOf = (data: HudData): HudTodo[] =>
   (Array.isArray(data.todos?.items) ? data.todos.items : []).filter(item => clean(item?.content) !== '')
 
 /** The prompt cache as the context section draws it: its TTL, and the time left on it (0 once cold). */
-export type CacheState = { ttl: '5m' | '1h'; ttlMs: number; leftMs: number; cooling: boolean }
+export type CacheState = { ttl: '5m' | '1h'; ttlMs: number; leftMs: number; cooling: boolean; assumed?: true }
 
 /** How close to cold the cache counts as cooling: CACHE_COOL_MS, or CACHE_COOL_SHARE of a shorter TTL. */
 export const cacheCoolAt = (ttlMs: number): number => Math.min(CACHE_COOL_MS, ttlMs * CACHE_COOL_SHARE)
@@ -334,7 +334,7 @@ export const cacheStateOf = (data: HudData): CacheState | undefined => {
   if (ttlMs === undefined) return undefined
   const leftMs = Math.max(0, Math.min(ttlMs, ttlMs - (data.now - cache.lastAt)))
 
-  return { ttl: cache.ttl, ttlMs, leftMs, cooling: leftMs > 0 && leftMs <= cacheCoolAt(ttlMs) }
+  return { ttl: cache.ttl, ttlMs, leftMs, cooling: leftMs > 0 && leftMs <= cacheCoolAt(ttlMs), ...(cache.assumed === true ? { assumed: true as const } : {}) }
 }
 
 // --- spans and rows ----------------------------------------------------------
@@ -368,9 +368,9 @@ const widthOf = (spans: readonly Span[]): number => spans.reduce((sum, span) => 
 
 const textOf = (spans: readonly Span[]): string => spans.map(span => span.text).join('')
 
-/** The spans cut to `limit` cells, the cut span ending in `…`. */
-const clip = (spans: readonly Span[], limit: number): Span[] => {
-  const kept: Span[] = []
+/** The spans cut to `limit` cells, the cut span ending in `…`: the HUD's rows and the TODO section's alike. */
+const clip = <T extends { text: string }>(spans: readonly T[], limit: number): T[] => {
+  const kept: T[] = []
   let used = 0
   for (const span of spans) {
     const width = displayWidth(span.text)
@@ -488,6 +488,8 @@ export type HudAlert = { id: string; text: string; color: string; dim?: true }
 
 /** The turns left before the context compacts (at the auto-compact threshold, else the window), at its growth per turn. */
 export const compactRunway = (data: HudData): number | undefined => {
+  // Auto-compaction off: the context never compacts on its own, so no runway.
+  if (data.inventory?.autoCompact === false) return undefined
   const usage = data.usage
   const tokens = usage?.contextTokens
   const window = usage?.window
@@ -707,7 +709,7 @@ const growthRow = (data: HudData, { card }: Room, look: Look): Span[] | undefine
 const cacheRow = (data: HudData, { card }: Room, look: Look): Span[] | undefined => {
   const cache = cacheStateOf(data)
   if (cache === undefined) return undefined
-  const ttl = dim(`(${cache.ttl})`)
+  const ttl = dim(`(${cache.ttl}${cache.assumed ? '?' : ''})`)
   if (cache.leftMs === 0) {
     const rewrites = rewritesOf(data)
     const bar = look.bar > 0 ? [dim(TRACK.repeat(look.bar)), plain('  ')] : []
@@ -964,16 +966,18 @@ export const renderHudBlock = (ui: HudElements, data: HudData, layout: HudLayout
 /**
  * The HUD as one plain line: segments joined by ` │ `, absent facts dropped,
  * at most 100 characters (the last segments give way first). `⚠ n` counts
- * the alert strip's alerts, when there are any; the prompt cache's time left
- * (`cache 42m`, `cache cold`) comes last, when it fits. The caller appends
- * the agents summary.
+ * the alert strip's alerts, when there are any, but those in `skip` (the
+ * caller leaves out `stalled` when the agents summary it appends already
+ * counts the stalled agents); the prompt cache's time left (`cache 42m`,
+ * `cache 42m?` on an assumed TTL, `cache cold`) comes last, when it fits.
+ * The caller appends the agents summary.
  */
-export const statusLineText = (data: HudData): string => {
+export const statusLineText = (data: HudData, skip: readonly string[] = []): string => {
   const segments: string[] = []
   const who = [modelLabel(clean(data.session?.model)), clean(data.session?.effort)].filter(one => one !== '').join(' · ')
   if (who !== '') segments.push(truncate(who, 32))
   // What needs attention, counted, right after who: the last to give way but who.
-  const alerts = alertsOf(data).length
+  const alerts = alertsOf(data).filter(alert => !skip.includes(alert.id)).length
   if (alerts > 0) segments.push(`⚠ ${alerts}`)
 
   const percent = contextPercentOf(data.usage)
@@ -1001,7 +1005,7 @@ export const statusLineText = (data: HudData): string => {
   if (items.length > 0) segments.push(`todo ${items.filter(item => item.status === 'completed').length}/${items.length}`)
 
   const cache = cacheStateOf(data)
-  if (cache !== undefined) segments.push(cache.leftMs === 0 ? 'cache cold' : `cache ${formatLeft(cache.leftMs)}`)
+  if (cache !== undefined) segments.push(cache.leftMs === 0 ? 'cache cold' : `cache ${formatLeft(cache.leftMs)}${cache.assumed ? '?' : ''}`)
 
   while (segments.length > 1 && displayWidth(segments.join(' │ ')) > STATUS_MAX) segments.pop()
 
@@ -1041,25 +1045,6 @@ const todoBarWidth = (columns: number): number => (columns <= BARLESS_AT ? 0 : c
 /** Where the section's bar and items start: the HUD's gutter wide (10 cells), two past the toggle narrow (8). */
 export const todoIndent = (columns: number): number => (columns < TODO_NARROW_BELOW ? NARROW_GUTTER + 2 : GUTTER)
 
-/** Spans cut to `width` cells, the cut one ending in `…`. */
-const cutSpans = (spans: readonly TextSpan[], width: number): TextSpan[] => {
-  const kept: TextSpan[] = []
-  let used = 0
-  for (const span of spans) {
-    const cells = displayWidth(span.text)
-    if (used + cells <= width) {
-      kept.push(span)
-      used += cells
-      continue
-    }
-    const cut = truncate(span.text, width - used)
-    if (cut !== '') kept.push({ ...span, text: cut })
-    break
-  }
-
-  return kept.filter(span => span.text !== '')
-}
-
 const itemText = (item: HudTodo): string =>
   item.status === 'in_progress' ? clean(item.activeForm) || clean(item.content) : clean(item.content)
 
@@ -1081,7 +1066,7 @@ const todoLabelRow = (items: readonly HudTodo[], width: number, expanded: boolea
     ...(cells > 0 ? [{ text: FILL.repeat(filled), color: GOOD }, { text: TRACK.repeat(cells - filled), dimColor: true }, { text: '  ' }] : []),
     { text: `${done}/${total}` },
   ].filter(span => span.text !== '')
-  const shown = cutSpans(spans, width)
+  const shown = clip(spans, width).filter(span => span.text !== '')
 
   return { key: 'todo:header', text: shown.map(span => span.text).join(''), spans: shown, toggle, toggleAt: shown.findIndex(span => span.text === toggle) }
 }
