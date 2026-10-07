@@ -36,6 +36,7 @@ import {
   SEAT,
   SHOUTS,
   SIDE_CROWN,
+  STARTLED,
   TOP,
   USAGI,
   USAGI_THOUGHT_FRAMES,
@@ -62,6 +63,7 @@ export const dressOfMain = (main: MascotMain): Dress => ({ crown: true, energy: 
 const SWAPS: ReadonlyMap<Overlay, Overlay> = new Map([
   ...THOUGHT_FRAMES.flatMap((frames, phrase) => frames.map((frame, step): [Overlay, Overlay] => [frame, USAGI_THOUGHT_FRAMES[phrase]?.[step] ?? frame])),
   ...OVERLAYS.cross.map((one): [Overlay, Overlay] => [one, USAGI_CROSS]),
+  ...OVERLAYS.startle.map((one): [Overlay, Overlay] => [one, STARTLED]),
 ])
 const CIGARETTE: ReadonlySet<Overlay> = new Set(OVERLAYS.cigarette)
 const SMOKE: ReadonlySet<Overlay> = new Set(OVERLAYS.smoke)

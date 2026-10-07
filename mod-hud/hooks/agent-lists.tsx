@@ -9,7 +9,7 @@ import type { HudElements } from './hud'
 import type { Settings } from './hud-options'
 import { colourFor } from './scene-model'
 import { clipped, fitted, renderTextRow } from './text-svg'
-import type { TextCell, TextStyle, TextSvgElements } from './text-svg'
+import type { TextCell, TextRow, TextStyle, TextSvgElements } from './text-svg'
 import { printable } from './text-width'
 
 // The lists under the HUD: the session's row, the Agents group (the board's
@@ -145,100 +145,139 @@ type ListPlan = {
   isEmpty: boolean
 }
 
+/** One row of the lists as cells, and the Box a narrow agent's lines share (`agent:<id>`, `workflow:<id>`). */
+type ListCells = { key: string; cells: TextCell[]; group?: string }
+
 /**
- * The lists in pixels, row for row as the terminal draws them (hooks/text-svg.ts):
- * the same cells, colours and keys, each Button laid over its own cells.
+ * The lists' rows as cells, row for row as the terminal draws them: the same
+ * cells, colours and keys, each Button with what its press does. What the rows
+ * in pixels draw, and what the TV's Agents tab shows.
  */
-const listTextRows = (input: ListsInput, ui: TextSvgElements & { Button: ElementConstructor<ButtonProps> }, plan: ListPlan): RenderElement[] => {
+const listCells = (input: ListsInput, plan: ListPlan): ListCells[] => {
   const { settings, all, now, columns, isNarrow, choice } = input
   const lead = settings.inspect ? INSPECT_WIDTH : 0
-  const draw = (key: string, cells: readonly TextCell[]): RenderElement => renderTextRow(ui, { key, cells: clipped(cells, columns) })
+  const row = (key: string, cells: readonly TextCell[], group?: string): ListCells => ({ key, cells: clipped(cells, columns), ...(group === undefined ? {} : { group }) })
   const struck = (finished: boolean): TextStyle => (finished ? { dimColor: true, strikethrough: true } : {})
   const nameColour = (id: string, color: string): string => (settings.mascots ? colourFor(id) : color)
   const inspectCells = (id: string, kind: HudSelection['kind']): TextCell[] =>
     settings.inspect ? [{ button: { key: `inspect:${id}`, label: INSPECT_LABEL, dimColor: choice?.id !== id, onPress: () => input.onSelect(id, kind) } }] : []
   const glyphCells = (id: string, kind: HudSelection['kind'], glyph: string, color: string): TextCell[] => [...inspectCells(id, kind), ...fitted([{ text: glyph, color }], GLYPH_WIDTH)]
-  const headerRow = (group: 'agents' | 'workflow', text: string): RenderElement => draw(`header:${group}`, [
+  const headerRow = (group: 'agents' | 'workflow', text: string): ListCells => row(`header:${group}`, [
     { button: { key: `group:${group}`, label: plan.minimised[group] ? GROUP_OPEN : GROUP_MINIMISE, dimColor: true, onPress: () => input.onMinimise(group) } },
     { text: ' '.repeat(GROUP_WIDTH - 1) },
     ...countParts(text).map(part => ({ text: part.text, bold: true, ...(part.color === undefined ? {} : { color: part.color }) })),
   ])
-  const toggleRow = (group: 'agents' | 'workflow', finished: number, hidden: number): RenderElement[] =>
+  const toggleRow = (group: 'agents' | 'workflow', finished: number, hidden: number): ListCells[] =>
     !plan.minimised[group] && finished > FINISHED_SHOWN
-      ? [draw(`toggle:${group}`, [{ text: ' '.repeat(lead + GLYPH_WIDTH) }, { button: { key: `more:${group}`, label: moreLabel(hidden), dimColor: true, onPress: () => input.onToggle(group) } }])]
+      ? [row(`toggle:${group}`, [{ text: ' '.repeat(lead + GLYPH_WIDTH) }, { button: { key: `more:${group}`, label: moreLabel(hidden), dimColor: true, onPress: () => input.onToggle(group) } }])]
       : []
 
-  const agentRows = plan.shown.map(entry => {
+  const agentRows = plan.shown.flatMap((entry): ListCells[] => {
     const { glyph, color } = lookOf(entry, now, settings.stalledMs)
     const indent = depthOf(entry, all) * INDENT
     const words = agentWords(entry, now)
     const finished = !words.running
     const pad: TextCell = { text: ' '.repeat(indent) }
     if (isNarrow) {
-      return ui.Box({
-        key: `agent:${entry.id}`,
-        flexDirection: 'column',
-        children: [
-          draw(`line:${entry.id}:0`, [
-            pad,
-            ...inspectCells(entry.id, 'agent'),
-            { text: `${glyph} `, color },
-            entry.type === '' ? { text: words.rest, color, ...struck(finished) } : { text: entry.type, color: nameColour(entry.id, color) },
-            ...(entry.type !== '' && words.rest !== '' ? [{ text: ` · ${words.rest}`, color, ...struck(finished) }] : []),
-          ]),
-          draw(`line:${entry.id}:1`, [pad, { text: `  ${titleOf(entry)}`, dimColor: true, ...struck(finished) }]),
-          draw(`line:${entry.id}:2`, [pad, { text: `  ${words.last}`, dimColor: true, ...struck(finished) }]),
-        ],
-      })
+      const group = `agent:${entry.id}`
+
+      return [
+        row(`line:${entry.id}:0`, [
+          pad,
+          ...inspectCells(entry.id, 'agent'),
+          { text: `${glyph} `, color },
+          entry.type === '' ? { text: words.rest, color, ...struck(finished) } : { text: entry.type, color: nameColour(entry.id, color) },
+          ...(entry.type !== '' && words.rest !== '' ? [{ text: ` · ${words.rest}`, color, ...struck(finished) }] : []),
+        ], group),
+        row(`line:${entry.id}:1`, [pad, { text: `  ${titleOf(entry)}`, dimColor: true, ...struck(finished) }], group),
+        row(`line:${entry.id}:2`, [pad, { text: `  ${words.last}`, dimColor: true, ...struck(finished) }], group),
+      ]
     }
 
-    return draw(`agent:${entry.id}`, [
+    return [row(`agent:${entry.id}`, [
       pad,
       ...glyphCells(entry.id, 'agent', glyph, color),
       ...fitted([{ text: cell(entry.type, TYPE_WIDTH), color: nameColour(entry.id, color) }, { text: ` ${words.stats}`, color, ...struck(finished) }], STATS_WIDTH),
       ...fitted([{ text: words.detail, dimColor: true, ...struck(finished) }], Math.max(1, columns - indent - lead - GLYPH_WIDTH - STATS_WIDTH - 1)),
-    ])
+    ])]
   })
 
-  const flowRows = plan.flowShown.map(entry => {
+  const flowRows = plan.flowShown.flatMap((entry): ListCells[] => {
     const { glyph, color } = shadowLookOf(entry, now, settings.stalledMs)
     const words = shadowWords(entry, now)
     const finished = entry.status !== 'running'
     if (isNarrow) {
-      return ui.Box({
-        key: `workflow:${entry.id}`,
-        flexDirection: 'column',
-        children: [
-          draw(`line:${entry.id}:0`, [
-            ...inspectCells(entry.id, 'shadow'),
-            { text: `${glyph} `, color },
-            { text: words.name, color: nameColour(entry.id, color) },
-            ...(words.rest !== '' ? [{ text: ` · ${words.rest}`, color, ...struck(finished) }] : []),
-          ]),
-          draw(`line:${entry.id}:1`, [{ text: `  ${entry.toolCalls}c · ${words.detail}`, dimColor: true, ...struck(finished) }]),
-        ],
-      })
+      const group = `workflow:${entry.id}`
+
+      return [
+        row(`line:${entry.id}:0`, [
+          ...inspectCells(entry.id, 'shadow'),
+          { text: `${glyph} `, color },
+          { text: words.name, color: nameColour(entry.id, color) },
+          ...(words.rest !== '' ? [{ text: ` · ${words.rest}`, color, ...struck(finished) }] : []),
+        ], group),
+        row(`line:${entry.id}:1`, [{ text: `  ${entry.toolCalls}c · ${words.detail}`, dimColor: true, ...struck(finished) }], group),
+      ]
     }
 
-    return draw(`workflow:${entry.id}`, [
+    return [row(`workflow:${entry.id}`, [
       ...glyphCells(entry.id, 'shadow', glyph, color),
       ...fitted([{ text: cell(words.name, TYPE_WIDTH), color: nameColour(entry.id, color) }, { text: ` ${words.stats}`, color, ...struck(finished) }], STATS_WIDTH),
       ...fitted([{ text: words.detail, dimColor: true, ...struck(finished) }], Math.max(1, columns - lead - GLYPH_WIDTH - STATS_WIDTH - 1)),
-    ])
+    ])]
   })
 
   return [
-    ...(settings.inspect ? [draw('session', [...glyphCells('main', 'main', '◆', ACCENT), { text: 'Session' }])] : []),
+    ...(settings.inspect ? [row('session', [...glyphCells('main', 'main', '◆', ACCENT), { text: 'Session' }])] : []),
     headerRow('agents', plan.header),
-    ...(!plan.minimised.agents && plan.isEmpty ? [draw('none', [{ text: 'No agents yet.', dimColor: true }])] : []),
+    ...(!plan.minimised.agents && plan.isEmpty ? [row('none', [{ text: 'No agents yet.', dimColor: true }])] : []),
     ...agentRows,
     ...toggleRow('agents', plan.board.finished, plan.board.hidden),
     ...(input.workflow.length > 0 ? [headerRow('workflow', plan.flowHeader)] : []),
     ...flowRows,
     ...toggleRow('workflow', plan.flow.finished, plan.flow.hidden),
-    ...(plan.overflow > 0 ? [draw('overflow', [{ text: `+${plan.overflow} more`, dimColor: true }])] : []),
+    ...(plan.overflow > 0 ? [row('overflow', [{ text: `+${plan.overflow} more`, dimColor: true }])] : []),
   ]
 }
+
+/**
+ * The lists in pixels, row for row as the terminal draws them (hooks/text-svg.ts):
+ * the same cells, colours and keys, each Button laid over its own cells; a
+ * narrow agent's lines in a Box of their own.
+ */
+const listTextRows = (input: ListsInput, ui: TextSvgElements & { Button: ElementConstructor<ButtonProps> }, plan: ListPlan): RenderElement[] => {
+  // Rows in order, a narrow agent's lines gathered under its group's key.
+  const parts: ({ row: RenderElement } | { group: string; rows: RenderElement[] })[] = []
+  for (const one of listCells(input, plan)) {
+    const drawn = renderTextRow(ui, { key: one.key, cells: one.cells })
+    const last = parts.at(-1)
+    if (one.group === undefined) parts.push({ row: drawn })
+    else if (last !== undefined && 'group' in last && last.group === one.group) last.rows.push(drawn)
+    else parts.push({ group: one.group, rows: [drawn] })
+  }
+
+  return parts.map(part => ('row' in part ? part.row : ui.Box({ key: part.group, flexDirection: 'column', children: part.rows })))
+}
+
+/** What `renderLists` lists, worked out once for both its drawings and the TV's Agents tab. */
+const planOf = (input: ListsInput): ListPlan => {
+  const { settings, list, workflow, now, view } = input
+  // A minimised group draws its header alone: none of its rows, and none of `maxRows` spent on them.
+  const minimised = { agents: view.agentsMinimised === true, workflow: view.workflowMinimised === true }
+  const board = grouped(orderOf(list), isRunning, view.agents === true)
+  const shown = minimised.agents ? [] : board.rows.slice(0, settings.maxRows)
+  const flow = grouped(workflowOrderOf(workflow), one => one.status === 'running', view.workflow === true)
+  const flowShown = minimised.workflow ? [] : flow.rows.slice(0, Math.max(0, settings.maxRows - shown.length))
+  const overflow = (minimised.agents ? 0 : board.rows.length - shown.length) + (minimised.workflow ? 0 : flow.rows.length - flowShown.length)
+  const header = capitalize(summarize(list, workflow, now, settings.stalledMs) ?? 'Agents')
+  const flowHeader = workflowHeaderOf(workflow, now, settings.stalledMs)
+  const isEmpty = list.length === 0 && workflow.length === 0
+
+  return { minimised, board, shown, flow, flowShown, overflow, header, flowHeader, isEmpty }
+}
+
+/** The lists as rows of cells (the TV's Agents tab): every row as the pane draws it, each Button with its press. */
+export const listRows = (input: Omit<ListsInput, 'ui'>): TextRow[] => listCells(input as ListsInput, planOf(input as ListsInput)).map(one => ({ key: one.key, cells: one.cells }))
 
 /**
  * The lists under the HUD (key `agents`): the session's row (with inspect
@@ -251,17 +290,9 @@ const listTextRows = (input: ListsInput, ui: TextSvgElements & { Button: Element
  * the rows are drawn in pixels. Its rows are counted for the scene's room.
  */
 export const renderLists = (input: ListsInput): { element: RenderElement; rows: number } => {
-  const { ui: { Box, Text, Button, Svg }, settings, all, list, workflow, now, columns, isNarrow, view, choice } = input
-  // A minimised group draws its header alone: none of its rows, and none of `maxRows` spent on them.
-  const minimised = { agents: view.agentsMinimised === true, workflow: view.workflowMinimised === true }
-  const board = grouped(orderOf(list), isRunning, view.agents === true)
-  const shown = minimised.agents ? [] : board.rows.slice(0, settings.maxRows)
-  const flow = grouped(workflowOrderOf(workflow), one => one.status === 'running', view.workflow === true)
-  const flowShown = minimised.workflow ? [] : flow.rows.slice(0, Math.max(0, settings.maxRows - shown.length))
-  const overflow = (minimised.agents ? 0 : board.rows.length - shown.length) + (minimised.workflow ? 0 : flow.rows.length - flowShown.length)
-  const header = capitalize(summarize(list, workflow, now, settings.stalledMs) ?? 'Agents')
-  const flowHeader = workflowHeaderOf(workflow, now, settings.stalledMs)
-  const isEmpty = list.length === 0 && workflow.length === 0
+  const { ui: { Box, Text, Button, Svg }, settings, all, workflow, now, columns, isNarrow, choice } = input
+  const plan = planOf(input)
+  const { minimised, board, shown, flow, flowShown, overflow, header, flowHeader, isEmpty } = plan
   // With mascots on, an agent's name takes its mascot's colour.
   const named = (id: string, text: string) =>
     settings.mascots ? <Text color={colourFor(id)} wrap="truncate-end">{text}</Text> : text
@@ -286,7 +317,7 @@ export const renderLists = (input: ListsInput): { element: RenderElement; rows: 
   if (Svg !== undefined) {
     const element = (
       <Box key="agents" flexDirection="column">
-        {listTextRows(input, { Box, Svg, Button }, { minimised, board, shown, flow, flowShown, overflow, header, flowHeader, isEmpty })}
+        {listTextRows(input, { Box, Svg, Button }, plan)}
       </Box>
     )
 

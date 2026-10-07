@@ -25,6 +25,12 @@ export type Settings = {
   character: Character
   showWorkflows: boolean
   inspect: boolean
+  /**
+   * How an inspected agent (or the session) shows: `tv`, its mascot grown
+   * into a TV over the pane where the surface can (terminal, desktop) and the
+   * pane has room; `pane`, the inspect view under the HUD in the lists' place.
+   */
+  inspectView: 'tv' | 'pane'
   wander: boolean
   scenes: boolean
   todoRows: number
@@ -53,6 +59,7 @@ export const settingsOf = (options: PluginOptions): Settings => ({
   character: options.character === 'usagi' ? 'usagi' : 'clawd',
   showWorkflows: options.showWorkflows !== false,
   inspect: options.inspect !== false,
+  inspectView: options.inspectView === 'pane' ? 'pane' : 'tv',
   wander: options.wander !== false,
   scenes: options.scenes !== false,
   todoRows: Math.max(1, Math.floor(positive(options.todoRows, TODO_ROWS))),

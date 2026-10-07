@@ -18,7 +18,7 @@ import type {
   HudTrailStep,
   HudUsageFacts,
 } from '../types'
-import { renderLists } from './agent-lists'
+import { listRows as listRowsOf, renderLists } from './agent-lists'
 import { isRunning, isStalled, merge, summarize, workflowOf } from './agent-model'
 import type { Agents } from './agent-model'
 import {
@@ -90,8 +90,9 @@ import {
   trailRows,
   trailsPruned,
 } from './inspect'
-import type { AgentBody, InspectAction, InspectRow, Trails } from './inspect'
+import type { AgentBody, InspectAction, InspectHeader, InspectRow, Trails } from './inspect'
 import { inspectedOf, overviewOf } from './inspect-model'
+import { STARTLED_MS } from './mascot-poses'
 import { SLOT } from './mascot-sprites'
 import { sceneInputsOf, sceneOf } from './scene-model'
 import { MESSAGE_TICKS, SCENE_FRAME_MS } from './scene-phases'
@@ -100,6 +101,10 @@ import { renderMascots, renderMascotsSvg } from './scene-render'
 import type { MascotPlan, SceneEvent, SceneInputs } from './scene-types'
 import { defined } from './state-json'
 import { printable } from './text-width'
+import { tvLayoutOf, tvRowsOf } from './tv-model'
+import type { TvInputs, TvRow } from './tv-model'
+import { budgeted, tvHeadOf, tvRowOfInspect, tvWhoOf } from './tv-rows'
+import { tvPostOf } from './tv-world'
 
 const PANE = 'hud'
 const TWIN = 'mod-hud'
@@ -1001,13 +1006,34 @@ let sceneEvents: SceneEvent[] = []
 // The smooth scene's `Client`: its key in the pane's tree, which a click's `ui.message` names.
 const SCENE_KEY = 'mascots'
 
-/** A click's post from the scene's surface module: `{ kind: 'inspect', id }`, or undefined for anything else. */
-const inspectAsk = (data: unknown): string | undefined => {
-  if (typeof data !== 'object' || data === null) return undefined
-  const { kind, id } = data as { kind?: unknown; id?: unknown }
+// The TV (hooks/tv-client.tsx): its `Client`'s key, which its posts' `ui.message` names. Module
+// memory, never state, for what only its drawing reads: where the pressed mascot stood (the
+// scene's click says, in the scene's cells) for it to fly from; what each surface's glass can
+// press, by key, from its last drawing; the surfaces it is up on and the pane's last scroll
+// handed to it; the surfaces it failed on (the pane's own view there); and the mascot back
+// from it, shaken till STARTLED_MS after.
+const TV_KEY = 'tv'
+let tvFrom: { id: string; x: number; y: number } | undefined
+const tvPresses = new Map<string, Map<string, () => void>>()
+const tvUp = new Set<string>()
+let tvWheel: { seq: number; by: number; page?: true } = { seq: 0, by: 0 }
+const tvFaulted = new Set<string>()
+let startled: { id: string; at: number } | undefined
+// Where the smooth scene's region starts in each surface's pane, from its last drawing: a click's cells from there.
+const sceneTops = new Map<string, number>()
 
-  return kind === 'inspect' && typeof id === 'string' && id !== '' && id.length <= 200 ? id : undefined
+/** A click's post from the scene's surface module: `{ kind: 'inspect', id, at }` (where the mascot stood, in its region's cells), or undefined for anything else. */
+const inspectAsk = (data: unknown): { id: string; at?: { x: number; y: number } } | undefined => {
+  if (typeof data !== 'object' || data === null) return undefined
+  const { kind, id, at } = data as { kind?: unknown; id?: unknown; at?: unknown }
+  if (kind !== 'inspect' || typeof id !== 'string' || id === '' || id.length > 200) return undefined
+  const { x, y } = (typeof at === 'object' && at !== null ? at : {}) as { x?: unknown; y?: unknown }
+  const placed = typeof x === 'number' && typeof y === 'number' && Number.isFinite(x) && Number.isFinite(y) && Math.abs(x) < 10_000 && Math.abs(y) < 10_000
+
+  return placed ? { id, at: { x: Math.round(x), y: Math.round(y) } } : { id }
 }
+
+const HUD_TABS: readonly HudTab[] = ['task', 'trail', 'said', 'agents', 'overview', 'cost']
 
 // A call starting: one write, its start time returned so its end can find it.
 const recordTrail = async ($: EngineInterface, settings: Settings, loop: string, label: string, input: Readonly<Record<string, unknown>>): Promise<number | undefined> => {
@@ -1579,8 +1605,10 @@ export const register: Register = (on, options) => {
   // A click on a mascot in the smooth scene: its surface module asks to inspect
   // that agent, and the selection (the hooks') follows, as a row's button does.
   on('ui.message', async ($, e, next) => {
-    const asked = inspectAsk(e.data)
-    if (settings.inspect && settings.mascots && e.element === SCENE_KEY && asked !== undefined) {
+    const ask = inspectAsk(e.data)
+    if (settings.inspect && settings.mascots && e.element === SCENE_KEY && ask !== undefined) {
+      const asked = ask.id
+      tvFrom = ask.at === undefined ? undefined : { id: asked, ...ask.at }
       await quietly($, async () => {
         // The crowned mascot is the session's own.
         if (asked === 'main') return selectAgent($, { id: 'main', kind: 'main' })
@@ -1589,6 +1617,42 @@ export const register: Register = (on, options) => {
         if (board[asked] !== undefined) await selectAgent($, { id: asked, kind: 'agent' })
         else if (held !== undefined) await selectAgent($, { id: asked, kind: 'shadow' })
       })
+    }
+    // The TV: closed (its mascot home, shaken), a channel, or a press on its glass.
+    const tv = e.element === TV_KEY ? tvPostOf(e.data) : undefined
+    if (tv !== undefined) {
+      await quietly($, async () => {
+        if ('close' in tv) {
+          const choice = await read($, selected)
+          if (choice !== null) startled = { id: choice.id, at: await $.clock.now() }
+          tvFrom = undefined
+          await selectAgent($, null)
+        } else if ('tab' in tv) {
+          const tab = HUD_TABS.find(one => one === tv.tab)
+          if (tab !== undefined) await selectTab($, tab)
+        } else {
+          tvPresses.get(e.surface)?.get(tv.press)?.()
+        }
+      })
+    }
+
+    return next(e)
+  })
+
+  // While the TV is up, the pane's wheel and scroll keys move its glass instead of the pane under it.
+  on('ui.scroll', { requestId: PANE }, ($, e, next) => {
+    if (tvUp.size === 0 || e.origin.kind !== 'person') return next(e)
+    tvWheel = { seq: tvWheel.seq + 1, by: e.by, ...(Math.abs(e.by) >= Math.max(2, e.bodyRows) ? { page: true as const } : {}) }
+    $.ui.invalidate('ui.render')
+
+    return { deny: 'the TV scrolls its own glass' }
+  })
+
+  // A TV that failed on a surface: the pane's own inspect view there from now on.
+  on('ui.fault', ($, e, next) => {
+    if (e.element === TV_KEY && !tvFaulted.has(e.surface)) {
+      tvFaulted.add(e.surface)
+      $.ui.invalidate('ui.render')
     }
 
     return next(e)
@@ -1658,28 +1722,36 @@ export const register: Register = (on, options) => {
     const needsMain = settings.mascots || choice?.kind === 'main'
     const main = needsMain ? ((await attempt(() => read($, mainFacts))) ?? NO_MAIN) : NO_MAIN
     let inspecting: { rows: InspectRow[]; agentsTab: boolean } | undefined
+    // The TV where the surface can draw it (a `Client`) and the pane has room: the inspected one's mascot, grown, over the pane.
+    const tvRoom = choice !== null && settings.inspectView === 'tv' && (e.surface === 'terminal' || e.surface === 'desktop') && 'Client' in table && bodyRows !== undefined && !tvFaulted.has(e.surface)
+      ? tvLayoutOf(settings.character, columns, bodyRows)
+      : undefined
+    let tvShow: { header: InspectHeader; tab: HudTab; body: InspectRow[] } | undefined
     if (choice !== null) {
       try {
         const usage = choice.kind === 'main' ? await read($, hudUsage) : undefined
         const who = inspectedOf(choice, all, workflow, hudData, main, usage?.turns, now, settings)
         if (who !== undefined) {
           const tab = tabOf(choice)
+          // The tab's rows as wide as they show: the glass's text, or the pane.
+          const width = tvRoom?.content ?? columns
           let body: InspectRow[] = []
           if (who.body !== undefined && tab !== 'agents') {
             const trail = tab === 'trail' ? ((await read($, trails))[choice.id] ?? []) : []
             const said = choice.kind === 'agent' && (tab === 'task' || tab === 'said') ? await read($, detail) : null
             const agentBody: AgentBody = { ...who.body, trail, ...(said !== null && said.id === choice.id ? { detail: said } : {}) }
-            body = tab === 'task' ? taskRows(agentBody, columns) : tab === 'trail' ? trailRows(agentBody, columns, now) : saidRows(agentBody, columns)
+            body = tab === 'task' ? taskRows(agentBody, width) : tab === 'trail' ? trailRows(agentBody, width, now) : saidRows(agentBody, width)
           } else if (usage !== undefined && tab === 'overview') {
             const held = settings.showWorkflows ? await read($, shadows) : {}
             // The files edited, from the facts: kept, and shown here, whatever `showTools` says.
             const edited = (await read($, hudTools)).edited?.length
-            body = overviewRows(overviewOf(usage, main, await read($, ledger), hudData?.inventory?.compactAt, hudData?.session?.startedAt, all, held, now, edited === 0 ? undefined : edited), columns)
+            body = overviewRows(overviewOf(usage, main, await read($, ledger), hudData?.inventory?.compactAt, hudData?.session?.startedAt, all, held, now, edited === 0 ? undefined : edited), width)
           } else if (usage !== undefined && tab === 'cost') {
             const startedAt = hudData?.session?.startedAt
-            body = costRows({ totalUsd: usage.costUsd, duration: startedAt === undefined ? undefined : now - startedAt, models: costTree(await read($, ledger)) }, columns, new Set(view.models ?? []))
+            body = costRows({ totalUsd: usage.costUsd, duration: startedAt === undefined ? undefined : now - startedAt, models: costTree(await read($, ledger)) }, width, new Set(view.models ?? []))
           }
-          inspecting = { rows: inspectRows(who.header, tabsOf(choice.kind), tab, body, columns), agentsTab: tab === 'agents' }
+          if (tvRoom !== undefined) tvShow = { header: who.header, tab, body }
+          else inspecting = { rows: inspectRows(who.header, tabsOf(choice.kind), tab, body, columns), agentsTab: tab === 'agents' }
         }
       } catch {
         // A view that cannot be drawn leaves the lists and the scene.
@@ -1719,6 +1791,11 @@ export const register: Register = (on, options) => {
     // only hand it the scene's inputs. Elsewhere (and with `motion: classic`)
     // the Box/Text scene on the hooks' 250 ms clock.
     const smooth = settings.motion === 'smooth' && (e.surface === 'terminal' || e.surface === 'desktop') && 'Client' in table
+    // The inspected one's mascot is in the TV, out of the scene; one back from it is shaken a while.
+    const away = tvRoom !== undefined && tvShow !== undefined && choice !== null ? choice.id : undefined
+    if (startled !== undefined && now - startled.at >= STARTLED_MS) startled = undefined
+    const shaken = startled !== undefined && startled.id !== away ? startled : undefined
+    let sceneTop: number | undefined
     if (settings.mascots && (smooth || inspecting === undefined)) {
       try {
         if (smooth) {
@@ -1738,16 +1815,29 @@ export const register: Register = (on, options) => {
               ...(inspecting === undefined ? {} : { paused: true }),
               ...(svg === undefined ? {} : { svg: true as const }),
               ...(settings.character === 'usagi' ? { character: 'usagi' as const } : {}),
+              ...(away === undefined ? {} : { away }),
+              ...(shaken === undefined ? {} : { startled: shaken }),
             })
             const { Client } = table as { Client: (props: { key: string; module: string; props?: unknown; width?: number; height?: number }) => RenderElement }
             scene = <Client key={SCENE_KEY} module="./scene-client.tsx" props={props} width={columns} height={inspecting === undefined ? spare : 0} />
+            sceneTop = bodyRows === undefined ? undefined : bodyRows - spare
           }
         } else {
           const frame = await read($, sceneTick)
           if (bodyRows !== undefined) {
             const spare = bodyRows - (hud === undefined ? 0 : hudRows + 1) - listRows - 1
             const mascots = sceneOf(list, hudData, now, { stalledMs: settings.stalledMs, main, shadows: workflow, scenes: settings.scenes, events: sceneEvents, character: settings.character })
-            const room = { columns, rows: spare, tick: Math.max(frame, Math.floor(now / SCENE_FRAME_MS)), wander: settings.wander, scenes: settings.scenes, collisions: settings.collisions }
+            const room = {
+              columns,
+              rows: spare,
+              tick: Math.max(frame, Math.floor(now / SCENE_FRAME_MS)),
+              wander: settings.wander,
+              scenes: settings.scenes,
+              collisions: settings.collisions,
+              ...(away === undefined && shaken === undefined ? {} : { held: [away, shaken?.id].filter((id): id is string => id !== undefined) }),
+              ...(away === undefined ? {} : { away }),
+              ...(shaken === undefined ? {} : { startled: { id: shaken.id, ms: now - shaken.at } }),
+            }
             const plan = mascotPlan(mascots, room, scenePlans.get(e.surface))
             const pick = settings.inspect ? { Button, onPick: (id: string) => void selectAgent($, { id, kind: kindOf(id) }) } : undefined
             scene = svg === undefined ? renderMascots({ Box, Text }, mascots, room, plan, pick) : renderMascotsSvg({ Box, Svg: svg }, mascots, room, plan, pick)
@@ -1771,12 +1861,66 @@ export const register: Register = (on, options) => {
     })
     const inspected = inspecting === undefined ? undefined : renderInspect({ Box, Text, Button, Svg: svg }, inspecting.rows, onAction, inspecting.agentsTab ? lists.element : undefined)
 
+    // The TV over the pane's window: its glass's rows (the Agents tab the lists, a press there keeping that
+    // tab), its presses by key, where its mascot stood, the pane's last scroll.
+    let tv: RenderElement | undefined
+    if (tvRoom !== undefined && tvShow !== undefined && choice !== null && bodyRows !== undefined) {
+      const presses = new Map<string, () => void>()
+      const tabs = tabsOf(choice.kind)
+      const head = tvHeadOf(tvShow.header, tabs, tvShow.tab, tvRoom.content)
+      for (const one of tabs) presses.set(`tab:${one}`, () => void selectTab($, one))
+      let body: TvRow[]
+      if (tvShow.tab === 'agents') {
+        const listed = tvRowsOf(listRowsOf({
+          settings, all, list, workflow, now, columns: tvRoom.content, isNarrow: tvRoom.content < NARROW_BELOW, view, choice,
+          onSelect: (id, kind) => void selectAgent($, { id, kind, tab: 'agents' }),
+          onToggle: group => void toggleGroup($, group),
+          onMinimise: group => void toggleMinimised($, group),
+        }))
+        body = listed.rows
+        for (const [key, press] of listed.presses) presses.set(key, press)
+      } else {
+        body = tvShow.body.map(row => tvRowOfInspect(row, onAction, presses))
+      }
+      tvPresses.set(e.surface, presses)
+      tvUp.add(e.surface)
+      const offset = e.props.scroll.offset
+      const top = sceneTops.get(e.surface)
+      const from = tvFrom?.id === choice.id && top !== undefined ? { x: tvFrom.x, y: top + tvFrom.y - offset } : undefined
+      const mascots = settings.mascots ? sceneOf(list, hudData, now, { stalledMs: settings.stalledMs, main, shadows: workflow, scenes: settings.scenes, character: settings.character }) : undefined
+      const inputs: TvInputs = {
+        columns,
+        rows: bodyRows,
+        layout: tvRoom,
+        who: tvWhoOf(choice, mascots, settings.character),
+        head,
+        body: budgeted(head, body),
+        tabs: [...tabs],
+        tab: tvShow.tab,
+        view: `${choice.id}:${tvShow.tab}`,
+        ...(from === undefined ? {} : { from }),
+        ...(tvWheel.seq === 0 ? {} : { wheel: tvWheel }),
+        ...(svg === undefined ? {} : { svg: true as const }),
+      }
+      const { Client } = table as { Client: (props: { key: string; module: string; props?: unknown; width?: number; height?: number }) => RenderElement }
+      tv = (
+        <Box key="tv-layer" position="absolute" top={offset} left={0} width={columns} height={bodyRows}>
+          <Client key={TV_KEY} module="./tv-client.tsx" props={inputs} width={columns} height={bodyRows} />
+        </Box>
+      )
+    } else {
+      tvUp.delete(e.surface)
+      tvPresses.delete(e.surface)
+    }
+    if (sceneTop !== undefined) sceneTops.set(e.surface, sceneTop)
+
     return (
       <Box flexDirection="column" minHeight={e.props.scroll.bodyRows} gap={1}>
         {hud}
         {inspected === undefined && todos}
         {inspected === undefined && lists.element}
         {smooth && scene !== undefined ? <Box key="scene-region" flexDirection="column">{scene}{inspected}</Box> : inspected ?? scene}
+        {tv}
       </Box>
     )
   })

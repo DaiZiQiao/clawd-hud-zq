@@ -1,6 +1,6 @@
 {
   "name": "mod-hud",
-  "version": "1.2.0",
+  "version": "1.3.0",
   "author": {
     "name": "Dai Zi Qiao",
     "url": "https://github.com/DaiZiQiao"
@@ -79,6 +79,12 @@
       "title": "Click to inspect",
       "description": "A button on every agent row, on the session's row and on every mascot opens its inspect view under the HUD: an agent's task, every tool call, its last answers; the session's overview and its cost by model and agent.",
       "default": true
+    },
+    "inspectView": {
+      "type": "string",
+      "title": "Inspect view",
+      "description": "tv (default): pressing a mascot (or an agent's row) sends it to the pane's centre, where it grows into a TV of itself: the screen on its forehead shows the agent's tabs (Task, Trail, Said, Agents; the session's Overview, Cost, Agents), its left panel's knob and ◀ ▶ change channel (tab), its right panel's knob and ▲ ▼ scroll, as do the arrow keys and the wheel; its ✕ or a press anywhere else switches it off and sends it home, shaken for three seconds. Where the surface cannot (mobile, VS Code) or the pane is too small, the inspect view under the HUD. pane: always the inspect view under the HUD.",
+      "default": "tv"
     },
     "wander": {
       "type": "boolean",

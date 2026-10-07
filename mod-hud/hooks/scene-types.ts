@@ -104,6 +104,10 @@ export type MascotLayout = {
   motion?: 'classic' | 'smooth'
   /** Mascots out of the choreography this frame (held or thrown by the person): no mover, no scene's target. */
   held?: readonly string[]
+  /** The mascot grown into the TV (hooks/tv-model.ts): out of the choreography, and not drawn. */
+  away?: string
+  /** Back from the TV this long ago (ms), within STARTLED_MS: shaken. */
+  startled?: { id: string; ms: number }
 }
 
 export type SceneOptions = {
@@ -181,6 +185,10 @@ export type SceneInputs = {
   svg?: true
   /** Usagi for the mascots (the `character` option); absent, Clawd. */
   character?: 'usagi'
+  /** The mascot grown into the TV: not drawn, out of the choreography, its place kept. */
+  away?: string
+  /** The mascot back from the TV, and when (the hooks' clock): shaken for STARTLED_MS. */
+  startled?: { id: string; at: number }
 }
 
 /** Where an agent is in its life, at this tick. */

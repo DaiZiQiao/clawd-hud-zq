@@ -385,6 +385,58 @@ its hat (or crown) lies on the floor beside it.
 printed as plain text a two-colour cell shows only its glyph, so the
 pictures above are drawn from it instead.
 
+## The TV
+
+With `inspectView: tv` (the default), pressing a mascot (the smooth scene's
+click, a classic pick, or an agent's row) sends it to the pane's centre,
+where it grows into a TV of itself over the pane: its body is the casing,
+the screen sits on its forehead, and around it stay its arms, its legs and
+what it wears. The pane's text shows through wherever the TV draws nothing;
+on the desktop the pane is dimmed under it.
+
+![Clawd's TV, terminal and desktop](tv-clawd.png)
+![Usagi's TV, terminal and desktop](tv-usagi.png)
+
+**The figure** (`hooks/tv-figure.ts`) is quarters, as Usagi's is, so the
+terminal draws it as quadrant glyphs and the desktop the same quarters in
+pixels. Clawd: its body in its own colour, the TV a row under its top, its
+notch eyes under the TV, its arms out of its torso (two rows under the
+eyes, their tips a quarter high as the torso's `▝` and `▘`), its four legs
+where the scene's stand, and its accessory or crown blown up on its head
+(`GIANT_WEAR`). Usagi: its round head the casing, its ears up through its
+role's hat (the scene's hat quarters blown up over the ears and the head's
+top), the session's side crown over its left ear, its eyes, cheeks and mouth
+under the TV, its arms out at its face, its feet.
+
+**The TV** (`hooks/tv-model.ts`) is the glass between two panels of the
+same width, so the casing shows as much left of it as right. The glass keeps
+the inspect view's title (one row, clear of the channel's number), its tabs
+and a blank row pinned, and scrolls the tab's rows under them, a thumb on its
+right. The left panel changes channel: its knob goes on a tab, `◀ ▶` back
+and on, round the tabs. The right panel scrolls: its knob a glassful up (its
+top) or down, `▲ ▼` a row, repeating while held. Keys, once the TV has been
+clicked: `← →` change channel, `↑ ↓` a row, Page Up and Down a glassful,
+Home and End, `q` or `x` close; the pane's wheel and its scroll keys move the
+glass while the TV is up. The `✕` on the casing's top right, or a click
+anywhere else in the pane, closes it. The layout is centred in the pane's
+window: up to 76 columns, the glass 5 to 14 rows and 22 columns or more; a
+pane too small for that draws the inspect view instead.
+
+**Its life** (`hooks/tv-world.ts`, on the `Client`'s own 20-a-second clock,
+`hooks/tv-client.tsx`): the mascot flies from where it stood to the centre
+(5 frames), grows into the giant (5), and the glass switches on, a bright
+line widening across it, then the picture opening out of the line (6); the
+channel's number shows on the glass a moment. A new channel or agent flickers
+three frames of static first. Closing, the glass switches off first, the
+picture folding into the line and the line into a dot that fades (7); then
+the giant shrinks back into the mascot (5) and it flies home (5). Only then
+are the hooks told, and the mascot, out of the scene while it was the TV, is
+back: for three seconds it shakes its head, looking left and right, then
+stands wide-eyed with its arms down, a sweat drop and a `!?` beside it
+(Usagi shouts `HUHHH?!`), out of the choreography and on its floor, then
+carries on. The scene counts those seconds on its own clock from when it
+hears the mascot is back.
+
 ## Sprite sheet
 
 A full mascot is drawn in a **box 13 cells wide and 4 rows tall**: row 0 is

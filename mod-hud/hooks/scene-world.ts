@@ -1,6 +1,6 @@
 import type { ClientPointerEvent, JsonValue } from 'claude-code'
 
-import { BOX_ROWS } from './mascot-sprites'
+import { BODY_X, BOX_ROWS } from './mascot-sprites'
 import { CLICK_CELLS, CLICK_MS, airContact, cooled, descentContact, hitsAlong, isClick, released, step, velocityOf } from './motion-physics'
 import type { Body, Landing, Rect, Sample } from './motion-physics'
 import { AIRBORNE, CONTACT_COOLDOWN_MS, KNOCKED_TICKS, PAUSE_MIN, PROPELLER_ROWS, clamp, nearDepth, pairKey } from './motion-rules'
@@ -81,6 +81,15 @@ export type World = {
   contacts: Map<string, number>
   view?: { at: number; sprites: Map<string, SpriteView>; seen: Map<string, Seen> }
   owners?: (string | undefined)[][]
+  /** The mascot back from the TV (`props.startled`, its `at` telling one return from the next), and the scene's time it was seen back: shaken from then. */
+  startled?: { id: string; at: number; from: number }
+}
+
+/** The scene's own start of a return from the TV: the hooks' clock and the scene's may differ, so it is counted from when the scene hears of it. */
+const heardStartled = (world: World, props: SceneInputs): void => {
+  const back = props.startled
+  if (back === undefined) world.startled = undefined
+  else if (world.startled?.id !== back.id || world.startled.at !== back.at) world.startled = { id: back.id, at: back.at, from: world.sceneNow }
 }
 
 /** A new instance's world: the scene at the hooks' time, nothing moving yet. */
@@ -94,6 +103,7 @@ export const createWorld = (props: SceneInputs): World => {
     touches: new Map(),
     contacts: new Map(),
   }
+  heardStartled(world, props)
   advance(world)
 
   return world
@@ -132,6 +142,7 @@ export const receive = (world: World, props: SceneInputs): void => {
     world.anchor = { now: props.now, ms: world.ms }
     world.sceneNow = Math.max(world.sceneNow, props.now)
   }
+  heardStartled(world, props)
   rememberContacts(world)
   world.cur = planAt(world, Math.floor(world.sceneNow / CHOREO_MS), world.cur)
   world.next = world.cur === undefined ? undefined : planAt(world, world.cur.tick + 1, world.cur)
@@ -465,7 +476,7 @@ export const pointer = (world: World, event: ClientPointerEvent, post: (data: Js
         const one = plan?.placements.find(placement => placement.id === grip.id)
         // An agent's mascot, or the session's (its id `main`): the hooks inspect it.
         const mascot = one !== undefined && (one.kind === 'full' || one.kind === 'mini' || one.kind === 'main')
-        if (mascot && world.props.inspect && isClick(grip.downMs, world.ms, px - grip.start.x, py - grip.start.y)) post({ kind: 'inspect', id: grip.id })
+        if (mascot && world.props.inspect && isClick(grip.downMs, world.ms, px - grip.start.x, py - grip.start.y)) post({ kind: 'inspect', id: grip.id, at: { x: Math.round(grip.start.x - grip.offset.x) + BODY_X, y: Math.round(grip.start.y - grip.offset.y) } })
 
         return false
       }

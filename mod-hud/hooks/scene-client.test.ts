@@ -211,7 +211,7 @@ describe('the pointer', () => {
     }
   })
 
-  test('a click (up within 300 ms, under a cell away) on an agent inspects it: the hooks select it, its detail view takes the scene\'s place; on the crowned one it asks for `main`', async ($, on) => {
+  test('a click (up within 300 ms, under a cell away) on an agent inspects it: the hooks select it, its detail view takes the scene\'s place; on the crowned one it asks for `main`', { options: { inspectView: 'pane' } }, async ($, on) => {
     const { held, world } = arrange(on, [TYPIST])
     for (const surface of SURFACES) {
       held.set('selected', { value: null, version: (held.get('selected')?.version ?? 0) + 1 })

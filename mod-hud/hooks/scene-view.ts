@@ -1,3 +1,4 @@
+import { STARTLED_MS } from './mascot-poses'
 import { BODY_WIDTH, BODY_X, BOX_ROWS, MINI } from './mascot-sprites'
 import type { Rect } from './motion-physics'
 import { KNOCKED_TICKS, LOOP_ROWS, LOOP_TICKS, clamp, frameAt } from './motion-rules'
@@ -37,16 +38,25 @@ export const rectAt = (plan: MascotPlan, kind: Placement['kind'], d: number, x: 
   return { x: x + span.dx, width: span.width, top: plan.headroom + d - lift + 1, height: BOX_ROWS - 1 }
 }
 
-export const layoutAt = (world: World, tick: number): MascotLayout => ({
-  columns: world.props.columns,
-  rows: world.props.rows,
-  tick,
-  wander: world.props.wander,
-  scenes: world.props.scenes,
-  collisions: world.props.collisions,
-  motion: 'smooth',
-  held: [...world.carried.keys()],
-})
+export const layoutAt = (world: World, tick: number): MascotLayout => {
+  const away = world.props.away
+  const startled = world.startled
+  const since = startled === undefined ? undefined : world.sceneNow - startled.from
+
+  return {
+    columns: world.props.columns,
+    rows: world.props.rows,
+    tick,
+    wander: world.props.wander,
+    scenes: world.props.scenes,
+    collisions: world.props.collisions,
+    motion: 'smooth',
+    // In the TV, and shaken back from it: out of the choreography as if held (in the TV, not drawn).
+    held: [...world.carried.keys(), ...[away, since !== undefined && since >= 0 && since < STARTLED_MS ? startled?.id : undefined].filter((id): id is string => id !== undefined && !world.carried.has(id))],
+    ...(away === undefined ? {} : { away }),
+    ...(startled === undefined || since === undefined || since < 0 || since >= STARTLED_MS ? {} : { startled: { id: startled.id, ms: since } }),
+  }
+}
 
 export const sceneAt = (world: World, now: number): MascotScene => sceneFromInputs(world.props, now)
 

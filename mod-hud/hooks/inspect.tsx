@@ -262,7 +262,7 @@ export type InspectHeader = { glyph: string; glyphColour: string; name: string; 
 export const AGENT_TABS: readonly HudTab[] = ['task', 'trail', 'said', 'agents']
 export const SESSION_TABS: readonly HudTab[] = ['overview', 'cost', 'agents']
 
-const TAB_LABELS: Readonly<Record<HudTab, string>> = { task: 'Task', trail: 'Trail', said: 'Said', agents: 'Agents', overview: 'Overview', cost: 'Cost' }
+export const TAB_LABELS: Readonly<Record<HudTab, string>> = { task: 'Task', trail: 'Trail', said: 'Said', agents: 'Agents', overview: 'Overview', cost: 'Cost' }
 
 /** The tabs a selection has. */
 export const tabsOf = (kind: HudSelection['kind']): readonly HudTab[] => (kind === 'main' ? SESSION_TABS : AGENT_TABS)

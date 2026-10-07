@@ -142,7 +142,7 @@ export const placedSprites = (scene: MascotScene, layout: MascotLayout, plan = m
   const sprites: PlacedSprite[] = []
   for (const placement of plan.placements) {
     const seen = view?.get(placement.id)
-    if (seen?.hidden === true) continue
+    if (seen?.hidden === true || placement.id === layout.away) continue
     const one: Placement = seen === undefined ? placement : {
       ...placement,
       drawnX: seen.x === undefined ? placement.drawnX : Math.round(seen.x),
@@ -166,20 +166,23 @@ export const placedSprites = (scene: MascotScene, layout: MascotLayout, plan = m
     // In the pipe's scene: by the scene's own time, over any view.
     const piped = agent === undefined ? undefined : pipedOf(one, agent, plan, anchors)
     if (piped?.stage === 'inside') continue
+    // Back from the TV, shaken: on its floor where it stands, going nowhere.
+    const shaken = layout.startled?.id === one.id && piped === undefined
     const context: LookContext = {
       pointing: pointing.has(one.id),
       ...(one.facing === undefined ? {} : { facing: one.facing }),
-      ...(one.motion === undefined || piped !== undefined ? {} : { motion: one.motion }),
+      ...(one.motion === undefined || piped !== undefined || shaken ? {} : { motion: one.motion }),
       ...(one.cues === undefined ? {} : { cues: one.cues }),
       ...(seen?.pose === undefined ? {} : { pose: seen.pose }),
       ...(seen?.kick === undefined ? {} : { kick: seen.kick }),
       ...(seen?.nudge === undefined ? {} : { nudge: seen.nudge }),
       ...(seen?.scanning === true ? { scanning: true } : {}),
       ...(piped === undefined ? {} : { pipe: piped.stage }),
+      ...(layout.startled?.id === one.id ? { startled: layout.startled.ms } : {}),
     }
     const free = seen?.pose !== undefined
     // Its lift and place, to the fraction: the pipe's, the view's, or the plan's.
-    const liftExact = piped !== undefined ? piped.lift : seen?.lift
+    const liftExact = piped !== undefined ? piped.lift : shaken ? 0 : seen?.lift
     const xExact = piped !== undefined ? piped.x : seen?.x
     const dExact = piped !== undefined ? piped.d : seen?.d ?? one.d
     const drawnX = xExact === undefined ? one.drawnX : Math.round(xExact)

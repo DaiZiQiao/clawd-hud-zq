@@ -67,6 +67,8 @@ export type LookContext = {
    * mouth, the pipe coming down over it, or being sucked up.
    */
   pipe?: 'fall' | 'lower' | 'suck'
+  /** Back from the TV this long ago (ms): shaken, within STARTLED_MS. */
+  startled?: number
 }
 
 export const at = <T,>(frames: readonly T[], tick: number): T => frames[((tick % frames.length) + frames.length) % frames.length] as T
@@ -293,13 +295,40 @@ const phaseLook = (agent: MascotAgent, phase: Phase, tick: number, facing: 'left
   }
 }
 
+/** How long a mascot back from the TV stays shaken, and of that how long it shakes its head (a turn each SHAKE_STEP_MS). */
+export const STARTLED_MS = 3000
+export const SHAKE_MS = 1500
+export const SHAKE_STEP_MS = 150
+
+/**
+ * Back from the TV, wondering what just happened: for SHAKE_MS it shakes its
+ * head (looking left, then right, its whole figure a cell with its look every
+ * other turn), then stands wide-eyed, arms down, to STARTLED_MS; a sweat drop
+ * and a `!?` beside its head all along.
+ */
+export const startledLook = (ms: number): Look => {
+  const turn = Math.floor(ms / SHAKE_STEP_MS)
+  const shaking = ms < SHAKE_MS
+  const head: Head = shaking ? (turn % 2 === 0 ? 'left' : 'right') : 'wide'
+
+  return {
+    ...STAND,
+    head,
+    arms: shaking ? 'rest' : 'low',
+    ...(shaking && Math.floor(turn / 2) % 2 === 0 ? { nudge: turn % 2 === 0 ? (-1 as const) : (1 as const) } : {}),
+    overlays: [at(OVERLAYS.sweat, Math.floor(ms / 250)), ...OVERLAYS.startle],
+  }
+}
+
 /**
  * The smooth scene's touches over a look: held or thrown (eyes wide, arms up,
  * legs kicking while it dangles, tucked while it flies through the air; its
- * laptop gone), scanning eyes down in flight, a wobble's lean.
+ * laptop gone), scanning eyes down in flight, a wobble's lean; shaken, back
+ * from the TV (on its feet, wherever it was: not while the person holds it).
  */
 const handled = (look: Look, context: LookContext): Look => {
   let next = look
+  if (context.startled !== undefined && context.startled >= 0 && context.startled < STARTLED_MS && context.pose === undefined) return startledLook(context.startled)
   if (context.pose !== undefined) {
     const legs: Legs = context.pose === 'dangle' ? ((context.kick ?? 0) % 2 === 0 ? 'step' : 'stand') : 'tuck'
     next = { ...STAND, head: 'wide', arms: 'up', armsUp: true, legs, overlays: look.overlays.filter(one => ALOFT.has(one)), lift: look.lift }
@@ -374,6 +403,10 @@ export const miniLook = (agent: MascotAgent, phase: Phase, tick: number, context
   }
   // Held or thrown: upright, legs kicking or tucked, nothing beside it.
   if (context.pose !== undefined) look = { head: 'open', legs: context.pose === 'dangle' && (context.kick ?? 0) % 2 === 1 ? 'step' : 'stand', overlays: [], lift: look.lift, sit: false }
+  // Back from the TV: shaking its head, then still.
+  else if (context.startled !== undefined && context.startled >= 0 && context.startled < STARTLED_MS) {
+    look = { head: context.startled < SHAKE_MS ? (Math.floor(context.startled / SHAKE_STEP_MS) % 2 === 0 ? 'left' : 'right') : 'open', legs: 'stand', overlays: [], lift: 0, sit: false }
+  }
 
   return look
 }

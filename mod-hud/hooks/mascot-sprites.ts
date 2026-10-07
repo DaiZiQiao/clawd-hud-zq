@@ -266,6 +266,8 @@ export const OVERLAYS = {
   tick: each('g', [placed([1, 11, '✓'])]),
   /** Failed: a cross over the slumped head (drawn a row lower, sitting). */
   cross: each('r', [placed([-1, 6, '✗'])]),
+  /** Back from the TV, shaken: `!?` beside its head. */
+  startle: each('y', [placed([0, 11, '!?'])]),
   /** A parent pointing at its child as it lands: its arm out, the pointer beside it. */
   pointing: each('b', [placed([2, 11, '⇢'])]),
   /** The cigarette in the right hand, its tip glowing. */

@@ -167,7 +167,7 @@ describe('trails', () => {
     expect(trailEnded(ended, 'b', { tool: 'Read', at: 9 }, { ms: 1, outcome: 'ok' })).toBe(ended)
   })
 
-  test('each call writes its trail as it starts and as it ends, with its time and outcome; dropped with the agent', async ($, on) => {
+  test('each call writes its trail as it starts and as it ends, with its time and outcome; dropped with the agent', { options: { inspectView: 'pane' } }, async ($, on) => {
     const { held, world, clock, running } = await busy($, on)
     const trails = held.get('trails')?.value as Record<string, HudTrailStep[]>
     expect(trails['sub-1']).toHaveLength(10)
@@ -190,7 +190,7 @@ describe('trails', () => {
     expect((held.get('trails')?.value as Record<string, unknown>)['sub-1']).toBe(undefined)
   })
 
-  test('with inspect off: no row, session or mascot button, no trail, no ledger, no selection', { options: { inspect: false } }, async ($, on) => {
+  test('with inspect off: no row, session or mascot button, no trail, no ledger, no selection', { options: { inspectView: 'pane', inspect: false } }, async ($, on) => {
     const { held, settled } = await busy($, on)
     expect(held.has('trails')).toBe(false)
     expect(held.has('ledger')).toBe(false)
@@ -207,7 +207,7 @@ describe('trails', () => {
 })
 
 describe('the inspect view', () => {
-  test('a row\'s button selects its agent: the view takes the pane under the HUD (lists, TODO and scene hidden), at 100 and 48 columns, terminal and desktop', async ($, on) => {
+  test('a row\'s button selects its agent: the view takes the pane under the HUD (lists, TODO and scene hidden), at 100 and 48 columns, terminal and desktop', { options: { inspectView: 'pane' } }, async ($, on) => {
     const { held, world, settled } = await busy($, on)
     seedHud(held)
     for (const surface of SURFACES) {
@@ -246,7 +246,7 @@ describe('the inspect view', () => {
     await settled()
   })
 
-  test('Task: the description, then the prompt, every row kept and wrapped, at 100 and 48 columns on both surfaces', async ($, on) => {
+  test('Task: the description, then the prompt, every row kept and wrapped, at 100 and 48 columns on both surfaces', { options: { inspectView: 'pane' } }, async ($, on) => {
     const { held, settled } = await busy($, on)
     for (const surface of SURFACES) {
       for (const columns of WIDTHS) {
@@ -272,7 +272,7 @@ describe('the inspect view', () => {
     await settled()
   })
 
-  test('Trail: every call, the newest last, its time, span and outcome, the current one in the accent, at 100 and 48 columns on both surfaces', async ($, on) => {
+  test('Trail: every call, the newest last, its time, span and outcome, the current one in the accent, at 100 and 48 columns on both surfaces', { options: { inspectView: 'pane' } }, async ($, on) => {
     const { held, world, settled } = await busy($, on)
     for (const surface of SURFACES) {
       for (const columns of WIDTHS) {
@@ -304,7 +304,7 @@ describe('the inspect view', () => {
     await settled()
   })
 
-  test('Said: the last ten assistant messages, wrapped, the newest at the bottom, at 100 and 48 columns on both surfaces', async ($, on) => {
+  test('Said: the last ten assistant messages, wrapped, the newest at the bottom, at 100 and 48 columns on both surfaces', { options: { inspectView: 'pane' } }, async ($, on) => {
     const { world, settled } = await busy($, on)
     world.said = Array.from({ length: 12 }, (_, index) => `Message ${index + 1}: ${'word '.repeat(20).trim()}`)
     for (const surface of SURFACES) {
@@ -325,7 +325,7 @@ describe('the inspect view', () => {
     await settled()
   })
 
-  test('Agents: the lists under the tabs; a row\'s press jumps to that agent on the same tab', async ($, on) => {
+  test('Agents: the lists under the tabs; a row\'s press jumps to that agent on the same tab', { options: { inspectView: 'pane' } }, async ($, on) => {
     const { held, settled } = await busy($, on)
     for (const surface of SURFACES) {
       for (const columns of WIDTHS) {
@@ -347,7 +347,7 @@ describe('the inspect view', () => {
     await settled()
   })
 
-  test('the tabs switch on a press only: the active tab\'s press writes nothing; Back is the way out (no `[`, `]` or Esc reaches a pane)', async ($, on) => {
+  test('the tabs switch on a press only: the active tab\'s press writes nothing; Back is the way out (no `[`, `]` or Esc reaches a pane)', { options: { inspectView: 'pane' } }, async ($, on) => {
     const { held, world, settled } = await busy($, on)
     const ui = await mount($, 'terminal', 100)
     await press(ui, 'inspect:sub-1')
@@ -366,7 +366,7 @@ describe('the inspect view', () => {
     await settled()
   })
 
-  test('the conversation is read on selection, on a tab that needs it when not held, and on that agent\'s turn ends; never per frame', async ($, on) => {
+  test('the conversation is read on selection, on a tab that needs it when not held, and on that agent\'s turn ends; never per frame', { options: { inspectView: 'pane' } }, async ($, on) => {
     const { world, clock, running, held } = await busy($, on)
     const ui = await mount($, 'terminal', 100)
     expect(world.fetches).toEqual([])
@@ -396,7 +396,7 @@ describe('the inspect view', () => {
     await ui.unmount()
   })
 
-  test('a workflow agent: its trail, a note for its task and its conversation, which is never asked for', async ($, on) => {
+  test('a workflow agent: its trail, a note for its task and its conversation, which is never asked for', { options: { inspectView: 'pane' } }, async ($, on) => {
     const { held, world, clock } = arrange(on)
     await $.session.start(START)
     await clock.settle()
@@ -427,7 +427,7 @@ describe('the inspect view', () => {
     expect(world.fetches).toEqual([])
   })
 
-  test('the classic scene: a mascot\'s pick selects; Back returns the scene', { options: { motion: 'classic' } }, async ($, on) => {
+  test('the classic scene: a mascot\'s pick selects; Back returns the scene', { options: { inspectView: 'pane', motion: 'classic' } }, async ($, on) => {
     const { held, clock, settled } = await busy($, on)
     for (const surface of SURFACES) {
       const ui = await mount($, surface, 100)
@@ -448,7 +448,7 @@ describe('the inspect view', () => {
     await settled()
   })
 
-  test('clearing a selected finished agent clears its detail once and stops reading inspection facts on redraw', async ($, on) => {
+  test('clearing a selected finished agent clears its detail once and stops reading inspection facts on redraw', { options: { inspectView: 'pane' } }, async ($, on) => {
     const { held, world, clock } = arrange(on)
     await $.session.start(START)
     await clock.settle()
@@ -473,7 +473,7 @@ describe('the inspect view', () => {
     await ui.unmount()
   })
 
-  test('a selection still on the board survives reconciliation and clear without inspection writes', async ($, on) => {
+  test('a selection still on the board survives reconciliation and clear without inspection writes', { options: { inspectView: 'pane' } }, async ($, on) => {
     const { held, world, clock } = arrange(on)
     await $.session.start(START)
     await clock.settle()
@@ -491,7 +491,7 @@ describe('the inspect view', () => {
     await ui.unmount()
   })
 
-  test('reconciliation clears an expired workflow selection and a returning agent does not reopen it', async ($, on) => {
+  test('reconciliation clears an expired workflow selection and a returning agent does not reopen it', { options: { inspectView: 'pane' } }, async ($, on) => {
     const { held, world, clock } = arrange(on)
     await $.session.start(START)
     await clock.settle()
@@ -514,7 +514,7 @@ describe('the inspect view', () => {
     await ui.unmount()
   })
 
-  test('a slow conversation read cannot overwrite a newer selection', async ($, on) => {
+  test('a slow conversation read cannot overwrite a newer selection', { options: { inspectView: 'pane' } }, async ($, on) => {
     const { held, world, clock } = arrange(on)
     await $.session.start(START)
     await clock.settle()
@@ -540,7 +540,7 @@ describe('the inspect view', () => {
     await ui.unmount()
   })
 
-  test('a slow conversation read cannot restore detail after Back or clear', async ($, on) => {
+  test('a slow conversation read cannot restore detail after Back or clear', { options: { inspectView: 'pane' } }, async ($, on) => {
     const { held, world, clock } = arrange(on)
     await $.session.start(START)
     await clock.settle()
@@ -562,7 +562,7 @@ describe('the inspect view', () => {
     await ui.unmount()
   })
 
-  test('the stored conversation: the prompt, then the last ten messages, each at most 2,000 characters', async ($, on) => {
+  test('the stored conversation: the prompt, then the last ten messages, each at most 2,000 characters', { options: { inspectView: 'pane' } }, async ($, on) => {
     const { held, world, clock } = arrange(on)
     await $.session.start(START)
     await clock.settle()
@@ -580,7 +580,7 @@ describe('the inspect view', () => {
   })
 
   test('a cramped pane still draws every row of the view: the pane scrolls, the selection stays', {
-    options: { showGit: false, showTools: false, showTodos: false, showInventory: false },
+    options: { inspectView: 'pane', showGit: false, showTools: false, showTodos: false, showInventory: false },
   }, async ($, on) => {
     const { held } = arrange(on)
     held.set('agents', { value: { x: entry('x', { type: 'worker', description: 'A long task '.repeat(12) }) }, version: 1 })
@@ -620,7 +620,7 @@ describe('the inspect view', () => {
 })
 
 describe('the session tab', () => {
-  test('the session\'s row heads the lists; its press, or the crowned mascot\'s click, opens the Overview; the session is never pruned', async ($, on) => {
+  test('the session\'s row heads the lists; its press, or the crowned mascot\'s click, opens the Overview; the session is never pruned', { options: { inspectView: 'pane' } }, async ($, on) => {
     const { held, world, clock } = arrange(on)
     await $.session.start(START)
     await clock.settle()
@@ -651,7 +651,7 @@ describe('the session tab', () => {
     await ui.unmount()
   })
 
-  test('Overview: time and busy share, turns and compactions, the context\'s growth, tokens, the limits\' burn, asks, failures and agents', async ($, on) => {
+  test('Overview: time and busy share, turns and compactions, the context\'s growth, tokens, the limits\' burn, asks, failures and agents', { options: { inspectView: 'pane' } }, async ($, on) => {
     const { held, world, clock } = arrange(on)
     await $.session.start(START)
     await clock.settle()
@@ -707,7 +707,7 @@ describe('the session tab', () => {
     }
   })
 
-  test('with showTools off the Overview still counts the files edited', { options: { showTools: false } }, async ($, on) => {
+  test('with showTools off the Overview still counts the files edited', { options: { inspectView: 'pane', showTools: false } }, async ($, on) => {
     const { held, clock } = arrange(on)
     await $.session.start(START)
     await clock.settle()
@@ -741,7 +741,7 @@ describe('the session tab', () => {
     expect(inspectLines(overviewRows(view, 72))).toContain('turns    12 turns · 3 compactions')
   })
 
-  test('Cost: the session\'s total and rate, each model a Button that opens to its users by cost; open models written on a press only', async ($, on) => {
+  test('Cost: the session\'s total and rate, each model a Button that opens to its users by cost; open models written on a press only', { options: { inspectView: 'pane' } }, async ($, on) => {
     const { held, world, clock } = arrange(on)
     await $.session.start(START)
     await clock.settle()
@@ -822,7 +822,7 @@ describe('the session tab', () => {
     }
   })
 
-  test('/clear empties the ledger and keeps the lists\' expansion; another end keeps both', async ($, on) => {
+  test('/clear empties the ledger and keeps the lists\' expansion; another end keeps both', { options: { inspectView: 'pane' } }, async ($, on) => {
     const { held, world, clock } = arrange(on)
     await $.session.start(START)
     await clock.settle()
@@ -840,7 +840,7 @@ describe('the session tab', () => {
     expect(world.writes.filter(key => key === 'ledger')).toHaveLength(writes)
   })
 
-  test('/mod-hud facts includes the ledger\'s summary and the lists\' expansion once there are any', async ($, on) => {
+  test('/mod-hud facts includes the ledger\'s summary and the lists\' expansion once there are any', { options: { inspectView: 'pane' } }, async ($, on) => {
     const { held, world, clock } = arrange(on)
     await $.session.start(START)
     await clock.settle()
@@ -861,7 +861,7 @@ describe('the session tab', () => {
 })
 
 describe('messages in the pane', () => {
-  test('a SendMessage to a known agent\'s name sends a bubble across the scene; to an unknown one, none', { options: { wander: false, motion: 'classic' } }, async ($, on) => {
+  test('a SendMessage to a known agent\'s name sends a bubble across the scene; to an unknown one, none', { options: { inspectView: 'pane', wander: false, motion: 'classic' } }, async ($, on) => {
     const { clock } = arrange(on)
     await $.session.start(START)
     await clock.settle()
@@ -896,7 +896,7 @@ describe('messages in the pane', () => {
   })
 })
 
-test('a tool ending after its trail was evicted makes no trail write', async ($, on) => {
+test('a tool ending after its trail was evicted makes no trail write', { options: { inspectView: 'pane' } }, async ($, on) => {
   const { held, world, clock } = arrange(on)
   await $.session.start(START)
   await clock.settle()
@@ -912,7 +912,7 @@ test('a tool ending after its trail was evicted makes no trail write', async ($,
   expect(world.writes.filter(key => key === 'trails')).toHaveLength(writes)
 })
 
-test('a compaction fork request counts once, from turn.step, even when session.compact repeats its usage', async ($, on) => {
+test('a compaction fork request counts once, from turn.step, even when session.compact repeats its usage', { options: { inspectView: 'pane' } }, async ($, on) => {
   const { held, world, clock } = arrange(on)
   world.stepUsage = { input_tokens: 1000, output_tokens: 100, cache_read_input_tokens: 20, cache_creation_input_tokens: 30, model: 'claude-opus-5-5' }
   on('session.compact', async () => {
@@ -965,7 +965,7 @@ const overlaysIn = (node: unknown, row = ''): Overlay[] => {
 }
 
 describe('in pixels on the desktop', () => {
-  test('the lists read as the terminal\'s, row for row; every Button an absolute Box over its own blank cells; a press there selects, as on the terminal', async ($, on) => {
+  test('the lists read as the terminal\'s, row for row; every Button an absolute Box over its own blank cells; a press there selects, as on the terminal', { options: { inspectView: 'pane' } }, async ($, on) => {
     const { held, settled } = await busy($, on)
     seedHud(held)
     for (const columns of WIDTHS) {
@@ -1019,7 +1019,7 @@ describe('in pixels on the desktop', () => {
     await settled()
   })
 
-  test('the inspect view: Back and the tabs laid over the cells the terminal draws them in; presses switch tabs and go back; the cost lines keep their columns', async ($, on) => {
+  test('the inspect view: Back and the tabs laid over the cells the terminal draws them in; presses switch tabs and go back; the cost lines keep their columns', { options: { inspectView: 'pane' } }, async ($, on) => {
     const { held, settled } = await busy($, on)
     const ui = await mount($, 'desktop', 100)
     await press(ui, 'inspect:sub-1')
@@ -1046,7 +1046,7 @@ describe('in pixels on the desktop', () => {
     await settled()
   })
 
-  test('every Svg stays far under the cap with 40 agents, 40 long todos and a trail of 200 calls; the sizes read back', { options: { maxRows: 40, todoRows: 40 } }, async ($, on) => {
+  test('every Svg stays far under the cap with 40 agents, 40 long todos and a trail of 200 calls; the sizes read back', { options: { inspectView: 'pane', maxRows: 40, todoRows: 40 } }, async ($, on) => {
     const { held } = arrange(on)
     const long = 'Rewrite the reconciliation loop so a slow list call never resurrects a cleared agent, then prove it under load'
     held.set('todos', { value: { items: Array.from({ length: 40 }, (_, index) => ({ content: `${index} ${long}`, status: index % 3 === 0 ? 'completed' : index % 3 === 1 ? 'in_progress' : 'pending', activeForm: `Doing ${index} ${long}` })) }, version: 1 })

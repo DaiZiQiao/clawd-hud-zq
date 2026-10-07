@@ -217,6 +217,9 @@ export const SHOUTS: readonly Overlay[] = ['Ura!', 'HUHHH?', 'UNA!'].map(shout)
 /** Up again after a fall, crouched, dazed. */
 export const DAZED: Overlay = shout('HUHHH?')
 
+/** Back from the TV, shaken: what just happened? Two cells further left than a shout, so its seven fit as its head shakes a cell either way. */
+export const STARTLED: Overlay = { art: placed([-1, 9, 'HUHHH?!']), ink: 'f' }
+
 /**
  * Failed, slumped: the cross over its head (its head stays up, so in the sky
  * row); with no sky row free, a row lower beside its ears (its `lowArt` is
@@ -225,7 +228,7 @@ export const DAZED: Overlay = shout('HUHHH?')
 export const CROSS: Overlay = { art: placed([-1, 6, '✗']), lowArt: placed([-1, 11, '✗']), ink: 'r' }
 
 /** What Usagi says or shows over its head: a row lower with no sky row free. */
-export const USAGI_LINES: readonly Overlay[] = [...SHOUTS, DAZED, CROSS]
+export const USAGI_LINES: readonly Overlay[] = [...SHOUTS, DAZED, STARTLED, CROSS]
 
 // --- quarters to cells ---------------------------------------------------------------
 
