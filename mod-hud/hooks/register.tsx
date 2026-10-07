@@ -3,6 +3,7 @@ import type { BuiltinToolResults, EngineInterface, ProcessRunResult, Register, R
 
 import type {
   AgentBoardEntry,
+  HudAlerts,
   HudData,
   HudDetailFacts,
   HudGitFacts,
@@ -18,7 +19,7 @@ import type {
   HudUsageFacts,
 } from '../types'
 import { renderLists } from './agent-lists'
-import { isRunning, merge, summarize, workflowOf } from './agent-model'
+import { isRunning, isStalled, merge, summarize, workflowOf } from './agent-model'
 import type { Agents } from './agent-model'
 import {
   isShadowVisible,
@@ -42,8 +43,10 @@ import {
   applyMeasure,
   assembleHudData,
   debouncer,
+  editedPathOf,
   effortFromSettings,
   effortOf,
+  fileEdited,
   gitFactsOf,
   inventoryOf,
   noCurrentTool,
@@ -583,10 +586,38 @@ const readHudData = async ($: EngineInterface, now: number): Promise<HudData> =>
     inventory: await read($, hudInventory),
   }, now)
 
+// What the alert strip counts that no HUD fact carries: running subagents
+// waiting on a permission ask, subagents and workflow agents stalled, and the
+// calls the ledger counted denied or failed (kept with inspect on). Undefined
+// while every count is 0.
+const alertCountsOf = async ($: EngineInterface, settings: Settings, now: number): Promise<HudAlerts | undefined> => {
+  const all = await read($, agents)
+  const board = Object.values(all)
+  const asks = board.filter(entry => isRunning(entry) && entry.awaitingPermission === true).length
+  const flow = settings.showWorkflows ? shadowCounts(workflowOf(await read($, shadows), all, now), now, settings.stalledMs).stalled : 0
+  const stalled = board.filter(entry => isStalled(entry, now, settings.stalledMs)).length + flow
+  const failed = settings.inspect ? (await read($, ledger)).failures : undefined
+  const failures = (failed?.denied ?? 0) + (failed?.error ?? 0)
+  const alerts = defined<HudAlerts>({
+    asks: asks > 0 ? asks : undefined,
+    stalled: stalled > 0 ? stalled : undefined,
+    failures: failures > 0 ? failures : undefined,
+  })
+
+  return Object.keys(alerts).length === 0 ? undefined : alerts
+}
+
 // The HUD as the pane and the status line show it: the parts switched off
-// left out, and the motto, if any.
+// left out, the main loop working or idle (kept with mascots on), what needs
+// attention, and the motto, if any. The inventory is no longer drawn; with
+// `showInventory` on it is still read for the ctx bar's compaction mark and
+// runway, and printed by `/mod-hud facts`.
 const hudDataOf = async ($: EngineInterface, settings: Settings, now: number): Promise<HudData> => {
   const data = await readHudData($, now)
+  const main = (await attempt(() => read($, mainFacts))) ?? NO_MAIN
+  const working = main.busySince !== undefined || main.idleSince !== undefined
+    ? defined({ busySince: main.busySince, idleSince: main.busySince === undefined ? main.idleSince : undefined })
+    : undefined
 
   return defined<HudData>({
     ...data,
@@ -594,6 +625,8 @@ const hudDataOf = async ($: EngineInterface, settings: Settings, now: number): P
     tools: settings.showTools ? data.tools : undefined,
     todos: settings.showTodos ? data.todos : undefined,
     inventory: settings.showInventory ? data.inventory : undefined,
+    main: working,
+    alerts: await attempt(() => alertCountsOf($, settings, now)),
     motto: settings.motto === '' ? undefined : settings.motto,
   })
 }
@@ -918,6 +951,12 @@ const toggleMinimised = ($: EngineInterface, group: 'agents' | 'workflow'): Prom
     await update($, listView, held => defined<HudListView>({ ...held, [key]: held[key] === true ? undefined : true }))
   })
 
+// The TODO line's `▸` / `▾`: every item listed under the line, or the line alone.
+const toggleTodos = ($: EngineInterface): Promise<void> =>
+  quietly($, async () => {
+    await update($, listView, held => defined<HudListView>({ ...held, todosExpanded: held.todosExpanded === true ? undefined : true }))
+  })
+
 // A Cost-tree model's line: its users listed, or not.
 const toggleModel = ($: EngineInterface, model: string): Promise<void> =>
   quietly($, async () => {
@@ -1113,7 +1152,9 @@ export const register: Register = (on, options) => {
     if (loop === undefined && settings.showTools) {
       await quietly($, async () => {
         const now = await $.clock.now()
-        await update($, hudTools, held => toolStarted(held, label, e.tool_use_id, now))
+        // The call's main argument (a path, a command, a pattern) rides with it, for the `now` row.
+        const arg = mainArgOf(e as unknown as Readonly<Record<string, unknown>>)
+        await update($, hudTools, held => toolStarted(held, label, e.tool_use_id, now, arg))
       })
     }
 
@@ -1130,8 +1171,16 @@ export const register: Register = (on, options) => {
       if (trailAt !== undefined && loop !== undefined) await quietly($, () => endTrail($, loop, label, trailAt, ended))
       if (settings.inspect && ended !== 'ok') await quietly($, () => reviseLedger($, held => ledgerFailed(held, ended)))
       await quietly($, async () => {
-        if (loop === undefined && settings.showTools) await reviseTools($, held => toolSettled(held, label, e.tool_use_id))
         const isDone = outcome !== undefined && outcome.deny === undefined && outcome.isError !== true
+        // A main-loop edit that ended ok counts its file, in the same write that settles the call.
+        const edited = loop === undefined && isDone ? editedPathOf(name, e as unknown as Readonly<Record<string, unknown>>) : undefined
+        if (loop === undefined && settings.showTools) {
+          await reviseTools($, held => {
+            const settled = toolSettled(held, label, e.tool_use_id)
+
+            return edited === undefined ? settled : fileEdited(settled, edited)
+          })
+        }
         if (settings.showTodos && loop === undefined && isDone && e.tool === 'TodoWrite') {
           const items = parseTodos(e.todos)
           if (items !== undefined) {
@@ -1401,10 +1450,17 @@ export const register: Register = (on, options) => {
     }
 
     // The TODO section, between the HUD and the agents: counted like the list.
+    // Folded to its progress line until its `▸` is pressed (`listView.todosExpanded`).
+    const view = await read($, listView)
     let todos: ReturnType<typeof renderTodos>['element']
     let todoRowCount = 0
     try {
-      const drawn = renderTodos({ Box, Text, Svg: svg }, hudData?.todos, { columns, max: settings.todoRows })
+      const drawn = renderTodos({ Box, Text, Svg: svg, Button }, hudData?.todos, {
+        columns,
+        max: settings.todoRows,
+        expanded: view.todosExpanded === true,
+        onToggle: () => void toggleTodos($),
+      })
       todos = drawn.element
       todoRowCount = drawn.rowCount
     } catch {
@@ -1416,7 +1472,6 @@ export const register: Register = (on, options) => {
     // pane scrolls. Each tab reads only the facts it draws.
     const choice = settings.inspect ? await read($, selected) : null
     const kindOf = (id: string): HudSelection['kind'] => (id === 'main' ? 'main' : all[id] === undefined ? 'shadow' : 'agent')
-    const view = await read($, listView)
     const needsMain = settings.mascots || choice?.kind === 'main'
     const main = needsMain ? ((await attempt(() => read($, mainFacts))) ?? NO_MAIN) : NO_MAIN
     let inspecting: { rows: InspectRow[]; agentsTab: boolean } | undefined

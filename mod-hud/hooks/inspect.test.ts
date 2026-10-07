@@ -469,7 +469,7 @@ describe('the inspect view', () => {
     await ui.redraw()
     expect(world.reads).not.toContain('trails')
     expect(world.reads).not.toContain('detail')
-    expect(world.reads).not.toContain('ledger')
+    // The ledger is still read on redraw: the alert strip counts its failed calls.
     await ui.unmount()
   })
 
@@ -1009,6 +1009,8 @@ describe('in pixels on the desktop', () => {
     const long = 'Rewrite the reconciliation loop so a slow list call never resurrects a cleared agent, then prove it under load'
     held.set('todos', { value: { items: Array.from({ length: 40 }, (_, index) => ({ content: `${index} ${long}`, status: index % 3 === 0 ? 'completed' : index % 3 === 1 ? 'in_progress' : 'pending', activeForm: `Doing ${index} ${long}` })) }, version: 1 })
     for (const key of ['session', 'usage', 'git', 'tools', 'inventory'] as const) held.set(key, { value: full[key], version: 1 })
+    // The TODO section opened, so every item draws its own row.
+    held.set('listView', { value: { todosExpanded: true }, version: 1 })
     held.set('agents', { value: Object.fromEntries(Array.from({ length: 40 }, (_, index) => {
       const id = `agent-${String(index).padStart(2, '0')}`
 

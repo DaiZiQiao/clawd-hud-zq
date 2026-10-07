@@ -7,8 +7,8 @@ import type { Character } from './scene-types'
 // every HUD part shown unless switched off, the status line opt-in, numbers
 // kept positive.
 
-/** The motto drawn dim under the HUD when the option is left as it is. */
-const DEFAULT_MOTTO = 'Don\'t be afraid to do tedious work.'
+/** The motto drawn dim under the HUD when the option is left as it is: none since 1.2.0. */
+const DEFAULT_MOTTO = ''
 
 export type Settings = {
   stalledMs: number
@@ -17,6 +17,7 @@ export type Settings = {
   showGit: boolean
   showTools: boolean
   showTodos: boolean
+  /** Reads the context breakdown (MCP servers, skills, the auto-compact threshold); the HUD no longer draws its counts. */
   showInventory: boolean
   motto: string
   mascots: boolean
@@ -44,7 +45,7 @@ export const settingsOf = (options: PluginOptions): Settings => ({
   showTools: options.showTools !== false,
   showTodos: options.showTodos !== false,
   showInventory: options.showInventory !== false,
-  // Left unset, the default motto; an empty one draws none.
+  // Left unset, the default motto (none); an empty one draws none.
   motto: typeof options.motto === 'string' ? options.motto.trim() : DEFAULT_MOTTO,
   mascots: options.mascots !== false,
   character: options.character === 'usagi' ? 'usagi' : 'clawd',

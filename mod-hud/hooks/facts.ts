@@ -445,11 +445,36 @@ export const shortModel = (model: string | undefined): string | undefined =>
 
 // --- tools and todos ---------------------------------------------------------
 
-/** A call starting: it is the current tool, and its count goes up. */
-export const toolStarted = (tools: HudToolFacts, name: string, id: string | undefined, now: number): HudToolFacts => ({
-  current: defined({ name, since: now, id }),
-  counts: { ...tools.counts, [name]: (tools.counts[name] ?? 0) + 1 },
-})
+/** A call starting: it is the current tool (with its main argument, when it has one), and its count goes up. */
+export const toolStarted = (tools: HudToolFacts, name: string, id: string | undefined, now: number, arg?: string): HudToolFacts =>
+  defined({
+    ...tools,
+    current: defined({ name, since: now, id, arg: arg === undefined || arg === '' ? undefined : arg }),
+    counts: { ...tools.counts, [name]: (tools.counts[name] ?? 0) + 1 },
+  })
+
+/** The tools whose calls edit a file: their `file_path` (or `notebook_path`) counts for the `now` row's `N files edited`. */
+export const EDIT_TOOLS: ReadonlySet<string> = new Set(['Edit', 'Write', 'MultiEdit', 'NotebookEdit'])
+
+/** The edited files kept: past this many, the oldest go (the count stays honest up to it). */
+export const EDITED_MAX = 500
+
+/** The file an edit call changed: its `file_path`, else its `notebook_path`; undefined for any other tool. */
+export const editedPathOf = (tool: string, input: Readonly<Record<string, unknown>>): string | undefined => {
+  if (!EDIT_TOOLS.has(tool)) return undefined
+  const path = typeof input.file_path === 'string' ? input.file_path : input.notebook_path
+  if (typeof path !== 'string' || path.trim() === '') return undefined
+
+  return path.trim()
+}
+
+/** A file edited: added once to the list; the tools as they were when it is already there. */
+export const fileEdited = (tools: HudToolFacts, path: string): HudToolFacts => {
+  const held = tools.edited ?? []
+  if (held.includes(path)) return tools
+
+  return { ...tools, edited: [...held, path].slice(-EDITED_MAX) }
+}
 
 /** A call ending: the current tool clears if it is this call (by id, else by name). */
 export const toolSettled = (tools: HudToolFacts, name: string, id: string | undefined): HudToolFacts => {
@@ -510,19 +535,30 @@ export const inventoryOf = (breakdown: SessionContextBreakdown | undefined, now:
 export const assembleHudData = (facts: HudFacts, now: number): HudData => {
   const { at: _gitAt, ...git } = facts.git
   const current = facts.tools.current
-  // The Session tab's samples and counts are not the HUD's to draw.
-  const { turns: _turns, busyMs: _busyMs, contextSamples: _contextSamples, limitSamples: _limitSamples, ...usage } = facts.usage
+  // The Session tab's counts are not the HUD's to draw; the samples are: the
+  // context's for the ctx row's runway, the limits' for the alert strip's ETA.
+  const { turns: _turns, busyMs: _busyMs, contextSamples, limitSamples, ...usage } = facts.usage
+  const edited = facts.tools.edited?.length ?? 0
 
   return {
     session: defined({ ...facts.session }),
-    usage: defined({ ...usage, rateLimits: [...usage.rateLimits], tokens: usage.tokens === undefined ? undefined : { ...usage.tokens } }),
+    usage: defined({
+      ...usage,
+      rateLimits: [...usage.rateLimits],
+      tokens: usage.tokens === undefined ? undefined : { ...usage.tokens },
+      contextSamples: contextSamples === undefined || contextSamples.length === 0 ? undefined : [...contextSamples],
+      limitSamples: limitSamples === undefined
+        ? undefined
+        : Object.fromEntries(Object.entries(limitSamples).map(([kind, list]) => [kind, (list ?? []).map(one => ({ ...one }))])),
+    }),
     git: defined(git),
     tools: defined({
-      current: current === undefined ? undefined : { name: current.name, since: current.since },
+      current: current === undefined ? undefined : defined({ name: current.name, since: current.since, arg: current.arg }),
       counts: { ...facts.tools.counts },
+      edited: edited > 0 ? edited : undefined,
     }),
     todos: { items: facts.todos.items.map(item => defined({ ...item })) },
-    inventory: defined({ mcpServers: [...facts.inventory.mcpServers], skills: facts.inventory.skills }),
+    inventory: defined({ mcpServers: [...facts.inventory.mcpServers], skills: facts.inventory.skills, compactAt: facts.inventory.compactAt }),
     now,
   }
 }

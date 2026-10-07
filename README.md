@@ -1,6 +1,6 @@
 # clawd-hud-zq
 
-A HUD side pane for Claude Code. It shows your session facts, context and rate-limit bars, cost, git state, tool calls, TODO list and every running subagent, including ultracode and Workflow agents, next to a live, animated scene of Claude mascots. The mascots work, sleep, hop, fly and collide, and you can grab them with the mouse and throw them.
+A HUD side pane for Claude Code. It shows your session facts, what needs your attention, context and rate-limit bars, cost, git state, the tool running now, TODO progress and every running subagent, including ultracode and Workflow agents, next to a live, animated scene of Claude mascots. The mascots work, sleep, hop, fly and collide, and you can grab them with the mouse and throw them.
 
 This repository is a Claude Code marketplace that ships one mod, `mod-hud`.
 
@@ -59,10 +59,10 @@ Change any option from `/plugin` (select mod-hud, then its settings).
 | `statusLine` | `false` | Show the HUD and a count of running, done, failed and stalled subagents as one line in the status line. |
 | `maxRows` | `40` | The pane lists at most this many subagents and workflow agents together and counts the rest. |
 | `showGit` | `true` | Show the branch and its changes in the HUD. |
-| `showTools` | `true` | Show the main conversation's tool calls and the tool running now. |
-| `showTodos` | `true` | Show the main conversation's todo list. |
-| `showInventory` | `true` | Show how many MCP servers and skills the session has. |
-| `motto` | `Don't be afraid to do tedious work.` | A line drawn dim under the HUD; empty for none. |
+| `showTools` | `true` | Show the `now` row: the main conversation's tool running now, its main argument and elapsed time, and how many files it edited. |
+| `showTodos` | `true` | Show the main conversation's todo list: one progress line, which its `▸` opens to every item. |
+| `showInventory` | `true` | Read the session's context breakdown (MCP servers, skills, the auto-compact threshold): it marks the compaction threshold on the ctx bar and gives its runway, and `/mod-hud facts` prints it. Since 1.2.0 the HUD no longer draws the MCP and skill counts. |
+| `motto` | empty | A line drawn dim under the HUD; empty (the default since 1.2.0) for none. |
 | `mascots` | `true` | Fill the pane's spare rows with mascots: the session's own, and one per subagent in its own colour. |
 | `character` | `clawd` | Who the mascots are. `clawd`: Claude Code's Clawd, each agent in its own colour with its role letter and an accessory. `usagi`: Usagi from Chiikawa (fan art), each agent's role shown by its hat and the session's by a crown on the side of its head. |
 | `showWorkflows` | `true` | Track the agents a Workflow run starts and show them under the subagents, in the summary and as mascots. |
@@ -71,28 +71,32 @@ Change any option from `/plugin` (select mod-hud, then its settings).
 | `scenes` | `true` | Mascots act out real events: handing a task over, handing a report back, messages, review and fix visits, and a workflow squad's baton. |
 | `collisions` | `rare` | `off`: wanderers that meet step back. `rare`: only two moving mascots collide, falling over dizzy, at most once per pair in 30 s. `normal`: a moving mascot knocks over a standing one too, once per pair in 10 s. In `rare` and `normal` a thrown mascot knocks over whoever it hits. |
 | `motion` | `smooth` | `smooth`: on the terminal and desktop the scene runs at 20 frames a second, gliding between cells, with click, pick up, drag and throw. `classic`: the Box/Text scene at 4 frames a second everywhere, with a pick button under each mascot. |
-| `todoRows` | `6` | The TODO section lists at most this many items and counts the rest. |
+| `todoRows` | `6` | Opened, the TODO section lists at most this many items and counts the rest. |
 
 ## What the pane shows
 
 A card at the top of the pane, at most 72 cells wide, then the agent list, then the mascot scene in the spare rows.
 
 ```
-◆ opus 5.5 · xhigh · gateway                              1h 12m   $4.21
-  ~/.claude/mods · main* +3 −1 ↑2                      mcp 4 · skills 12
-  ctx   ━━━━━━━━────────────  41%  412k / 1.0M             3 compactions
-  5h    ━━━━━━──────────────  31%  ↻ 14:20
-  7d    ━━──────────────────  12%  ↻ Tue
-  tools Read ×41  Bash ×12  Edit ×9  Grep ×7  +1            ● Bash 00:04
-  ship small, ship often
+◆ opus 5.5 · xhigh · gateway          ● working 00:42   1h 12m   $4.21
+  ⚠ 2 agents waiting for permission · 5h out ~13:43, before ↻14:20
+  ~/.claude/mods · main* +3 −1 ↑2
+  ctx   ━━━━━━━━────────┃───  41%  412k / 1.0M     compact in ~6 turns
+  5h    ━━──────  31% ↻14:20    7d  ━───────  12% ↻Tue
+  now   Bash  npm test -- hud                   00:04 · 7 files edited
+
+▸ TODO  ━━━━────── 3/7  ◐ Wiring the detail view
 ```
 
-- Identity: model, effort, provider, elapsed time and cost.
-- Place: working directory, git branch, changes and commits ahead; MCP server and skill counts.
-- Bars: context, 5h and 7d limits, and a spend limit when there is one. Green below 60 %, amber from 60 to 84 %, red from 85 %.
-- Tools: call counts and the tool running now.
-- TODO list and one row per subagent (type, model, status, elapsed time, tool calls, current tool, result).
-- Below 60 columns the card stacks into one section per row and degrades gracefully down to 36 columns.
+- Identity: model, effort, provider, whether the main loop is working (`● working 00:42`) or idle (`○ idle 3m`), elapsed time and cost.
+- Alerts (`⚠`), only when something needs attention, most severe first: agents waiting for permission, a rate limit that runs out before it resets, stalled agents, a compaction within three turns, denied or failed tool calls, and the branch behind its upstream. Nothing to report, no row.
+- Place: working directory, git branch, changes and commits ahead.
+- Bars: context, with the auto-compact threshold marked `┃` and the turns left until it (`compact in ~6 turns`); the 5h and 7d limits side by side; a spend limit on its own row when there is one. Green below 60 %, amber from 60 to 84 %, red from 85 %.
+- `now`: the tool running in the main conversation, its argument and how long it has run, and how many files the conversation has edited.
+- TODO: one progress line with the item in progress; press `▸` to list every item, `▾` to fold it again.
+- One row per subagent (type, model, status, elapsed time, tool calls, current tool, result).
+- Below 60 columns the card stacks into one section per row (the 5h and 7d limits each on their own) and degrades gracefully down to 36 columns.
+- The token and cache counts moved to the session's inspect view (Overview tab); per-tool counts and the MCP/skill inventory are in `/mod-hud facts`.
 
 ## The mascots
 

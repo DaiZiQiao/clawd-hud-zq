@@ -4,6 +4,7 @@ import type { Engine } from 'claude-code/testing'
 
 import type { HudGitFacts, HudInventoryFacts, HudSessionFacts, HudTodoFacts, HudToolFacts, HudUsageFacts } from '../types'
 import {
+  EDITED_MAX,
   NO_FACTS,
   addTokens,
   afterClear,
@@ -14,8 +15,10 @@ import {
   busyIdleOf,
   contextGrowth,
   debouncer,
+  editedPathOf,
   effortFromSettings,
   effortOf,
+  fileEdited,
   gitFactsOf,
   inventoryOf,
   keptLimits,
@@ -606,7 +609,8 @@ test('a main-loop tool is current while it runs, counts, and TodoWrite keeps its
   const running = callTool($, 'mcp__notion__search', { query: 'q' })
   await clock.settle()
   expect(fact<HudToolFacts>('tools')).toEqual({
-    current: { name: 'notion:search', since: NOW, id: 'tu-mcp__notion__search' },
+    // Its main argument rides with it, for the HUD's `now` row.
+    current: { name: 'notion:search', since: NOW, id: 'tu-mcp__notion__search', arg: 'q' },
     counts: { 'notion:search': 1 },
   })
   await clock.advance(500)
@@ -629,6 +633,42 @@ test('a main-loop tool is current while it runs, counts, and TodoWrite keeps its
   expect(fact<HudTodoFacts>('todos').items).toEqual(todos)
   // A subagent's calls are the board's, not the HUD's.
   expect(fact<HudToolFacts>('tools').counts).toEqual({ 'notion:search': 1, TodoWrite: 2 })
+})
+
+test('a main-loop edit that ends ok counts its file once; a denied one, a failed one and a subagent\'s do not; /clear starts over', async ($, on) => {
+  const { clock, world, fact } = arrange(on)
+  await started($, clock)
+  world.tool = async () => ({ result: 'ok' })
+  await callTool($, 'Edit', { file_path: '/repo/a.ts', old_string: 'x', new_string: 'y' })
+  await callTool($, 'Write', { file_path: '/repo/b.ts', content: 'z' })
+  await callTool($, 'Edit', { file_path: '/repo/a.ts', old_string: 'y', new_string: 'x' })
+  await callTool($, 'NotebookEdit', { notebook_path: '/repo/c.ipynb', new_source: 'print(1)' })
+  await callTool($, 'Read', { file_path: '/repo/d.ts' })
+  await callTool($, 'Edit', { file_path: '/repo/e.ts', agentId: 'sub-9' })
+  world.tool = async () => ({ deny: 'no' })
+  await callTool($, 'Edit', { file_path: '/repo/f.ts' })
+  world.tool = async () => ({ result: 'failed', isError: true })
+  await callTool($, 'Write', { file_path: '/repo/g.ts' })
+  expect(fact<HudToolFacts>('tools').edited).toEqual(['/repo/a.ts', '/repo/b.ts', '/repo/c.ipynb'])
+  expect(assembleHudData({ ...NO_FACTS, tools: fact<HudToolFacts>('tools') }, NOW).tools?.edited).toBe(3)
+  await $.session.end({ reason: 'clear', sessionId: 's1' } as Parameters<Engine['session']['end']>[0])
+  expect(fact<HudToolFacts>('tools').edited).toBeUndefined()
+})
+
+test('editedPathOf and fileEdited: the edit tools\' path, each file once, the newest 500 kept', () => {
+  expect(editedPathOf('Edit', { file_path: ' /repo/a.ts ' })).toBe('/repo/a.ts')
+  expect(editedPathOf('MultiEdit', { file_path: '/repo/a.ts' })).toBe('/repo/a.ts')
+  expect(editedPathOf('NotebookEdit', { notebook_path: '/repo/n.ipynb' })).toBe('/repo/n.ipynb')
+  expect(editedPathOf('Read', { file_path: '/repo/a.ts' })).toBeUndefined()
+  expect(editedPathOf('Write', { file_path: '' })).toBeUndefined()
+  const once = fileEdited(NO_FACTS.tools, '/a')
+  expect(fileEdited(once, '/a')).toBe(once)
+  let many = NO_FACTS.tools
+  for (let index = 0; index < EDITED_MAX + 5; index += 1) many = fileEdited(many, `/f${index}`)
+  expect(many.edited).toHaveLength(EDITED_MAX)
+  expect(many.edited?.[0]).toBe('/f5')
+  expect(toolStarted(once, 'Bash', 't1', NOW, 'npm test').edited).toEqual(['/a'])
+  expect(toolStarted(once, 'Bash', 't1', NOW, 'npm test').current).toEqual({ name: 'Bash', since: NOW, id: 't1', arg: 'npm test' })
 })
 
 test('absent facts stay absent: no rate limits, no context yet, no ledger', async ($, on) => {

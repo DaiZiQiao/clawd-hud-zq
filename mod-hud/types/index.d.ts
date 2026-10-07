@@ -106,6 +106,8 @@ export type HudListView = {
   workflowMinimised?: true
   /** The models whose users the Session tab's Cost tree lists. */
   models?: string[]
+  /** The TODO section lists every item instead of its one progress line. */
+  todosExpanded?: true
 }
 
 /**
@@ -281,11 +283,20 @@ export type HudGitFacts = {
   at?: number
 }
 
-/** The main loop's tool running now, and its calls by tool. */
+/** The main loop's tool running now, its calls by tool, and the files it edited. */
 export type HudToolFacts = {
-  /** `name` reads `server:tool` for an MCP tool; `id` is the call's tool_use_id. */
-  current?: { name: string; since: number; id?: string }
+  /**
+   * `name` reads `server:tool` for an MCP tool; `id` is the call's tool_use_id;
+   * `arg` its main argument (a path, a command, a pattern: at most 160 characters).
+   */
+  current?: { name: string; since: number; id?: string; arg?: string }
   counts: Record<string, number>
+  /**
+   * The distinct files the main loop's Edit, Write, MultiEdit and NotebookEdit
+   * calls changed (each call that ended ok), oldest first, at most 500; starts
+   * over at /clear.
+   */
+  edited?: string[]
 }
 
 export type HudTodoItemFact = {
@@ -356,6 +367,10 @@ export type HudUsage = {
   costUsd?: number
   tokens?: HudTokens
   compactions: number
+  /** The context's tokens as each of the last main turns ended (HudUsageFacts): the ctx row's runway to compaction. */
+  contextSamples?: number[]
+  /** Each window's percent as it changed (HudUsageFacts): the alert strip's limit ETA. */
+  limitSamples?: { [K in HudRateLimit['kind']]?: { at: number; percent: number }[] }
 }
 
 export type HudGit = {
@@ -371,10 +386,12 @@ export type HudGit = {
 }
 
 export type HudTools = {
-  /** The tool running now; `since` in `$.clock.now()` milliseconds. */
-  current?: { name: string; since: number }
-  /** Calls so far, by tool name. */
+  /** The tool running now and its main argument; `since` in `$.clock.now()` milliseconds. */
+  current?: { name: string; since: number; arg?: string }
+  /** Calls so far, by tool name (kept for `/mod-hud facts`; the HUD no longer draws them). */
   counts: Record<string, number>
+  /** How many distinct files the main loop edited this conversation. */
+  edited?: number
 }
 
 export type HudTodo = {
@@ -390,6 +407,28 @@ export type HudTodos = {
 export type HudInventory = {
   mcpServers: string[]
   skills?: number
+  /** The context's token count at which auto-compaction runs: marked on the ctx bar. */
+  compactAt?: number
+}
+
+/** The main loop working or idle (HudMainFacts): the identity row's `● working 00:42` / `○ idle 3m`. */
+export type HudMain = {
+  busySince?: number
+  idleSince?: number
+}
+
+/**
+ * What needs attention that the facts above do not carry, counted by the
+ * caller from the board, the workflow record and the ledger. A count of 0 is
+ * the same as none.
+ */
+export type HudAlerts = {
+  /** Running subagents waiting on a permission ask. */
+  asks?: number
+  /** Running subagents and workflow agents quiet past `stalledAfterSec`. */
+  stalled?: number
+  /** Tool calls, in any loop, that ended denied or in an error this conversation. */
+  failures?: number
 }
 
 /** Everything the HUD draws, read once per frame. */
@@ -400,6 +439,8 @@ export type HudData = {
   tools?: HudTools
   todos?: HudTodos
   inventory?: HudInventory
+  main?: HudMain
+  alerts?: HudAlerts
   /** One dim line under the HUD. */
   motto?: string
   /** `$.clock.now()` at draw time: every elapsed time is measured from it. */

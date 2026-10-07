@@ -1,11 +1,11 @@
 {
   "name": "mod-hud",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "author": {
     "name": "Dai Zi Qiao",
     "url": "https://github.com/DaiZiQiao"
   },
-  "description": "A side pane, toggled by /mod-hud: a HUD of the session (session, context, limits, cost, git, tools, todos) above every subagent in it (type, model, status, elapsed time, tool calls, current tool, result), with an opt-in status line.",
+  "description": "A side pane, toggled by /mod-hud: a HUD of the session (session, alerts, context, limits, cost, git, the tool running now, todos) above every subagent in it (type, model, status, elapsed time, tool calls, current tool, result), with an opt-in status line.",
   "types": "./types/index.d.ts",
   "userConfig": {
     "stalledAfterSec": {
@@ -35,26 +35,26 @@
     "showTools": {
       "type": "boolean",
       "title": "Show tools",
-      "description": "Show the main conversation's tool calls and the tool running now in the HUD.",
+      "description": "Show the HUD's now row: the main conversation's tool running now, its main argument and elapsed time, and how many files it edited.",
       "default": true
     },
     "showTodos": {
       "type": "boolean",
       "title": "Show todos",
-      "description": "Show the main conversation's todo list in the HUD.",
+      "description": "Show the main conversation's todo list under the HUD: one progress line, which its ▸ opens to every item.",
       "default": true
     },
     "showInventory": {
       "type": "boolean",
-      "title": "Show MCP servers and skills",
-      "description": "Show how many MCP servers and skills the session has in the HUD.",
+      "title": "Read the context breakdown",
+      "description": "Read the session's context breakdown (MCP servers, skills, the auto-compact threshold) at most every five minutes: it marks the compaction threshold on the ctx bar and gives its runway, and /mod-hud facts prints it. Since 1.2.0 the HUD no longer draws the MCP and skill counts.",
       "default": true
     },
     "motto": {
       "type": "string",
       "title": "Motto",
-      "description": "A line drawn dim as the HUD's last row; empty for none.",
-      "default": "Don't be afraid to do tedious work."
+      "description": "A line drawn dim as the HUD's last row; empty (the default) for none.",
+      "default": ""
     },
     "mascots": {
       "type": "boolean",
@@ -107,7 +107,7 @@
     "todoRows": {
       "type": "number",
       "title": "Most todos listed",
-      "description": "The TODO section lists at most this many items and counts the rest.",
+      "description": "Opened, the TODO section lists at most this many items and counts the rest.",
       "default": 6
     }
   }

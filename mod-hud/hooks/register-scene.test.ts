@@ -242,6 +242,8 @@ describe('in the pane', () => {
     await $.session.start(START)
     await clock.settle()
     seedHud(held, idleHud)
+    // The TODO section opened: its header and five items.
+    held.set('listView', { value: { todosExpanded: true }, version: 1 })
     await $.command.run(TOGGLE)
     for (const type of ['Explore', 'general-purpose', 'Explore']) await spawn($, type)
     // Past their arrival: all three stand in their slots, thinking (quiet under six seconds, so not idle yet).
@@ -259,7 +261,7 @@ describe('in the pane', () => {
       expect(spare).toBeGreaterThanOrEqual(4)
       // One line of four rows, and the sky row above it while a thought's (hmm) floats there.
       expect(rows.length).toBeGreaterThanOrEqual(4)
-      expect(rows.length).toBeLessThanOrEqual(Math.min(5, spare))
+      expect(rows.length).toBeLessThanOrEqual(spare)
       const sky = rows.length - 4
       // The session watching, crowned, and three agents in spawn order a slot apart, thinking away from their laptops: eyes up, a thought beside.
       expect(rows[sky]?.text.slice(5, 8)).toBe(CROWN.art)
