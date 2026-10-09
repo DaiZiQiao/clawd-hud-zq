@@ -8,6 +8,8 @@ import type { Cell, MascotLayout, MascotPlan, MascotScene, PlacedSprite, SceneVi
 import { glyphShapes } from './raster-font'
 import { crossShapes, figureShapes, markShapes, pipeShapes, tickShapes } from './smooth-art'
 import { livelyOf, targetOf } from './smooth-pose'
+import { quirkPose } from './usagi-moves'
+import { quirkAt } from './usagi-quirks'
 import type { PoseContext, Smoother } from './smooth-pose'
 import { CELL_HEIGHT, CELL_WIDTH } from './svg-style'
 
@@ -112,10 +114,17 @@ export const smoothFrame = (scene: MascotScene, layout: MascotLayout, plan: Masc
     if (look === undefined) continue
     if (sprite.moving || context.motion !== undefined || context.pose !== undefined || context.tidyMs !== undefined || context.stretchMs !== undefined || (figure.phase !== undefined && !RESTING.has(figure.phase.kind))) still = false
     let pose = smoother.ease(sprite.id, targetOf(look, context, mini), now)
-    // A walk's bounce and the cheer's dance as arcs, rather than a row's jump every other frame.
-    const bounce = context.motion?.kind === 'walk' ? 0.5 : figure.phase?.kind === 'cheer' ? 1.4 : 0
-    if (bounce > 0) pose = { ...pose, drop: pose.drop - bounce * Math.abs(Math.sin((2 * Math.PI * now) / 520 + context.seed)) }
-    pose = livelyOf(pose, context, !sprite.moving)
+    // A walk's bounce and the cheer's dance as arcs, rather than a row's jump every other frame; Usagi's sprint bounces twice as fast.
+    const sprint = usagi && context.motion?.kind === 'walk'
+    const bounce = context.motion?.kind === 'walk' ? (sprint ? 0.8 : 0.5) : figure.phase?.kind === 'cheer' ? 1.4 : 0
+    if (bounce > 0) pose = { ...pose, drop: pose.drop - bounce * Math.abs(Math.sin((2 * Math.PI * now) / (sprint ? 260 : 520) + context.seed)) }
+    // Usagi's quirk, if one has come over it (hooks/usagi-quirks.ts): over the eased pose, by time.
+    const quirk = figure.quirk === undefined ? undefined : quirkAt(sprite.id, now, figure.quirk)
+    if (quirk !== undefined) {
+      pose = quirkPose(pose, quirk, context.facing)
+      still = false
+    }
+    pose = livelyOf(pose, context, !sprite.moving && quirk === undefined)
     const info = mini ? { ...figure.info, energy: 0 as const, letter: undefined } : figure.info
     shapes.push(...figureShapes(pose, info, chain(translate(middle * 2, feet * 4), scale(mini ? MINI_SCALE : 1)), now))
   }

@@ -10,3 +10,10 @@ The mascots are drawn smooth.
 - Ghostty and kitty are recognised by their own environment variables. Other terminals (macOS Terminal, Windows Terminal, and anything under tmux) keep the block characters with no picture tried, and a terminal that refuses a picture falls back to them automatically.
 - The TV that a pressed mascot grows into still draws its giant in block characters.
 - A new option, `mascotArt`, picks `vector` (the default) or `blocks` everywhere.
+
+## Usagi, chaotic and cute (new)
+- Like Chiikawa's Usagi, it bursts into something out of nowhere, about once every six or seven seconds, each Usagi on a clock of its own: the Yaha! dance, an Ura! leap, a HUHHH? lean-in, a smug Fuun, zoomies, a twirl, a backflip, or an UNA! shake. At its laptop it bashes the keys with both hands. Its line bursts out in a spiky balloon.
+- It sprints: on foot it covers twice Clawd's ground, rests half as long and leaps more often. Its legs become a spinning cartoon wheel, it leans hard into its run with arms pumping and ears streaming back, kicking up dust behind speed lines. In block characters, four feet flurry instead.
+- A new face: dot eyes with a glint, squeezed shut (`> <`) when it screams, half-lidded when smug; a small open mouth with a tongue, a wide D when it yells, a round `o`, a smirk. Its ears twitch now and then, and asleep a bubble swells from its nose.
+- The quirks play in the block characters too, with their lines over its head.
+

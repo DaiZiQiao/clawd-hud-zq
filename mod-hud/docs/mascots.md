@@ -495,6 +495,59 @@ its hat (or crown) lies on the floor beside it.
 printed as plain text a two-colour cell shows only its glyph, so the
 pictures above are drawn from it instead.
 
+### Usagi's chaos
+
+Chiikawa's Usagi is loud, quick and unpredictable, so it does not just
+stand there.
+
+**Quirks** (`hooks/usagi-quirks.ts`). Out of nowhere, a burst of something.
+Time is cut into five-second windows, each Usagi's starting at a time of
+its own (by its id). Three windows in four hold one quirk (one every six or
+seven seconds), at a place in the window and of a kind both chosen by the
+id and the window, so the same moment always gives the same quirk, and it
+always ends inside its window:
+
+| quirk | how long | what it does | its line |
+| --- | --- | --- | --- |
+| `yaha` | 2 s | the Yaha! dance: arms waving in turn, swaying, bouncing, eyes squeezed shut `> <`, mouth wide | `Yaha!` |
+| `ura` | 1.4 s | a crouch, a leap with arms flung up, a landing that squashes and wobbles | `Ura!` |
+| `huh` | 1.3 s | it looms at you, head tilted, eyes wide, mouth a round `o` | `HUHHH?` |
+| `fuun` | 1.7 s | smug: lids half down, a smirk, leaning back, hands on hips, a huff | `Fuun` |
+| `zoom` | 1.6 s | zoomies: dashing either way and back on wheel legs | `Uraaa!` |
+| `twirl` | 1.2 s | two turns on the spot, arms out | `Puruya` |
+| `flip` | 1.3 s | a backflip: a crouch, a full turn in the air, a landing with arms up | `Yaha!` |
+| `shake` | 1 s | a blur either way | `UNA!` |
+| `bash` | 1.5 s | at its laptop: both hands hammering the keys, keys flying | `Ura!` |
+
+A quirk comes over Usagi only where it stands on its floor with nothing
+beside it but its sweat drop (`quirkPlaceOf`): free (the session's own,
+idling or watching, or an agent's idle bit) or at its laptop (`bash`,
+`huh`, `shake`, `yaha` only). Never while it thinks, asks, sits, sleeps,
+is down, done or failed, walks, flies, is in a scene's step, held or
+thrown, or is in the pipe. The cells draw each one with what a look has
+(`quirkLook`): the dance and the shake a cell either way in turn, the leap
+and the backflip a row up where the sky has one with a squash either side,
+zoomies a cell either way in stride, its line over its head
+(`QUIRK_SHOUTS`). The vector art plays it by time (`quirkPose`,
+`hooks/usagi-moves.ts`) over the pose eased under it, easing in and back
+out, its line in a spiky balloon.
+
+**The sprint.** On foot Usagi covers two cells a frame where Clawd covers
+one (`ZIPPY_CELLS`), rests half as long between walks, and leaps one
+walking frame in six rather than ten (`Mover.zippy`, set by `mascotPlan`
+for a Usagi scene). The cells draw its strides as a flurry of four feet,
+shifted each frame (`RUN_FEET`). The vector art draws a cartoon's run
+(`sprintPose`): its legs a spinning wheel (a pale blur, dashes turning
+round its rim, four legs five turns a second), leaning hard into its way,
+arms pumping, ears streaming back, dust kicked up and speed lines behind.
+
+**The face** (vector art). Dot eyes with a glint, squeezed shut `> <` in a
+burst, half lidded when smug, wide when startled; its small open mouth with
+a tongue, a wide D when it screams, a round `o`, a smirk. Its ears twitch,
+one at a time, every three to six seconds. Asleep, a bubble swells and
+shrinks from its nose. Its shouts (the cigarette's puffs, `HUHHH?` dazed,
+`HUHHH?!` startled, its quirks) burst out in the same spiky balloon.
+
 ## The TV
 
 With `inspectView: tv` (the default), pressing a mascot (the smooth scene's

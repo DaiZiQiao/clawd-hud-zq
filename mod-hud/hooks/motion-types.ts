@@ -113,6 +113,8 @@ export type Mover = {
   ask?: { reason: FlightReason; home?: number; homeD?: number }
   /** Standing where it is whatever happens (arriving or leaving by the pipe): an obstacle, never moved, never knocked. */
   fixed?: boolean
+  /** Usagi: on foot it covers ZIPPY_CELLS a frame, rests half as long between walks and leaps one walking frame in ZIPPY_LEAP_ONE_IN (hooks/motion-rules.ts). */
+  zippy?: true
 }
 
 export type Moved = { x: number; d: number; lift: number; memo: Memo; motion?: Motion; bumped?: boolean; collided?: boolean }

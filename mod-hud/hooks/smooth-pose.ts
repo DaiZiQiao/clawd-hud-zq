@@ -5,6 +5,7 @@ import { MINI_OVERLAYS, OVERLAYS, THOUGHTS, THOUGHT_FRAMES } from './mascot-spri
 import type { Overlay } from './mascot-sprites'
 import type { Motion } from './motion-types'
 import type { Cue, Phase } from './scene-types'
+import { earTwitch, sprintPose } from './usagi-moves'
 import { DAZED, SHOUTS, STARTLED, USAGI_THOUGHTS } from './usagi-sprites'
 
 // The smooth mascots' poses: the engine's look for a frame (hooks/mascot-poses.ts,
@@ -14,8 +15,11 @@ import { DAZED, SHOUTS, STARTLED, USAGI_THOUGHTS } from './usagi-sprites'
 // (blinking, breathing, a walk's legs, a dangle's kicks, a propeller's turn)
 // and what is beside it as props drawn by time, not stepped by frame.
 
-/** The eyes' kind: their offset and openness are the pose's numbers. */
-export type EyeKind = 'normal' | 'wide' | 'spiral' | 'happy' | 'down'
+/** The eyes' kind: their offset and openness are the pose's numbers; Usagi's squeezed shut (`> <`) and its smug half lids too. */
+export type EyeKind = 'normal' | 'wide' | 'spiral' | 'happy' | 'down' | 'squeeze' | 'half'
+
+/** Usagi's mouth: its small open one, wide open screaming, a round `o`, a smirk. */
+export type MouthShape = 'dot' | 'scream' | 'o' | 'smirk'
 
 /** What sits beside a mascot or in its hand, drawn smooth (hooks/smooth-art.ts). */
 export type Beside =
@@ -36,6 +40,13 @@ export type Beside =
   | { kind: 'scroll' }
   | { kind: 'baton' }
   | { kind: 'props'; props: readonly Prop[] }
+  // Usagi's quirks and sprint (hooks/usagi-moves.ts): sparkles about it, speed lines and dust behind it (`dir` its way, 0 up), a huff, the keys flying, a shake's blur.
+  | { kind: 'sparkles' }
+  | { kind: 'speed'; dir: number }
+  | { kind: 'dust'; dir: number }
+  | { kind: 'huff' }
+  | { kind: 'keys' }
+  | { kind: 'jitter' }
 
 /** A mascot's pose: numbers eased between frames, then the kinds that switch. */
 export type FigurePose = {
@@ -62,11 +73,17 @@ export type FigurePose = {
   hideLegs: number
   laptop: number
   blanket: number
-  /** Usagi's ears: lowered (1), drooping (1), trailing a walk (−1 to 1). */
+  /** Usagi's ears: lowered (1), drooping (1), trailing a walk (−1 to 1, past it streaming); each turned outward a twitch or a quirk's worth (radians). */
   earsDown: number
   droop: number
   trail: number
+  earL: number
+  earR: number
+  /** Usagi sprinting: its legs a spinning wheel (1). */
+  run: number
   eyes: EyeKind
+  /** Usagi's mouth's shape; absent, its small open one (wide open by `mouth`). */
+  mouthShape?: MouthShape
   /** The propeller's turn while it flies. */
   cap?: number
   hatOff: boolean
@@ -75,7 +92,7 @@ export type FigurePose = {
 
 export const NEUTRAL: FigurePose = {
   dx: 0, drop: 0, sx: 1, sy: 1, tilt: 0, flat: 0, spin: 0, eyeX: 0, eyeY: 0, eyeOpen: 1, mouth: 0, armL: 0, armR: 0, reach: 0,
-  legs: [0, 0, 0, 0], tuck: 0, hideLegs: 0, laptop: 0, blanket: 0, earsDown: 0, droop: 0, trail: 0, eyes: 'normal', hatOff: false, beside: [],
+  legs: [0, 0, 0, 0], tuck: 0, hideLegs: 0, laptop: 0, blanket: 0, earsDown: 0, droop: 0, trail: 0, earL: 0, earR: 0, run: 0, eyes: 'normal', hatOff: false, beside: [],
 }
 
 // --- what each overlay is ---------------------------------------------------------
@@ -358,6 +375,8 @@ export const targetOf = (look: Look | MiniLook, context: PoseContext, mini: bool
   let pose = mini ? miniTarget(look as MiniLook, context) : fullTarget(look as Look, context)
   pose = sessionMoves(pose, context)
   const t = context.now
+  // Usagi sprints: wheel legs, pumping arms, ears streaming (hooks/usagi-moves.ts).
+  if (context.motion?.kind === 'walk' && context.character === 'usagi' && !mini && pose.flat === 0) return sprintPose(pose, t, context.facing, context.seed)
   if (context.motion?.kind === 'walk' && pose.hideLegs < 0.5 && pose.flat === 0) {
     const step = wave(t, 520, context.seed)
     const dir = context.facing === 'left' ? -1 : 1
@@ -375,7 +394,7 @@ export const targetOf = (look: Look | MiniLook, context: PoseContext, mini: bool
 
 /** The numbers a spring eases (overshooting, so a squash bounces back), and those that simply glide. */
 const SPRUNG = ['dx', 'drop', 'sx', 'sy', 'tilt', 'flat'] as const
-const GLIDING = { eyeX: 45, eyeY: 45, eyeOpen: 35, mouth: 60, armL: 70, armR: 70, reach: 80, tuck: 70, hideLegs: 90, laptop: 140, blanket: 220, earsDown: 90, droop: 160, trail: 120 } as const
+const GLIDING = { eyeX: 45, eyeY: 45, eyeOpen: 35, mouth: 60, armL: 70, armR: 70, reach: 80, tuck: 70, hideLegs: 90, laptop: 140, blanket: 220, earsDown: 90, droop: 160, trail: 120, earL: 50, earR: 50, run: 90 } as const
 /** Each spring's frequency (Hz) and damping. */
 const SPRINGS: Readonly<Record<(typeof SPRUNG)[number], [number, number]>> = { dx: [7, 0.8], drop: [5, 0.55], sx: [6, 0.38], sy: [6, 0.38], tilt: [4, 0.5], flat: [2.6, 0.7] }
 
@@ -430,13 +449,14 @@ export const createSmoother = (): Smoother => {
   }
 }
 
-/** Over the eased pose, what must never lag a frame: the blink and the breath. */
+/** Over the eased pose, what must never lag a frame: the blink and the breath; Usagi's ears' twitches. */
 export const livelyOf = (pose: FigurePose, context: PoseContext, still: boolean): FigurePose => {
   const t = context.now
   const blink = pose.eyes === 'normal' && pose.eyeOpen > 0.5 ? blinkAt(t, context.seed) : 1
   const breath = still && pose.flat < 0.05 && pose.blanket < 0.5 ? wave(t, 2700, context.seed) : 0
+  const [twitchL, twitchR] = context.character === 'usagi' && pose.blanket < 0.5 && pose.flat < 0.05 ? earTwitch(t, context.seed) : [0, 0]
 
-  return { ...pose, eyeOpen: pose.eyeOpen * blink, sx: pose.sx * (1 - 0.01 * breath), sy: pose.sy * (1 + 0.018 * breath) }
+  return { ...pose, eyeOpen: pose.eyeOpen * blink, sx: pose.sx * (1 - 0.01 * breath), sy: pose.sy * (1 + 0.018 * breath), earL: pose.earL + twitchL, earR: pose.earR + twitchR }
 }
 
 /** The tidy loop, for those that draw it without the session's time. */

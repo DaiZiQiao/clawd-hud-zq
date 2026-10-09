@@ -1,6 +1,6 @@
 import { bobOf, drawLook, drawMini, wearOfAgent, wearOfMain } from './mascot-glyphs'
 import { agentLook, mainLook, miniLook } from './mascot-poses'
-import type { LookContext } from './mascot-poses'
+import type { Look, LookContext } from './mascot-poses'
 import { BOX_ROWS, SKY } from './mascot-sprites'
 import { GAP } from './motion-rules'
 import { ACCENT, isNumber } from './scene-model'
@@ -9,6 +9,7 @@ import { PIPE_SLIDE_MS, PIPE_WIDTH, PIPE_X, batchPipeAt, droppedAt, farewellAt }
 import { SETTLED, mascotPlan } from './scene-plan'
 import type { Cell, Mark, MascotAgent, MascotLayout, MascotPlan, MascotScene, Phase, PlacedPipe, PlacedSprite, Placement, SceneView, SpriteFigure } from './scene-types'
 import { dressOfAgent, dressOfMain, drawUsagi, drawUsagiMini } from './usagi-glyphs'
+import { quirkAt, quirkLook, quirkPlaceOf } from './usagi-quirks'
 
 // The plan's frame as placed sprites, renderer-agnostic: each mascot's look
 // drawn into cells (hooks/mascot-poses.ts, hooks/mascot-glyphs.ts) where it
@@ -202,11 +203,20 @@ export const placedSprites = (scene: MascotScene, layout: MascotLayout, plan = m
     let bob = 0
     let figure: SpriteFigure
     const character = usagi ? 'usagi' as const : 'clawd' as const
+    // Usagi on its floor, the session's or at work, nothing moving it: a quirk may come over it.
+    const still = usagi && piped === undefined && !shaken && context.motion === undefined && context.pose === undefined && context.startled === undefined && (one.kind === 'main' || one.phase?.kind === 'work' || one.phase?.kind === 'stalled')
+    const quirked = (look: Look): { drawn: Look; place?: 'free' | 'desk' } => {
+      const place = still ? quirkPlaceOf(look) : undefined
+      const quirk = place === undefined ? undefined : quirkAt(one.id, tick * SCENE_FRAME_MS, place)
+
+      return { drawn: quirk === undefined ? look : quirkLook(look, quirk), ...(place === undefined ? {} : { place }) }
+    }
     // Drawn as the scene's character: Clawd, or Usagi.
     if (one.kind === 'main') {
       const look = lifted(mainLook(scene.main, tick, context))
-      bob = bobOf(look, sky)
-      cells = usagi ? drawUsagi(look, dressOfMain(scene.main), sky - look.lift - bob) : drawLook(look, wearOfMain(scene.main), ACCENT, sky - look.lift - bob)
+      const { drawn, place } = quirked(look)
+      bob = bobOf(drawn, sky)
+      cells = usagi ? drawUsagi(drawn, dressOfMain(scene.main), sky - drawn.lift - bob) : drawLook(look, wearOfMain(scene.main), ACCENT, sky - look.lift - bob)
       lift = look.lift
       figure = {
         look,
@@ -214,6 +224,7 @@ export const placedSprites = (scene: MascotScene, layout: MascotLayout, plan = m
         context,
         ...(scene.main.tidyMs === undefined ? {} : { tidyMs: scene.main.tidyMs }),
         ...(scene.main.stretchMs === undefined ? {} : { stretchMs: scene.main.stretchMs }),
+        ...(place === undefined ? {} : { quirk: place }),
       }
     } else if (one.kind === 'mini') {
       const self = agent as MascotAgent
@@ -225,14 +236,16 @@ export const placedSprites = (scene: MascotScene, layout: MascotLayout, plan = m
       const self = agent as MascotAgent
       const look = lifted(agentLook(self, one.phase as Phase, tick, context))
       const wear = wearOfAgent(self)
-      bob = bobOf(look, sky)
-      cells = usagi ? drawUsagi(look, dressOfAgent(self), sky - look.lift - bob) : drawLook(look, wear, self.colour, sky - look.lift - bob)
+      const { drawn, place } = quirked(look)
+      bob = bobOf(drawn, sky)
+      cells = usagi ? drawUsagi(drawn, dressOfAgent(self), sky - drawn.lift - bob) : drawLook(look, wear, self.colour, sky - look.lift - bob)
       lift = look.lift
       figure = {
         look,
         info: { character, colour: self.colour, ...(self.role === undefined ? {} : { role: self.role }), ...(wear.letter === undefined ? {} : { letter: wear.letter }), ...(self.accessory === undefined ? {} : { accessory: self.accessory, side: self.side ?? 'left' }), energy: self.energy ?? 0 },
         context,
         ...(one.phase === undefined ? {} : { phase: one.phase }),
+        ...(place === undefined ? {} : { quirk: place }),
       }
     }
     const topExact = dExact - (liftExact ?? lift) - bob - SKY

@@ -1,4 +1,4 @@
-import { BLANKET, CROWN, placed, thoughtFrames } from './mascot-sprites'
+import { BLANKET, CROWN, SLOT, placed, thoughtFrames } from './mascot-sprites'
 import type { Overlay } from './mascot-sprites'
 import type { Cell, Grid, MascotRole } from './scene-types'
 
@@ -227,8 +227,17 @@ export const STARTLED: Overlay = { art: placed([-1, 9, 'HUHHH?!']), ink: 'f' }
  */
 export const CROSS: Overlay = { art: placed([-1, 6, '✗']), lowArt: placed([-1, 11, '✗']), ink: 'r' }
 
+/**
+ * Its outbursts out of nowhere (hooks/usagi-quirks.ts), each line over its
+ * head: from column 11 as a shout is, a longer one further left, so it fits
+ * the slot as its head sways a cell either way.
+ */
+export const QUIRK_SHOUTS: Readonly<Record<string, Overlay>> = Object.fromEntries(
+  ['Yaha!', 'Ura!', 'HUHHH?', 'Fuun', 'Uraaa!', 'Puruya', 'UNA!'].map(line => [line, { art: placed([-1, Math.min(11, SLOT - 1 - line.length), line]), ink: 'f' as const }]),
+)
+
 /** What Usagi says or shows over its head: a row lower with no sky row free. */
-export const USAGI_LINES: readonly Overlay[] = [...SHOUTS, DAZED, STARTLED, CROSS]
+export const USAGI_LINES: readonly Overlay[] = [...SHOUTS, DAZED, STARTLED, CROSS, ...Object.values(QUIRK_SHOUTS)]
 
 // --- quarters to cells ---------------------------------------------------------------
 

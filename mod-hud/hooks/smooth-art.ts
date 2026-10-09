@@ -3,6 +3,7 @@ import { about, chain, multiply, rotate, scale, translate } from './clawd-vector
 import type { Matrix, Shape } from './clawd-vector'
 import { ACCESSORIES, BLANKET, CROWN, LAPTOP_COLOUR } from './mascot-sprites'
 import type { Accessory } from './mascot-sprites'
+import { textWidth } from './raster-font'
 import type { Beside, FigurePose } from './smooth-pose'
 import type { Energy, MascotRole } from './scene-types'
 import { CAP, HATS, ROLE_HATS, USAGI } from './usagi-sprites'
@@ -202,13 +203,28 @@ const usagiHatShapes = (m: Matrix, name: HatName): Shape[] => {
 
 // --- the figures ----------------------------------------------------------------------
 
-/** The eyes of either: `cx` their centres, `y` their middle's height, `w` and `h` an open eye's. */
-const eyeShapes = (m: Matrix, pose: FigurePose, cx: readonly [number, number], y: number, w: number, h: number, fill: string): Shape[] => {
+/**
+ * The eyes of either: `cx` their centres, `y` their middle's height, `w` and
+ * `h` an open eye's; `shine` a glint in each open one (Usagi's dots).
+ * Squeezed shut, `> <`; smug, half lidded.
+ */
+const eyeShapes = (m: Matrix, pose: FigurePose, cx: readonly [number, number], y: number, w: number, h: number, fill: string, shine = false): Shape[] => {
   const shapes: Shape[] = []
-  for (const x0 of cx) {
+  for (const [index, x0] of cx.entries()) {
     const x = x0 + pose.eyeX
     const cy = y + pose.eyeY
     switch (pose.eyes) {
+      case 'squeeze': {
+        // Each a chevron pointing in: `>` the left, `<` the right.
+        const point = index === 0 ? 1 : -1
+        const k = chain(m, translate(x + point * 0.45, cy), scale(point, 1))
+        for (const turn of [0.5, -0.5]) shapes.push({ kind: 'rect', x: -1.25, y: -0.17, w: 1.25, h: 0.34, r: 0.17, fill, m: multiply(k, rotate(turn)) })
+        break
+      }
+      case 'half':
+        shapes.push({ kind: 'ellipse', x: x - w / 2, y: cy - h * 0.05, w, h: h * 0.5, fill, m })
+        shapes.push({ kind: 'rect', x: x - w * 0.8, y: cy - h * 0.12, w: w * 1.6, h: 0.26, r: 0.13, fill, m })
+        break
       case 'happy':
         for (const side of [-1, 1]) shapes.push({ kind: 'rect', x: -0.45, y: -0.16, w: 0.9, h: 0.32, r: 0.16, fill, m: chain(m, translate(x + side * 0.32, cy), rotate(side * 0.7)) })
         break
@@ -225,6 +241,7 @@ const eyeShapes = (m: Matrix, pose: FigurePose, cx: readonly [number, number], y
         const open = Math.max(0.08, Math.min(1.2, pose.eyeOpen))
         const eh = h * open
         shapes.push({ kind: shapeOfEye(w, eh), x: x - w / 2, y: cy - eh / 2, w, h: eh, r: Math.min(w, eh) * 0.45, fill, m })
+        if (shine && open > 0.6) shapes.push({ kind: 'ellipse', x: x - w * 0.32, y: cy - eh * 0.36, w: w * 0.38, h: w * 0.38, fill: '#FFFFFF', alpha: 0.85, m })
       }
     }
   }
@@ -270,6 +287,82 @@ const clawdShapes = (pose: FigurePose, info: FigureInfo, t: number): Shape[] => 
 }
 
 /**
+ * Usagi's legs sprinting, as a cartoon's run: a pale blur of a wheel under
+ * it, dashes turning round its rim, and four legs turning about its hip five
+ * times a second, each a foot's darker tip; `run` strong.
+ */
+const wheelShapes = (body: Matrix, run: number, t: number): Shape[] => {
+  const turn = (t / 1000) * 2 * Math.PI * 5
+  const hip = chain(body, translate(0, -2.2))
+  const tip = shade(USAGI.body, 0.16)
+
+  return [
+    { kind: 'ellipse', x: -3.3, y: -5.3, w: 6.6, h: 6.4, fill: '#FFF3C4', alpha: 0.55 * run, m: body },
+    // Dashes round the rim, turning with it.
+    ...[0, 1, 2, 3, 4, 5].map((one): Shape => ({ kind: 'rect', x: -0.6, y: -3.45, w: 1.2, h: 0.3, r: 0.15, fill: tip, alpha: 0.6 * run, m: multiply(hip, rotate(turn * 0.8 + (one * Math.PI) / 3)) })),
+    ...[0, 1, 2, 3].flatMap((leg): Shape[] => {
+      const m = multiply(hip, rotate(turn + (leg * Math.PI) / 2))
+      const alpha = run * (leg % 2 === 0 ? 1 : 0.6)
+
+      return [
+        { kind: 'rect', x: -0.85, y: 0, w: 1.7, h: 2.9, r: 0.85, fill: USAGI.body, alpha, m },
+        { kind: 'ellipse', x: -0.8, y: 2.2, w: 1.6, h: 1, fill: tip, alpha, m },
+      ]
+    }),
+  ]
+}
+
+/** Usagi's mouth by its shape (`mouthShape`, else small and open, wide open past `mouth` 0.45), its middle at the face's. */
+const mouthShapes = (m: Matrix, pose: FigurePose): Shape[] => {
+  const open = Math.max(0, Math.min(1, pose.mouth))
+  const shape = pose.mouthShape ?? (open > 0.45 ? 'scream' : 'dot')
+  switch (shape) {
+    case 'scream': {
+      // A wide D, flat along its top, its tongue at the bottom.
+      const width = 3.6 * Math.max(0.6, open)
+      const depth = 2.8 * Math.max(0.6, open)
+      const top = -6.3
+      const arc = Array.from({ length: 11 }, (_, index): readonly [number, number] => {
+        const a = (index * Math.PI) / 10
+
+        return [(width / 2) * Math.cos(a), top + depth * Math.sin(a)]
+      })
+
+      return [
+        { kind: 'poly', x: 0, y: 0, w: 0, h: 0, points: arc, fill: USAGI.mouth, m },
+        { kind: 'ellipse', x: -width * 0.27, y: top + depth * 0.5, w: width * 0.54, h: depth * 0.42, fill: USAGI.blush, m },
+      ]
+    }
+    case 'o':
+      return [{ kind: 'ellipse', x: -0.55, y: -6.3, w: 1.1, h: 1.35, fill: USAGI.mouth, m }]
+    case 'smirk':
+      return [
+        { kind: 'rect', x: -0.95, y: -5.5, w: 1.9, h: 0.3, r: 0.15, fill: USAGI.mouth, m: multiply(m, about(0, -5.35, rotate(-0.16))) },
+        { kind: 'rect', x: 0.75, y: -5.85, w: 0.7, h: 0.28, r: 0.14, fill: USAGI.mouth, m: multiply(m, about(0.85, -5.7, rotate(-0.9))) },
+      ]
+    case 'dot':
+      return [
+        { kind: 'ellipse', x: -0.7, y: -5.95, w: 1.4, h: 0.95, fill: USAGI.mouth, m },
+        { kind: 'ellipse', x: -0.4, y: -5.35, w: 0.8, h: 0.36, fill: USAGI.blush, alpha: 0.9, m },
+      ]
+  }
+}
+
+/** Asleep: a bubble from Usagi's nose, swelling and shrinking with each breath, a glint on it. */
+const noseBubbleShapes = (body: Matrix, t: number): Shape[] => {
+  const swell = 0.5 - 0.5 * Math.cos((2 * Math.PI * t) / 2600)
+  const r = 0.35 + 1.5 * swell
+  const cx = 1.4 + 0.8 * r
+  const cy = -6.3 - 0.5 * r
+
+  return [
+    { kind: 'ellipse', x: cx - r, y: cy - r, w: 2 * r, h: 2 * r, fill: '#CDEBFF', alpha: 0.45, m: body },
+    { kind: 'ellipse', x: cx - r, y: cy - r, w: 2 * r, h: 2 * r, ring: 0.16, fill: '#7FC8F8', alpha: 0.9, m: body },
+    { kind: 'ellipse', x: cx - r * 0.55, y: cy - r * 0.6, w: r * 0.45, h: r * 0.35, fill: '#FFFFFF', alpha: 0.85, m: body },
+  ]
+}
+
+/**
  * Usagi: its ears (through its hat's brim, lowered squatting, trailing a
  * walk, drooping slumped), its round body, feet, hands, its dot eyes, pink
  * cheeks and mouth (wide open shouting); its hat, side crown, energy.
@@ -284,12 +377,14 @@ const usagiShapes = (pose: FigurePose, info: FigureInfo, t: number): Shape[] => 
   const earLength = 7.4 - 2.8 * earsDown
   const shapes: Shape[] = []
   for (const side of [-1, 1]) {
-    const turn = 0.3 * pose.trail + side * (1.9 * droop + 1.45 * flat)
+    const turn = 0.3 * pose.trail + side * (1.9 * droop + 1.45 * flat + (side < 0 ? pose.earL : pose.earR))
     shapes.push({ kind: 'rect', x: side * 4 - 1.05, y: -9 - earLength, w: 2.1, h: earLength + 1.2, r: 1.05, fill: USAGI.body, m: multiply(body, about(side * 4, -9.4, rotate(turn))) })
     shapes.push({ kind: 'rect', x: side * 4 - 0.45, y: -8.6 - earLength, w: 0.9, h: earLength - 1, r: 0.45, fill: USAGI.blush, alpha: 0.55, m: multiply(body, about(side * 4, -9.4, rotate(turn))) })
   }
-  const footHeight = Math.max(0, 2.2 * (1 - 0.45 * pose.tuck) * (1 - pose.hideLegs))
+  const footHeight = Math.max(0, 2.2 * (1 - 0.45 * pose.tuck) * (1 - pose.hideLegs) * (1 - pose.run))
   for (const [index, x] of [[0, -5.2], [1, 3.6]] as const) shapes.push({ kind: 'rect', x, y: -footHeight - (pose.legs[index] ?? 0), w: 1.6, h: footHeight, r: 0.75, fill: USAGI.body, m: body })
+  // Sprinting: its legs a spinning wheel under it, a blur and four legs turning five times a second.
+  if (pose.run > 0.05) shapes.push(...wheelShapes(body, pose.run, t))
   // Its hands: nubs at its sides, raised beside its face, out to point.
   for (const side of [-1, 1]) {
     const raise = side === -1 ? pose.armL : pose.armR
@@ -301,15 +396,12 @@ const usagiShapes = (pose: FigurePose, info: FigureInfo, t: number): Shape[] => 
     { kind: 'rect', x: -6.4, y: -4.4, w: 12.8, h: 2.6, r: 1.3, fill: '#000000', alpha: 0.07, m: body },
     { kind: 'ellipse', x: -6.4, y: -5.4, w: 1.9, h: 1.05, fill: USAGI.blush, alpha: 0.9, m: body },
     { kind: 'ellipse', x: 4.5, y: -5.4, w: 1.9, h: 1.05, fill: USAGI.blush, alpha: 0.9, m: body },
-    ...eyeShapes(body, pose, [-3.4, 3.4], -7.3, 0.95, 1.5, USAGI.eye),
+    ...eyeShapes(body, pose, [-3.4, 3.4], -7.3, 1.05, 1.4, USAGI.eye, true),
   )
-  // Its mouth: small, turned with its eyes; wide open shouting.
-  if (pose.blanket < 0.5 && pose.eyes !== 'down') {
-    const open = Math.max(0, Math.min(1, pose.mouth))
-    const mx = 0.5 * pose.eyeX
-    shapes.push({ kind: 'ellipse', x: mx - 0.7 - 0.6 * open, y: -5.6 - 0.3 * open, w: 1.4 + 1.2 * open, h: 0.7 + 1.4 * open, fill: USAGI.mouth, m: body })
-    if (open > 0.4) shapes.push({ kind: 'ellipse', x: mx - 0.6, y: -4.9, w: 1.2, h: 0.6, fill: USAGI.blush, alpha: open, m: body })
-  }
+  // Its mouth, turned with its eyes: small and open, wide open screaming, a round `o`, a smirk.
+  if (pose.blanket < 0.5 && pose.eyes !== 'down') shapes.push(...mouthShapes(chain(body, translate(0.5 * pose.eyeX, 0)), pose))
+  // Asleep: a bubble from its nose, swelling and shrinking with each breath.
+  if (pose.blanket > 0.5) shapes.push(...noseBubbleShapes(body, t))
   if (hat !== undefined) shapes.push(...usagiHatShapes(body, hat))
   // The propeller cap in flight: its hat's colour, the crown's gold, or its own on a bare head.
   const capTone = info.role !== undefined ? HATS[ROLE_HATS[info.role]].colour : info.crown === true ? CROWN.colour : CAP.colour
@@ -404,15 +496,8 @@ const besideShapes = (one: Beside, m: Matrix, info: FigureInfo, t: number, usagi
   switch (one.kind) {
     case 'thought':
       return thoughtShapes(m, one.text, one.grow, t)
-    case 'shout': {
-      const pop = 1 + 0.12 * Math.max(0, wave(t, 600))
-      const k = chain(m, translate(10 + one.text.length * 0.9, row(-1) - 0.4), scale(pop))
-
-      return [
-        { kind: 'text', x: 0, y: 0, w: 0, h: 0, text: one.text, size: 3.8, bold: true, fill: 'text', m: k },
-        ...[-0.5, 0, 0.5].map((turn): Shape => ({ kind: 'rect', x: -0.18, y: -6.4, w: 0.36, h: 1.6, r: 0.18, fill: 'text', alpha: 0.6, m: chain(k, translate(-one.text.length * 1.1 - 1.4, 0), rotate(turn - 0.6)) })),
-      ]
-    }
+    case 'shout':
+      return burstShapes(m, one.text, row(-1) + 1, t)
     case 'zzz':
       return [0, 1, 2].flatMap(index => {
         const phase = ((t / 2600) + index / 3) % 1
@@ -513,7 +598,82 @@ const besideShapes = (one: Beside, m: Matrix, info: FigureInfo, t: number, usagi
     }
     case 'props':
       return one.props.flatMap(prop => propShapes(prop).map(shape => ({ ...shape, m: shape.m === undefined ? m : multiply(m, shape.m) })))
+    case 'sparkles':
+      return [0, 1, 2].flatMap(index => {
+        const a = (t / 1000) * 2.2 + (index * 2 * Math.PI) / 3
+        const twinkle = 1.2 + 0.6 * Math.abs(wave(t + index * 170, 420))
+
+        return sparkShapes(8.5 * Math.cos(a), row(0) + 2 + 3.2 * Math.sin(a), twinkle, a, index === 1 ? '#F2A0AE' : 'warning').map(shape => ({ ...shape, m: multiply(m, shape.m ?? [1, 0, 0, 1, 0, 0]) }))
+      })
+    case 'speed':
+      // Streaks behind it, flickering.
+      return [-8.6, -5.8, -3].map((y, index): Shape => {
+        const flicker = 0.35 + 0.45 * Math.abs(wave(t + index * 90, 260))
+        const length = 3.4 + 1.6 * Math.abs(wave(t + index * 130, 340))
+
+        return { kind: 'rect', x: one.dir > 0 ? -8.6 - length : 8.6, y, w: length, h: 0.32, r: 0.16, fill: 'inactive', alpha: flicker, m }
+      })
+    case 'dust': {
+      // Puffs kicked up behind its feet (both sides, landing), each growing and fading.
+      const sides = one.dir === 0 ? [-1, 1] : [-Math.sign(one.dir)]
+
+      return sides.flatMap(side => [0, 1].map((index): Shape => {
+        const phase = ((t / 340) + index / 2) % 1
+        const size = 0.8 + 1.8 * phase
+
+        return { kind: 'ellipse', x: side * (5.5 + 3 * phase) - size / 2, y: -size * 0.7 - 0.4 * phase, w: size, h: size * 0.75, fill: CLAWD.dust, alpha: 0.75 * (1 - phase), m }
+      }))
+    }
+    case 'huff': {
+      const phase = (t % 700) / 700
+
+      return [0, 1].map((index): Shape => {
+        const size = 0.9 + 0.7 * index + 0.8 * phase
+
+        return { kind: 'ellipse', x: 3.4 + 2.2 * phase + index * 1.1 - size / 2, y: -6.6 - 0.8 * phase - size / 2, w: size, h: size * 0.8, fill: CLAWD.cloud, alpha: 0.85 * (1 - phase), m }
+      })
+    }
+    case 'keys':
+      // Keys flying off the laptop's deck, a spark among them.
+      return [
+        ...[0, 1, 2].map((index): Shape => {
+          const phase = ((t / 420) + index / 3) % 1
+
+          return { kind: 'rect', x: 11 + index * 3 + 1.5 * phase - 0.5, y: -2.4 - 4 * Math.sin(Math.PI * phase) - 0.5, w: 1, h: 0.8, r: 0.15, fill: '#C9CED6', alpha: 1 - phase * 0.6, m: chain(m, about(11 + index * 3, -2.4, rotate(phase * 3 * (index % 2 === 0 ? 1 : -1)))) }
+        }),
+        ...sparkShapes(13 + 2 * wave(t, 300), -5.4, 1.6 + 0.5 * Math.abs(wave(t, 170)), t / 200).map(shape => ({ ...shape, m: multiply(m, shape.m ?? [1, 0, 0, 1, 0, 0]) })),
+      ]
+    case 'jitter':
+      // A shake's blur lines either side of it.
+      return [-1, 1].flatMap(side => [-7.5, -4.5].map((y, index): Shape => ({ kind: 'rect', x: side * (8.6 + 0.4 * Math.abs(wave(t + index * 40, 80))) - 0.16, y: y - 1.2, w: 0.32, h: 2.4, r: 0.16, fill: 'inactive', alpha: 0.8, m })))
   }
+}
+
+/** A shout burst out over its head: a spiky balloon, a dark rim round it, its words bold inside; it pops in time. */
+const burstShapes = (m: Matrix, text: string, y: number, t: number): Shape[] => {
+  const size = 3
+  const rx = textWidth(text, size) / 2 + 2
+  const ry = 2.7
+  const pop = 1 + 0.08 * Math.max(0, wave(t, 520))
+  const k = chain(m, translate(9 + rx, y), scale(pop))
+  const spikes = 11
+  const layer = (grow: number, fill: string): Shape[] => [
+    { kind: 'ellipse', x: -rx - grow, y: -ry - grow, w: 2 * (rx + grow), h: 2 * (ry + grow), fill, m: k },
+    ...Array.from({ length: spikes }, (_, index): Shape => {
+      const a = (2 * Math.PI * index) / spikes + 0.35
+      const half = (Math.PI / spikes) * 0.55
+      const at = (angle: number, r: number): readonly [number, number] => [Math.cos(angle) * (rx * r + grow), Math.sin(angle) * (ry * r + grow)]
+      const reach = 1.4 + 0.25 * (index % 3)
+
+      return { kind: 'poly', x: 0, y: 0, w: 0, h: 0, points: [at(a - half, 0.92), [Math.cos(a) * (rx + reach + grow * 1.6), Math.sin(a) * (ry + reach + grow * 1.6)], at(a + half, 0.92)], fill, m: k }
+    }),
+  ]
+
+  return [
+    ...layer(0.42, '#3B2A20'),
+    ...layer(0, '#FFF8E7'),
+    { kind: 'text', x: 0, y: size * 0.36, w: 0, h: 0, text, size, bold: true, fill: '#2A1712', m: k },
+  ]
 }
 
 /**

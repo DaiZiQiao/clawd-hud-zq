@@ -237,6 +237,8 @@ export const mascotPlan = (scene: MascotScene, layout: MascotLayout, previous?: 
           sky: wander || smooth ? headroom + at.d : 0,
           ...(memo.has(one.id) ? { memo: memo.get(one.id) } : {}),
           ...(ask === undefined ? {} : { ask }),
+          // Usagi dashes everywhere: twice the pace on foot, shorter rests, more leaps.
+          ...(scene.character === 'usagi' ? { zippy: true as const } : {}),
         }
       }),
       ...fixedOnes.map((one): Mover => ({ id: one.id, width: one.width, body: one.body, x: one.drawnX, d: one.d, lo: 0, hi: columns - one.width, free: false, sky: 0, fixed: true })),
