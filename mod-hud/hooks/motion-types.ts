@@ -76,8 +76,13 @@ export type Memo = {
 /** How a mascot moves this frame, for its look; `lift` is rows above the floor. */
 export type Motion =
   | { kind: 'walk' }
-  /** A hop: squashed on take-off and landing, stretched leaving the ground, legs tucked at the apex, down again in the air. */
-  | { kind: 'hop'; step: number; lift: number; pose: 'squash' | 'stretch' | 'apex' | 'air'; from?: number; u?: number }
+  /**
+   * A hop: squashed on take-off and landing, stretched leaving the ground,
+   * legs tucked at the apex, down again in the air. In the smooth scene its
+   * first frame, its frames in the air and how far through them it is (`u`,
+   * under 0 crouched to spring, over 1 landed).
+   */
+  | { kind: 'hop'; step: number; lift: number; pose: 'squash' | 'stretch' | 'apex' | 'air'; from?: number; air?: number; u?: number }
   | { kind: 'fly'; step: number; lift: number }
   /** The bounce of a flight's landing: squashed. */
   | { kind: 'land' }

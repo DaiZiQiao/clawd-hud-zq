@@ -1,23 +1,26 @@
 import { BOX, LAPTOP_X, SLOT } from './mascot-sprites'
 import { stepField } from './motion-arbitrate'
-import { AIRBORNE, CATCH_UP, CROWD_OBSTACLES, FAR_CELLS, FLY_SKY, GAP, READING_STREAK_MS, isKnocked } from './motion-rules'
+import { AIRBORNE, CATCH_UP, CROWD_OBSTACLES, FAR_CELLS, FLY_SKY, GAP, READING_STREAK_MS, clamp, isKnocked } from './motion-rules'
 import type { CollisionMode, Memo, Motion, Mover } from './motion-types'
 import { clearOf, depthsFor, dottedOf, fieldLayout, fieldOf, stripText } from './scene-layout'
-import { ACCENT, isNumber } from './scene-model'
-import { BLANKET_AFTER_MS, FAREWELL_TICKS, REVIEW_STAND_TICKS, REVIEW_WALK_TICKS, SCENE_FRAME_MS, SPARK_EVERY, arriveTicksOf, phaseOf, workTicks } from './scene-phases'
+import { ACCENT } from './scene-model'
+import { FAREWELL_TICKS, REVIEW_STAND_TICKS, REVIEW_WALK_TICKS, SCENE_FRAME_MS, SPARK_EVERY, arriveTicksOf, idleBitOf, phaseOf, workTicks } from './scene-phases'
+import type { IdleBit } from './scene-phases'
 import type { Cue, Mark, MascotAgent, MascotLayout, MascotPlan, MascotScene, Phase, Placement, Slot } from './scene-types'
+import { isNumber } from './state-json'
 
 // Where everything stands at a frame (`mascotPlan`): the field laid out
 // (hooks/scene-layout.ts), the previous frame's plan carried on, each
 // mover's goal and flight asked, the field stepped (hooks/motion-arbitrate.ts)
 // once per frame passed, and the scenes' cues and marks.
 
+/** The idle bits the session's mascot stands for: it strolls through them, never sitting, stretching or asleep. */
+const STANDING_BITS: ReadonlySet<IdleBit> = new Set(['look', 'puff'])
+
 /** Phases in which a mascot stands on its floor and takes part in movement and bumping. */
 export const SETTLED: ReadonlySet<Phase['kind']> = new Set(['work', 'stalled', 'take', 'setup', 'pack', 'deliver', 'hand', 'baton', 'cheer', 'sit'])
 /** Done or failed, before the pipe: it stays where it stands (but for its walk back to its spawner). */
 const FINISHING: ReadonlySet<Phase['kind']> = new Set(['pack', 'hand', 'baton', 'cheer', 'sit'])
-
-const clampTo = (value: number, lo: number, hi: number): number => Math.max(lo, Math.min(hi, value))
 
 /**
  * Where everything stands at this tick: the field as deep as `rows` holds;
@@ -53,7 +56,7 @@ export const mascotPlan = (scene: MascotScene, layout: MascotLayout, previous?: 
     const origin = previous?.exits.get(agent.id)
     const old = before.get(agent.id)
     if (origin !== undefined) exits.set(agent.id, { ...origin, d: Math.min(origin.d, depth - 1) })
-    else if (old !== undefined && old.kind !== 'strip') exits.set(agent.id, { kind: old.kind, x: clampTo(old.drawnX, 0, columns - old.width), d: Math.min(old.d, depth - 1), width: old.width, body: old.body })
+    else if (old !== undefined && old.kind !== 'strip') exits.set(agent.id, { kind: old.kind, x: clamp(old.drawnX, 0, columns - old.width), d: Math.min(old.d, depth - 1), width: old.width, body: old.body })
   }
   const occupied = (previous?.placements ?? []).filter(one => one.kind !== 'strip').map(one => ({ id: one.id, x: one.drawnX, d: Math.min(one.d, depth - 1), width: one.width }))
   const laid = fieldLayout({ ...scene, agents: present }, columns, depth, previous?.slots, occupied, exits)
@@ -89,10 +92,11 @@ export const mascotPlan = (scene: MascotScene, layout: MascotLayout, previous?: 
   }
   const rangeOf = (one: Placement): [number, number] => depthsFor(one.kind, depth, laid.minis, isChild(one))
 
-  // Who may wander: the session's mascot while awake (idle too, till its blanket), an agent thinking away from its laptop; never one idle.
+  // Who may wander: the session's mascot while awake (idle too, while its idle bit has it on its feet), an agent
+  // thinking away from its laptop; never one idle.
   const isFree = (one: Placement): boolean => {
     if (!wander) return false
-    if (one.kind === 'main') return (scene.main.mood !== 'idle' || (scene.main.idleMs ?? 0) < BLANKET_AFTER_MS) && scene.main.stretchMs === undefined && scene.main.tidyMs === undefined
+    if (one.kind === 'main') return (scene.main.mood !== 'idle' || STANDING_BITS.has(idleBitOf('main', scene.main.idleMs ?? 0))) && scene.main.stretchMs === undefined && scene.main.tidyMs === undefined
     const agent = byId.get(one.id)
 
     return one.phase?.kind === 'work' && agent?.status === 'running' && agent.activity === 'thinking' && agent.idleMs === undefined
@@ -104,7 +108,7 @@ export const mascotPlan = (scene: MascotScene, layout: MascotLayout, previous?: 
     const old = before.get(one.id)
     const kept = old?.kind === one.kind && old.width === one.width ? previous?.memo.get(one.id) : undefined
     const [dLo, dHi] = rangeOf(one)
-    const at = kept !== undefined ? { x: kept.x, d: clampTo(kept.d ?? one.slotD, dLo, dHi) } : { x: one.x, d: one.slotD }
+    const at = kept !== undefined ? { x: kept.x, d: clamp(kept.d ?? one.slotD, dLo, dHi) } : { x: one.x, d: one.slotD }
     pos.set(one.id, at)
     if (kept !== undefined) memo.set(one.id, { ...kept, d: at.d })
   }
@@ -138,7 +142,7 @@ export const mascotPlan = (scene: MascotScene, layout: MascotLayout, previous?: 
     const right = there.x + target.width + GAP
     const x = posOf(mover).x <= there.x ? (left >= 0 ? left : right) : (right <= columns - mover.width ? right : left)
 
-    return { x, d: clampTo(there.d, ...rangeOf(mover)) }
+    return { x, d: clamp(there.d, ...rangeOf(mover)) }
   }
   const spawnerOf = (agent: MascotAgent): Placement | undefined => (agent.spawner === undefined ? undefined : placed.get(agent.spawner))
 

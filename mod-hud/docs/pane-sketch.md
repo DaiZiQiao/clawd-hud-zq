@@ -1,10 +1,10 @@
 # mod-hud: pane HUD sketch
 
 The HUD is the block at the top of the `hud` pane, above the agent
-list. `renderHud()` in `hooks/hud.tsx` draws it from one `HudData` value.
-Every sketch below is the renderer's own output (`hudLines()`, with
-`todoLines()` for the TODO section) for the fixtures in
-`hooks/hud.fixtures.ts`, in UTC. The `full` fixture is:
+list. `renderHudBlock()` in `hooks/hud.tsx` draws it from one `HudData` value.
+Every sketch below is the renderer's own output as plain text (`hudLines()`,
+with `todoLines()` for the TODO section, in `hooks/hud.fixtures.ts`) for the
+fixtures there, in UTC. The `full` fixture is:
 - opus 5.5 at xhigh effort through a gateway, 72 minutes in, $4.21 spent;
   the main loop working for 42 s
 - two subagents waiting on a permission ask

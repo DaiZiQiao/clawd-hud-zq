@@ -76,14 +76,14 @@ export const planAt = (world: World, tick: number, previous: MascotPlan | undefi
 }
 
 /** A hop's place at a moment (frames, fractional): along its line from take-off to landing, up its arc. */
-const hopAt = (hop: NonNullable<Memo['hop']>, t: number): { x: number; lift: number; vy: number; pose: 'squash' | 'stretch' | 'apex' | 'air' } => {
+const hopAt = (hop: NonNullable<Memo['hop']>, t: number): { x: number; lift: number; vy: number; pose: 'squash' | 'stretch' | 'apex' | 'air'; u: number } => {
   const u = (t - hop.from - 0.5) / hop.air
   const inAir = u > 0 && u < 1
   const lift = inAir ? hop.height * 4 * u * (1 - u) : 0
   const x = hop.x0 + (hop.x1 - hop.x0) * clamp((t - hop.from) / (hop.air + 1), 0, 1)
   const pose = !inAir || lift < 0.5 ? 'squash' : u < 0.25 ? 'stretch' : u <= 0.75 ? 'apex' : 'air'
 
-  return { x, lift, vy: inAir ? hop.height * 4 * (1 - 2 * u) : 0, pose }
+  return { x, lift, vy: inAir ? hop.height * 4 * (1 - 2 * u) : 0, pose, u }
 }
 
 /**
@@ -135,7 +135,7 @@ export const viewOf = (world: World): { sprites: Map<string, SpriteView>; seen: 
           x = arc.x
           lift = arc.lift
           vy = arc.vy
-          motion = { kind: 'hop', step: Math.floor(t - hop.from), lift: Math.round(lift), pose: arc.pose, from: hop.from, u: clamp((t - hop.from) / (hop.air + 1), 0, 1) }
+          motion = { kind: 'hop', step: Math.floor(t - hop.from), lift: Math.round(lift), pose: arc.pose, from: hop.from, air: hop.air, u: arc.u }
         }
         break
       }

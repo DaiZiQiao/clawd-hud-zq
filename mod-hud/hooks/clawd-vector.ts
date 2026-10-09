@@ -142,10 +142,22 @@ const elementOf = (shape: Shape, grad?: string): string => {
   }
 }
 
-/** A plain shape (a square rectangle, a disc, an unadorned polygon, a line) as path data, to be drawn in one path with those painted alike; undefined for any other. */
+/**
+ * A plain shape (a square rectangle, a disc, an unadorned polygon, a line)
+ * as path data, to be drawn in one path with those painted alike; undefined
+ * for any other. Every outline runs clockwise, so where two overlap the
+ * path's nonzero fill fills both, as their own elements would.
+ */
 const pathOf = (shape: Shape): string | undefined => {
   if (shape.grad !== undefined) return undefined
-  const points = (shape.points ?? []).map(([x, y]) => `${num(x)} ${num(y)}`).join('L')
+  const given = shape.points ?? []
+  // A polygon's area signed by its turning: negative running anticlockwise (y down).
+  const turning = given.reduce((sum, [x, y], index) => {
+    const [nx, ny] = given[(index + 1) % given.length] ?? [x, y]
+
+    return sum + x * ny - nx * y
+  }, 0)
+  const points = (shape.kind === 'poly' && turning < 0 ? [...given].reverse() : given).map(([x, y]) => `${num(x)} ${num(y)}`).join('L')
   switch (shape.kind) {
     case 'rect':
       return (shape.r ?? 0) > 0 ? undefined : `M${num(shape.x)} ${num(shape.y)}h${num(shape.w)}v${num(shape.h)}h${num(-shape.w)}z`
@@ -154,7 +166,7 @@ const pathOf = (shape: Shape): string | undefined => {
       const rx = num(shape.w / 2)
       const ry = num(shape.h / 2)
 
-      return `M${num(shape.x)} ${num(shape.y + shape.h / 2)}a${rx} ${ry} 0 1 0 ${num(shape.w)} 0a${rx} ${ry} 0 1 0 ${num(-shape.w)} 0z`
+      return `M${num(shape.x)} ${num(shape.y + shape.h / 2)}a${rx} ${ry} 0 1 1 ${num(shape.w)} 0a${rx} ${ry} 0 1 1 ${num(-shape.w)} 0z`
     }
     case 'poly':
       return shape.grow !== undefined || shape.outline !== undefined ? undefined : `M${points}z`
@@ -406,11 +418,15 @@ const layPixel = (pixels: Uint8Array, at: number, r: number, g: number, b: numbe
   pixels[at + 3] = Math.round(out * 255)
 }
 
-/** `above` laid over `below` in place, pixel for pixel (straight alpha, the same size). */
-export const overlay = (below: Uint8Array, above: Uint8Array): void => {
-  for (let at = 0; at < below.length; at += 4) {
-    const a = above[at + 3] ?? 0
-    if (a > 0) layPixel(below, at, above[at] ?? 0, above[at + 1] ?? 0, above[at + 2] ?? 0, a / 255)
+/** `above` laid over `below` in place (straight alpha): `below` `width` pixels a row, `above` `stride` a row, read from its column `from` on. */
+export const overlay = (below: Uint8Array, above: Uint8Array, width: number, stride = width, from = 0): void => {
+  const rows = below.length / (4 * width)
+  for (let y = 0; y < rows; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      const at = (y * stride + from + x) * 4
+      const a = above[at + 3] ?? 0
+      if (a > 0) layPixel(below, (y * width + x) * 4, above[at] ?? 0, above[at + 1] ?? 0, above[at + 2] ?? 0, a / 255)
+    }
   }
 }
 
@@ -423,10 +439,12 @@ const rampOf = (grad: Gradient): { rgba: Uint8Array; x: number; y: number; dx: n
   const stops = grad.stops
   for (let step = 0; step < 256; step += 1) {
     const t = step / 255
+    // Before its first stop its first colour, past its last its last.
     const after = stops.findIndex(([at]) => at >= t)
-    const [a0, c0, o0] = stops[after <= 0 ? 0 : after - 1] ?? [0, '#000000', 0]
-    const [a1, c1, o1] = stops[after < 0 ? stops.length - 1 : after] ?? [a0, c0, o0]
-    const k = a1 > a0 ? (t - a0) / (a1 - a0) : 0
+    const next = after < 0 ? stops.length - 1 : after
+    const [a0, c0, o0] = stops[after <= 0 ? next : after - 1] ?? [0, '#000000', 0]
+    const [a1, c1, o1] = stops[next] ?? [a0, c0, o0]
+    const k = a1 > a0 ? Math.max(0, Math.min(1, (t - a0) / (a1 - a0))) : 0
     const from = rgbOf(c0)
     const to = rgbOf(c1)
     rgba.set([0, 1, 2].map(i => Math.round((from[i] ?? 0) + ((to[i] ?? 0) - (from[i] ?? 0)) * k)), step * 4)

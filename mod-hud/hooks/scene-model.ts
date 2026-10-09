@@ -179,8 +179,6 @@ export const energyOf = (effort: string | undefined): Energy => {
 /** A type whose desk a reviewer visits: one that writes or fixes. */
 export const isMakerType = (type: string | undefined): boolean => /worker|frontend|debug/i.test(type ?? '')
 
-export { isNumber }
-
 const contextPercentOf = (hud: HudData | undefined): number | undefined => {
   const usage = hud?.usage
   if (isNumber(usage?.contextPercent)) return usage.contextPercent

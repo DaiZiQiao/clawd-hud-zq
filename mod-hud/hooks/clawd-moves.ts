@@ -1,4 +1,4 @@
-import { chain, multiply, rotate, scale, translate } from './clawd-vector'
+import { chain, multiply, rotate, scale, translate, wave } from './clawd-vector'
 import type { Shape } from './clawd-vector'
 
 // The smooth Clawd's session moves: where its body, eyes and arms are at a
@@ -48,7 +48,6 @@ const clamp01 = (v: number): number => Math.min(1, Math.max(0, v))
 /** How far `t` is through `from` to `to`, 0 to 1. */
 const span = (t: number, from: number, to: number): number => clamp01((t - from) / (to - from))
 const mix = (a: number, b: number, u: number): number => a + (b - a) * u
-const wave = (t: number, period: number): number => Math.sin((2 * Math.PI * t) / period)
 const easeIn = (u: number): number => u * u * u
 const easeOut = (u: number): number => 1 - (1 - u) ** 3
 const easeInOut = (u: number): number => (u < 0.5 ? 4 * u * u * u : 1 - (-2 * u + 2) ** 3 / 2)

@@ -177,19 +177,22 @@ describe('its stroll and its bounds', () => {
   })
 
   test('bounding: crouched to spring, then up with legs tucked and hands flung up crying Yaha!, one bound in three turned over, down in a puff of dust', () => {
-    const bound = (u: number, from = 1) => targetOf(STAND, { character: 'usagi', now: 1000, seed: 0.3, motion: { kind: 'hop', step: 0, lift: 0, pose: 'apex', from, u }, facing: 'right' }, false)
-    expect(bound(0.03).sy).toBeLessThan(1)
+    const bound = (u: number, from = 1, air = 6) => targetOf(STAND, { character: 'usagi', now: 1000, seed: 0.3, motion: { kind: 'hop', step: 0, lift: 0, pose: 'apex', from, air, u }, facing: 'right' }, false)
+    expect(bound(-0.05).sy).toBeLessThan(1)
     const up = bound(0.4)
     expect(up.tuck).toBe(1)
     expect(up.armL).toBeGreaterThan(1)
     expect(up.mouthShape).toBe('scream')
     expect(up.beside.find(one => one.kind === 'shout')).toMatchObject({ text: expect.stringMatching(/^(Yaha!|Iyaha!|Ura!)$/) })
-    expect(bound(0.97).beside.map(one => one.kind)).toContain('dust')
+    expect(bound(1.04).beside.map(one => one.kind)).toContain('dust')
     const spins = Array.from({ length: 9 }, (_, from) => Math.abs(bound(0.5, from).spin))
     expect(spins.filter(spin => spin > 1).length).toBeGreaterThan(0)
     expect(spins.filter(spin => spin === 0).length).toBeGreaterThan(0)
+    // A spring in place: up and down, no cry, no flip.
+    const spring = Array.from({ length: 9 }, (_, from) => bound(0.5, from, 1))
+    expect(spring.every(one => one.spin === 0 && !one.beside.some(beside => beside.kind === 'shout'))).toBe(true)
     // Clawd hops as it did.
-    expect(targetOf(STAND, { character: 'clawd', now: 1000, seed: 0.3, motion: { kind: 'hop', step: 0, lift: 0, pose: 'apex', from: 1, u: 0.4 }, facing: 'right' }, false).beside).toEqual([])
+    expect(targetOf(STAND, { character: 'clawd', now: 1000, seed: 0.3, motion: { kind: 'hop', step: 0, lift: 0, pose: 'apex', from: 1, air: 6, u: 0.4 }, facing: 'right' }, false).beside).toEqual([])
   })
 
   test('its ears twitch now and then, one at a time', () => {

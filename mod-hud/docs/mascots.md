@@ -41,8 +41,8 @@ that shows pictures: Ghostty, kitty), the `mascotArt` option (`vector`, the
 default) draws the mascots as shapes in eased poses instead of the cells'
 blocks; see "The vector art". Text-only terminals draw the blocks either way.
 
-`mascotLines()` returns the classic drawing as plain text. Every frame below
-is its output (`spriteSheet()`).
+`mascotLines()` (`hooks/scene-render.fixtures.ts`) returns the classic
+drawing as plain text. Every frame below is its output (`spriteSheet()`).
 
 The `mascots` option (on by default) switches all of it off: no scene, no
 name colours, no scene clock, no raised hands and no compaction stamp
@@ -285,8 +285,10 @@ blending over the seam between them.
   its texture (tufts, ripples of sand, drifts of snow, paving stones).
 - **In a terminal's picture** (`smoothPixels`) the still layers are
   rasterized once and kept (`stills`), a pan copying a window of them, so a
-  frame draws only what moves; a band 120 cells across costs about 4 ms a
-  frame more and its picture about 40 KiB.
+  frame draws only what moves; a band 120 cells across costs about 5 ms a
+  frame more (2 to 6 to draw, the rest to write the fuller PNG) and its
+  picture about 45 KiB. While the mascots stand still the picture is drawn
+  ten times a second, the weather with it; while the tour pans, every frame.
 - **On the desktop** (`smoothSvg`) the scenery's shapes painted alike are
   one path each (`shapesMarkup`'s `merged`); short of room for all of it in
   the `Svg`, the ground's texture goes first (`Layer.detail`), then what
@@ -1667,7 +1669,7 @@ A spawn arrives by **the red pipe** (below), in both renderers: the pipe
 comes down from the top over its slot (0.5 s), it drops out of the mouth
 and falls to its floor (0.5 s, the fall look: eyes wide, arms up, legs
 tucked, ever faster), and the pipe goes back up (0.5 s). It is on its floor
-a second after its spawn (`ARRIVE_TICKS`, 4 frames); several spawned within
+a second after its spawn (`arriveTicksOf`, 4 frames); several spawned within
 two seconds share one pipe and take their turns. Then work starts: it turns
 to its desk (1 frame), then stands at its laptop (2); with the scenes, it
 first takes the task's scroll from its spawner (2, see "Choreography"). With
@@ -1732,7 +1734,7 @@ edge, never floating.
 
 | Scene | Timeline |
 | --- | --- |
-| arrival (`arrivalAt`) | the pipe slides down (0.5 s) with the mascot inside, hidden; it drops out of the mouth, falling ever faster to its floor (0.5 s); the pipe slides back up (0.5 s) |
+| arrival (`batchPipeAt`) | the pipe slides down (0.5 s) with the mascot inside, hidden; it drops out of the mouth, falling ever faster to its floor (0.5 s); the pipe slides back up (0.5 s) |
 | a shared arrival (`pipeBatch`) | agents spawned within 2 s of a batch's first (`PIPE_BATCH_MS`) share one pipe over the first one's slot: each drops at its turn (never before it spawned, never before the pipe is down, a drop's length after the one before) and falls in an arc to its own slot; the pipe goes up once the last is on its floor |
 | farewell, done or failed (`farewellAt`) | after the cheer or the sit, the pipe slides down over it (0.5 s), sucks it up, accelerating, until its feet are past the lip (1 s), and slides back up with it inside (0.5 s) |
 

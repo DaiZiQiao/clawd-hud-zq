@@ -6,7 +6,7 @@ import { PIPE_COLOUR, PIPE_SHINE, PIPE_WIDTH } from './scene-pipe'
 import { placedSprites } from './scene-placement'
 import type { Cell, MascotLayout, MascotPlan, MascotScene, PlacedSprite, SceneView } from './scene-types'
 import { glyphShapes } from './raster-font'
-import { sceneryOf } from './scenery'
+import { keptIn, sceneryOf } from './scenery'
 import type { Layer, Scenery } from './scenery'
 import { crossShapes, figureShapes, markShapes, pipeShapes, tickShapes } from './smooth-art'
 import { livelyOf, targetOf } from './smooth-pose'
@@ -147,9 +147,10 @@ export const smoothFrame = (scene: MascotScene, layout: MascotLayout, plan: Masc
   const width = plan.columns * 2
   const height = rows * 4
   // The field begins a little behind the back row's feet.
-  const land = scenery ? { scenery: sceneryOf(width, height, (room + BOX_ROWS - 0.5) * 4 - 2, now) } : {}
+  const land = scenery ? sceneryOf(width, height, (room + BOX_ROWS - 0.5) * 4 - 2, now) : undefined
 
-  return { shapes, wholes, width, height, still, ...land }
+  // Panning on to the next stop, every frame drawn, as while a mascot moves.
+  return { shapes, wholes, width, height, still: still && land?.panning !== true, ...(land === undefined ? {} : { scenery: land }) }
 }
 
 /** The still layers' markup as last made, by what they show and whether with their texture: made once, not every frame. */
@@ -157,11 +158,7 @@ const stillMarkups = new Map<string, Markup>()
 
 /** A layer's still shapes as markup (all of them, or without its texture), seen from its shift: kept, then moved back by it. */
 const stillMarkup = (layer: Layer, prefix: string, texture = true): Markup => {
-  const key = `${layer.key}:${texture}`
-  const kept = stillMarkups.get(key) ?? partMarkup(texture ? layer.still : layer.still.slice(0, layer.still.length - layer.detail), Infinity, () => true, prefix)
-  stillMarkups.delete(key)
-  stillMarkups.set(key, kept)
-  for (const old of stillMarkups.keys()) if (stillMarkups.size > STILLS) stillMarkups.delete(old)
+  const kept = keptIn(stillMarkups, `${layer.key}:${texture}`, () => partMarkup(texture ? layer.still : layer.still.slice(0, layer.still.length - layer.detail), Infinity, () => true, prefix))
 
   return layer.shift === 0 ? kept : { markup: `<g transform='translate(${num(-layer.shift)} 0)'>${kept.markup}</g>`, used: kept.used }
 }
@@ -179,21 +176,19 @@ export const smoothSvg = (frame: SmoothFrame, columns: number, rows: number, lim
   const view = scale(PIXELS_PER_UNIT)
   const extra = ` font-family='ui-monospace,Menlo,Consolas,monospace' text-anchor='middle'`
   const budget = limit - 400
-  const size = (all: readonly Shape[]): number => partMarkup(all).markup.length
-  let shapes: readonly Shape[] = frame.shapes
+  let mascots = partMarkup(frame.shapes)
   // Past the limit, whole mascots are left out, the last drawn first: never one drawn in part.
-  if (size(shapes) > budget) {
-    const sizes = frame.wholes.map(([from, to]) => size(frame.shapes.slice(from, to)))
-    let over = size(shapes) - budget
+  if (mascots.markup.length > budget) {
+    const sizes = frame.wholes.map(([from, to]) => partMarkup(frame.shapes.slice(from, to)).markup.length)
+    let over = mascots.markup.length - budget
     const dropped = new Set<number>()
     for (let index = frame.wholes.length - 1; index >= 0 && over > 0; index -= 1) {
       dropped.add(index)
       over -= sizes[index] ?? 0
     }
     const gone = new Set(frame.wholes.flatMap(([from, to], index) => (dropped.has(index) ? Array.from({ length: to - from }, (_, at) => from + at) : [])))
-    shapes = frame.shapes.filter((_, index) => !gone.has(index))
+    mascots = partMarkup(frame.shapes.filter((_, index) => !gone.has(index)), budget)
   }
-  const mascots = partMarkup(shapes, budget)
   // The scenery in what the mascots leave, its alike shapes merged into paths: all of it, else without the ground's
   // texture, else its still layers alone, else none.
   const land = frame.scenery
@@ -236,27 +231,22 @@ export const smoothPixels = (
   const view = scale(cell.width / 2, cell.height / 4)
   const land = frame.scenery
   if (land === undefined) return { pixels: rasterOf(frame.shapes, width, height, view, glyphShapes, scheme), width, height }
-  // The still layers from the cache, each seen from its shift; what moves laid over them.
-  const still = (layer: Layer): Uint8Array => {
+  // The still layers from the cache, each seen from its shift: the sky's copied to draw over, the land's laid over that.
+  const still = (layer: Layer): { kept: Uint8Array; across: number; from: number } => {
     const across = Math.max(width, Math.round((layer.span * cell.width) / 2))
-    const key = `${layer.key}:${across}x${height}:${scheme}`
-    const kept = stills.get(key) ?? rasterOf(layer.still, across, height, view, glyphShapes, scheme)
-    stills.delete(key)
-    stills.set(key, kept)
-    for (const old of stills.keys()) if (stills.size > STILLS) stills.delete(old)
-    const from = Math.min(across - width, Math.max(0, Math.round((layer.shift * cell.width) / 2)))
-    if (across === width) return kept.slice()
-    const seen = new Uint8Array(width * height * 4)
-    for (let row = 0; row < height; row += 1) seen.set(kept.subarray((row * across + from) * 4, (row * across + from + width) * 4), row * width * 4)
+    const kept = keptIn(stills, `${layer.key}:${across}x${height}:${scheme}`, () => rasterOf(layer.still, across, height, view, glyphShapes, scheme))
 
-    return seen
+    return { kept, across, from: Math.min(across - width, Math.max(0, Math.round((layer.shift * cell.width) / 2))) }
   }
-  const pixels = rasterOf(land.sky.moving, width, height, view, glyphShapes, scheme, still(land.sky))
-  overlay(pixels, still(land.land))
+  const sky = still(land.sky)
+  const pixels = new Uint8Array(width * height * 4)
+  for (let row = 0; row < height; row += 1) pixels.set(sky.kept.subarray((row * sky.across + sky.from) * 4, (row * sky.across + sky.from + width) * 4), row * width * 4)
+  rasterOf(land.sky.moving, width, height, view, glyphShapes, scheme, pixels)
+  const ground = still(land.land)
+  overlay(pixels, ground.kept, width, ground.across, ground.from)
 
   return { pixels: rasterOf([...land.land.moving, ...frame.shapes, ...land.front], width, height, view, glyphShapes, scheme, pixels), width, height }
 }
 
 /** The scenery's still layers as last drawn, by what they show, their size and scheme: the band's and a pane's two each, and their next. */
 const stills = new Map<string, Uint8Array>()
-const STILLS = 8

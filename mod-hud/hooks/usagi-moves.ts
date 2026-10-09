@@ -1,4 +1,5 @@
 import { smooth, wave } from './clawd-vector'
+import { BOUND_AIR } from './motion-rules'
 import type { Beside, FigurePose } from './smooth-pose'
 import { QUIRK_MS, QUIRK_SAYS } from './usagi-quirks'
 import type { Quirk } from './usagi-quirks'
@@ -207,22 +208,24 @@ const BOUND_CRIES = ['Yaha!', 'Iyaha!', 'Yaha!', 'Ura!'] as const
 /**
  * Usagi bounding (its hop, far and low): crouched to spring, then off the
  * ground stretched, legs tucked, hands flung up, ears streaming back, eyes
- * squeezed and mouth wide on its Yaha!; one bound in three turned over in
- * the air; down again squashed, dust kicked up either side. `u` how far
- * through the bound (take-off to landing, 0 to 1), `from` its first frame.
+ * squeezed and mouth wide on its Yaha!; one full bound in three turned over
+ * in the air; down again squashed, dust kicked up either side. `u` how far
+ * through its `air` frames in the air (under 0 crouched, over 1 landed),
+ * `from` its first frame. A spring in place (a frame in the air) neither
+ * cries out nor turns over.
  */
-export const boundPose = (pose: FigurePose, u: number, from: number, facing: 'left' | 'right' | undefined, seed: number): FigurePose => {
+export const boundPose = (pose: FigurePose, u: number, air: number, from: number, facing: 'left' | 'right' | undefined, seed: number): FigurePose => {
   const dir = facing === 'left' ? -1 : 1
-  const air = (u - 0.08) / 0.84
-  if (air <= 0) return { ...pose, sx: pose.sx * 1.14, sy: pose.sy * 0.84, drop: pose.drop + 0.6, armL: -0.5, armR: -0.5, eyes: 'squeeze', tuck: 0 }
-  if (air >= 1) {
-    const since = (u - 0.92) / 0.08
+  if (u <= 0) return { ...pose, sx: pose.sx * 1.14, sy: pose.sy * 0.84, drop: pose.drop + 0.6, armL: -0.5, armR: -0.5, eyes: 'squeeze', tuck: 0 }
+  if (u >= 1) {
+    // Landed: the last half frame of the hop, squashed and springing back.
+    const since = Math.min(1, ((u - 1) * air) / 0.5)
 
     return { ...pose, sx: pose.sx * (1 + 0.16 * (1 - since)), sy: pose.sy * (1 - 0.2 * (1 - since)), tuck: 0, beside: [...pose.beside, { kind: 'dust', dir: 0 }] }
   }
   // A forward flip high in the arc, turned about its middle (its big head and small body), not its hips as a tumble is.
-  const turn = Math.floor(seed * 97 + from) % 3 === 0 ? dir * 2 * Math.PI * smooth((air - 0.1) / 0.6) : 0
-  const rising = air < 0.5
+  const turn = air >= BOUND_AIR && Math.floor(seed * 97 + from) % 3 === 0 ? dir * 2 * Math.PI * smooth((u - 0.1) / 0.6) : 0
+  const rising = u < 0.5
 
   return {
     ...pose,
@@ -238,7 +241,7 @@ export const boundPose = (pose: FigurePose, u: number, from: number, facing: 'le
     eyes: 'squeeze',
     mouth: 1,
     mouthShape: 'scream',
-    beside: [...pose.beside.filter(one => one.kind !== 'shout'), ...(air < 0.8 ? [{ kind: 'shout' as const, text: BOUND_CRIES[Math.abs(from) % BOUND_CRIES.length] ?? 'Yaha!' }] : [])],
+    beside: [...pose.beside.filter(one => one.kind !== 'shout'), ...(air > 1 && u < 0.8 ? [{ kind: 'shout' as const, text: BOUND_CRIES[Math.abs(from) % BOUND_CRIES.length] ?? 'Yaha!' }] : [])],
   }
 }
 

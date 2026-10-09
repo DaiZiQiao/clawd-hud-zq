@@ -27,8 +27,8 @@ const STOP = 110
  */
 export type Layer = { key: string; still: Shape[]; span: number; shift: number; detail: number; moving: Shape[] }
 
-/** The scenery of a frame, back to front: the sky, the land, then (after the mascots) the weather nearest the eye. */
-export type Scenery = { sky: Layer; land: Layer; front: Shape[] }
+/** The scenery of a frame, back to front: the sky, the land, then (after the mascots) the weather nearest the eye; and whether the tour is panning on. */
+export type Scenery = { sky: Layer; land: Layer; front: Shape[]; panning: boolean }
 
 type Weather = 'leaves' | 'rain' | 'petals' | 'snow' | 'fireflies'
 
@@ -525,19 +525,24 @@ const stBasil = (at: At): Shape[] => {
   return shapes
 }
 
-const aurora = (at: At, now: number): Shape[] =>
-  [0, 1, 2].map(i => {
-    const top: Point[] = []
-    const bottom: Point[] = []
-    for (let dx = -60; dx <= 60; dx += 4) {
-      const wave = Math.sin(dx / 11 + now / (2400 + i * 700) + i * 2) * 2 + Math.sin(dx / 5 - now / 1900) * 0.7
-      top.push([dx, 17 - i * 1.5 + wave])
-      bottom.push([dx, 11.5 - i * 1.2 + wave * 0.7])
-    }
+/** The northern lights: three curtains of thin rays, bright at their feet and fading up, rippling. */
+const aurora = (at: At, now: number): Shape[] => {
+  // By brightness, foot to top: each drawn together.
+  const glow: Shape[][] = [[], [], []]
+  for (let i = 0; i < 3; i += 1) {
     const colour = ['#5cf2a0', '#4ae0c0', '#a080f0'][i] as string
+    for (let dx = -60 + i * 0.7; dx < 60; dx += 2.1) {
+      const wave = Math.sin(dx / 11 + now / (2400 + i * 700) + i * 2) * 2 + Math.sin(dx / 5 - now / 1900) * 0.7
+      const foot = 11.5 - i * 1.2 + wave * 0.7
+      const top = foot + 3 + 3.5 * rnd('ray', i, Math.round(dx * 10)) + wave * 0.3
+      glow[0]?.push(box(at, dx, foot, dx + 1.3, foot + 1.2, colour, 0.34))
+      glow[1]?.push(box(at, dx, foot + 1.2, dx + 1.3, (foot + top) / 2 + 0.6, colour, 0.17))
+      glow[2]?.push(box(at, dx, (foot + top) / 2 + 0.6, dx + 1.3, top, colour, 0.07))
+    }
+  }
 
-    return poly(placer(at)([...bottom, ...top.reverse()]), colour, 1, { x1: 0, y1: at.y - 17 * at.s, x2: 0, y2: at.y - 11 * at.s, stops: [[0, colour, 0], [0.7, colour, 0.28], [1, colour, 0.5]] })
-  })
+  return glow.flat()
+}
 
 const fjord = (at: At): Shape[] => {
   const p = placer(at)
@@ -858,10 +863,10 @@ export const sceneryOf = (width: number, height: number, horizon: number, now: n
   // The weather of the stop each mote starts over.
   const weatherAt = (x: number): Weather | undefined => stopAt(Math.floor((view + x) / STOP)).weather
 
-  const land = kept(`land:${key}`, () => landStill(left, span, height, horizon))
+  const land = keptIn(made, `land:${key}`, () => landStill(left, span, height, horizon))
 
   return {
-    sky: { key: `sky:${key}`, still: kept(`sky:${key}`, () => ({ shapes: skyStill(left, span, height, horizon), detail: 0 })).shapes, span, shift: pan * STOP, detail: 0, moving: skyMoving(view, width, height, horizon, now) },
+    sky: { key: `sky:${key}`, still: keptIn(made, `sky:${key}`, () => ({ shapes: skyStill(left, span, height, horizon), detail: 0 })).shapes, span, shift: pan * STOP, detail: 0, moving: skyMoving(view, width, height, horizon, now) },
     land: {
       key: `land:${key}`,
       still: land.shapes,
@@ -871,17 +876,19 @@ export const sceneryOf = (width: number, height: number, horizon: number, now: n
       moving: [...moving, ...weather(width, height, horizon, now, false, weatherAt), ...(pan === 0 ? caption(stopAt(leg), into, horizon) : [])],
     },
     front: weather(width, height, horizon, now, true, weatherAt),
+    panning: pan > 0,
   }
 }
 
 /** The still layers as last made, by key: made once, not every frame. */
 const made = new Map<string, { shapes: Shape[]; detail: number }>()
 
-const kept = (key: string, make: () => { shapes: Shape[]; detail: number }): { shapes: Shape[]; detail: number } => {
-  const shapes = made.get(key) ?? make()
-  made.delete(key)
-  made.set(key, shapes)
-  for (const old of made.keys()) if (made.size > 8) made.delete(old)
+/** `map`'s value at `key`, else made (and kept); the `most` used last kept, the rest let go. */
+export const keptIn = <T>(map: Map<string, T>, key: string, make: () => T, most = 8): T => {
+  const value = map.get(key) ?? make()
+  map.delete(key)
+  map.set(key, value)
+  for (const old of map.keys()) if (map.size > most) map.delete(old)
 
-  return shapes
+  return value
 }

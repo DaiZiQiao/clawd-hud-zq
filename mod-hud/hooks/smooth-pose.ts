@@ -377,7 +377,7 @@ export const targetOf = (look: Look | MiniLook, context: PoseContext, mini: bool
   // Usagi toddles, and bounds far (hooks/usagi-moves.ts).
   const usagi = context.character === 'usagi' && !mini && pose.flat === 0
   if (usagi && context.motion?.kind === 'walk') return toddlePose(pose, t, context.facing, context.seed)
-  if (usagi && context.motion?.kind === 'hop' && context.motion.u !== undefined) return boundPose(pose, context.motion.u, context.motion.from ?? 0, context.facing, context.seed)
+  if (usagi && context.motion?.kind === 'hop' && context.motion.u !== undefined) return boundPose(pose, context.motion.u, context.motion.air ?? 1, context.motion.from ?? 0, context.facing, context.seed)
   if (context.motion?.kind === 'walk' && pose.hideLegs < 0.5 && pose.flat === 0) {
     const step = wave(t, 520, context.seed)
     const dir = context.facing === 'left' ? -1 : 1
