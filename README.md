@@ -138,13 +138,14 @@ A card at the top of the pane, at most 72 cells wide, then the TODO section, the
 Thumbnails of the images in the prompt you are writing, in the strip Claude Code keeps directly above the prompt. Paste an image or drag an image file in: Claude Code puts `[Image #1]` in the prompt, and a moment later the strip shows the picture labelled `#1` with its size. Delete the chip and its thumbnail goes; send the prompt and the strip clears. It only shows: it never changes the prompt or what is sent.
 
 ```
-▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀ ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀                                     [-]
-▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀ ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀
-▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀ ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀
-▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀ ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀
-▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀ ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀
-▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀ ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀
-#1 1600x1000          #2 1500x1000
+▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀ ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀                                      [-]
+▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀ ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀
+▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀ ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀
+▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀ ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀
+▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀ ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀
+▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀ ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀
+#1 1600x1000        #2 1500x1000
+
 ────────────────────────────────────────────────────────────────────────────────
 ❯ [Image #1] [Image #2] which of these shows the sidebar bug?
 ────────────────────────────────────────────────────────────────────────────────
@@ -188,7 +189,7 @@ Change either option from `/plugin` (select mod-images, then its settings).
 Claude Code saves each pasted image the moment it is pasted, in a temporary folder of the session's own; mod-images finds that folder and decodes the picture itself (PNG, JPEG, GIF and lossless WebP), in small slices so Claude Code never waits on it. That folder is not a documented interface: this was built and checked against Claude Code 2.1.295 on Linux, with the Windows and macOS locations read from the same code. If a later version moves it, the tiles read `not found` and `/mod-images` shows where it looked. See [the strip](mod-images/docs/strip.md) for the details.
 
 - Requires Claude Code 2.1.295 or newer.
-- Lossy WebP files and files over 4 MB get a `no preview` tile.
+- Lossy and animated WebP files get a `no preview` tile, and files over 4 MB a `too big` one.
 - After Esc Esc and then ↑, Claude Code drops the images of the recalled prompt, but the strip still shows them.
 - No thumbnails when Claude Code keeps no image folder: with `CLAUDE_CODE_SKIP_PROMPT_HISTORY` set, or in a nested session.
 

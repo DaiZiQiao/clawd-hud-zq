@@ -1,3 +1,6 @@
+import { createZlibInflater, INFLATE_PAD } from './decode-inflate'
+import type { RowSink } from './image-types'
+
 // A PNG decoded row by row into a `RowSink` (hooks/image-types.ts), so a
 // master is made without the whole picture ever held as pixels: every colour
 // type and bit depth (1, 2, 4, 8 and 16), a palette with tRNS, grey and RGB
@@ -7,8 +10,7 @@
 // keeps the rows decoded before it. What it holds is the compressed data, the
 // inflater's window and chunk (hooks/decode-inflate.ts) and two rows.
 
-import { createZlibInflater, INFLATE_PAD } from './decode-inflate'
-import type { RowSink } from './image-types'
+const { ceil, floor, max, min } = Math
 
 /** A PNG's IHDR. */
 export type PngHeader = {
@@ -45,6 +47,9 @@ const IEND = 0x49454e44
 const CHANNELS: Readonly<Record<number, number>> = { 0: 1, 2: 3, 3: 1, 4: 2, 6: 4 }
 /** The bit depths each colour type allows. */
 const DEPTHS: Readonly<Record<number, readonly number[]>> = { 0: [1, 2, 4, 8, 16], 2: [8, 16], 3: [1, 2, 4, 8], 4: [8, 16], 6: [8, 16] }
+
+/** Samples below 8 bits share a byte: log2 of how many, by depth (a pixel's byte is its index shifted right so far). */
+const SHIFTS: Readonly<Record<number, number>> = { 1: 3, 2: 2, 4: 1, 8: 0 }
 
 /** Adam7's seven passes: [x0, y0, dx, dy]. */
 const ADAM7 = [
@@ -98,7 +103,7 @@ const eachChunk = (bytes: Uint8Array, visit: (type: number, start: number, end: 
     const type = u32(bytes, at + 4)
     const start = at + 8
     if (type === IEND) return
-    visit(type, start, Math.min(start + length, bytes.length))
+    visit(type, start, min(start + length, bytes.length))
     if (start + length + 4 > bytes.length) return
     at = start + length + 4
   }
@@ -220,11 +225,12 @@ const converterOf = (
     // 1, 2, 4 or 8 bits: unpacked MSB first and scaled to 0..255; the key is a raw sample.
     const mask = (1 << depth) - 1
     const scale = 255 / mask
-    const perByte = 8 / depth
+    const shift = SHIFTS[depth] ?? 0
+    const within = (1 << shift) - 1
     return (n, src) => {
       for (let i = 0, d = 0; i < n; i += 1, d += 4) {
-        const byte = src[left + Math.floor(i / perByte)]!
-        const raw = (byte >>> (8 - depth * ((i % perByte) + 1))) & mask
+        const byte = src[left + (i >>> shift)]!
+        const raw = (byte >>> (8 - depth * ((i & within) + 1))) & mask
         const v = raw * scale
         dst[d] = v
         dst[d + 1] = v
@@ -240,11 +246,12 @@ const converterOf = (
     }
   }
   const mask = (1 << depth) - 1
-  const perByte = 8 / depth
+  const shift = SHIFTS[depth] ?? 0
+  const within = (1 << shift) - 1
   return (n, src) => {
     for (let i = 0; i < n; i += 1) {
-      const byte = src[left + Math.floor(i / perByte)]!
-      dst32[i] = palette32[(byte >>> (8 - depth * ((i % perByte) + 1))) & mask]!
+      const byte = src[left + (i >>> shift)]!
+      dst32[i] = palette32[(byte >>> (8 - depth * ((i & within) + 1))) & mask]!
     }
   }
 }
@@ -269,7 +276,7 @@ export const createPngDecoder = (bytes: Uint8Array, sink: RowSink): PngDecoder =
   eachChunk(bytes, (type, start, end) => {
     if (type === IDAT) dataBytes += end - start
     else if (type === PLTE) {
-      paletteSize = Math.min(256, Math.floor((end - start) / 3))
+      paletteSize = min(256, floor((end - start) / 3))
       for (let i = 0; i < paletteSize; i += 1) {
         palette[i * 4] = bytes[start + i * 3]!
         palette[i * 4 + 1] = bytes[start + i * 3 + 1]!
@@ -277,7 +284,7 @@ export const createPngDecoder = (bytes: Uint8Array, sink: RowSink): PngDecoder =
       }
     } else if (type === TRNS) {
       if (colourType === 3) {
-        for (let i = 0; i < Math.min(end - start, 256); i += 1) palette[i * 4 + 3] = bytes[start + i]!
+        for (let i = 0; i < min(end - start, 256); i += 1) palette[i * 4 + 3] = bytes[start + i]!
         hasTrns = true
       } else if (colourType === 0 && end - start >= 2) {
         key = [(bytes[start]! << 8) | bytes[start + 1]!]
@@ -302,12 +309,12 @@ export const createPngDecoder = (bytes: Uint8Array, sink: RowSink): PngDecoder =
 
   // The geometry: Adam7's seven sub-images, or the one.
   const bitsPerPixel = (CHANNELS[colourType] ?? 1) * bitDepth
-  const bpp = Math.max(1, bitsPerPixel >>> 3)
-  const rowBytesOf = (pixels: number): number => Math.ceil((pixels * bitsPerPixel) / 8)
+  const bpp = max(1, bitsPerPixel >>> 3)
+  const rowBytesOf = (pixels: number): number => ceil((pixels * bitsPerPixel) / 8)
   const passes: Pass[] = (interlaced ? ADAM7 : ([[0, 0, 1, 1]] as const))
     .map(([x0, y0, dx, dy]) => {
-      const passWidth = Math.max(0, Math.ceil((width - x0) / dx))
-      const passHeight = Math.max(0, Math.ceil((height - y0) / dy))
+      const passWidth = max(0, ceil((width - x0) / dx))
+      const passHeight = max(0, ceil((height - y0) / dy))
 
       return { x0, y0, dx, dy, width: passWidth, height: passHeight, rowBytes: rowBytesOf(passWidth) }
     })
@@ -370,7 +377,7 @@ export const createPngDecoder = (bytes: Uint8Array, sink: RowSink): PngDecoder =
         continue
       }
       const pass = passes[passIndex]!
-      const n = Math.min(pass.rowBytes - filled, chunk.length - i)
+      const n = min(pass.rowBytes - filled, chunk.length - i)
       cur.set(chunk.subarray(i, i + n), bpp + filled)
       filled += n
       i += n

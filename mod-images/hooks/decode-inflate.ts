@@ -12,6 +12,8 @@
 // checksum still shows, as it does in a browser. A stream cut short hands out
 // every byte decoded from real data and stops at the first bit past its end.
 
+const { min } = Math
+
 const LEN_BASE = Uint16Array.of(3, 4, 5, 6, 7, 8, 9, 10, 11, 13, 15, 17, 19, 23, 27, 31, 35, 43, 51, 59, 67, 83, 99, 115, 131, 163, 195, 227, 258, 0, 0)
 const LEN_EXTRA = Uint8Array.of(0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3, 4, 4, 4, 4, 5, 5, 5, 5, 0, 0, 0)
 const DIST_BASE = Uint16Array.of(1, 2, 3, 4, 5, 7, 9, 13, 17, 25, 33, 49, 65, 97, 129, 193, 257, 385, 513, 769, 1025, 1537, 2049, 3073, 4097, 6145, 8193, 12289, 16385, 24577, 0, 0)
@@ -23,7 +25,7 @@ const CL_ORDER = Uint8Array.of(16, 17, 18, 0, 8, 7, 9, 6, 10, 5, 11, 4, 12, 3, 1
 const WINDOW_BYTES = 32_768
 /** The most one length and distance pair writes. */
 const MAX_MATCH = 258
-/** Output one `next()` hands out, at most. */
+/** Output one `next()` hands out: this much, and at most one match more. */
 const CHUNK_BYTES = 65_536
 /** Block headers one `next()` reads, at most: a stream of empty blocks still returns now and then. */
 const HEADERS_PER_CALL = 16
@@ -115,7 +117,6 @@ const fixedTablesOf = (): { lit: Uint16Array; dist: Uint16Array } => {
  */
 export const createInflater = (src: Uint8Array, start: number, end: number): Inflater => {
   const out = new Uint8Array(WINDOW_BYTES + CHUNK_BYTES + MAX_MATCH)
-  const limit = WINDOW_BYTES + CHUNK_BYTES
   const lens = new Uint8Array(320)
   const counts = new Uint16Array(16)
   const nextCode = new Uint16Array(16)
@@ -258,8 +259,8 @@ export const createInflater = (src: Uint8Array, start: number, end: number): Inf
     mode = 'codes'
   }
 
-  // Decodes until the chunk is full, the stream ends or the header budget is spent.
-  const run = (): void => {
+  // Decodes until a chunk's worth is out (`limit`), the stream ends or the header budget is spent.
+  const run = (limit: number): void => {
     let headers = 0
     while (mode !== 'done') {
       if (mode === 'header') {
@@ -268,7 +269,7 @@ export const createInflater = (src: Uint8Array, start: number, end: number): Inf
         readHeader()
       }
       if (mode === 'stored') {
-        const n = Math.min(storedLeft, limit - op)
+        const n = min(storedLeft, limit - op)
         out.set(src.subarray(pos, pos + n), op)
         op += n
         pos += n
@@ -383,7 +384,7 @@ export const createInflater = (src: Uint8Array, start: number, end: number): Inf
       }
       const from = op
       try {
-        run()
+        run(from + CHUNK_BYTES)
       } catch (thrown) {
         if (thrown !== failed) throw thrown
       }
