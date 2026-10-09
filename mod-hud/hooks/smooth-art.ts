@@ -339,19 +339,27 @@ export const usagiMouthOf = (pose: FigurePose): { kind: UsagiMouth; open: number
 export const usagiMouthShapes = (m: Matrix, kind: UsagiMouth, open = 1): Shape[] => {
   switch (kind) {
     case 'cat': {
-      // A flat 3: from its middle's point either side a wide shallow lobe, its end turned up; a small curve under it, its chin.
+      // A flat 3: from its middle's point, a short tick up, either side a wide shallow lobe, its end turned up; and its
+      // chin, the cheeky look: a short curve hanging slanted from under its left lobe, all but joined to it.
       const lobe = (side: number): (readonly [number, number])[] => Array.from({ length: 15 }, (_, index) => {
         const a = (index / 14) * Math.PI * 1.12
 
-        return [side * (0.48 - 0.48 * Math.cos(a)), -0.04 + 0.34 * Math.sin(a)] as const
+        return [side * (0.46 - 0.46 * Math.cos(a)), -0.04 + 0.32 * Math.sin(a)] as const
       })
       const chin = Array.from({ length: 11 }, (_, index) => {
-        const a = Math.PI * (0.15 + (0.7 * index) / 10)
+        const u = index / 10
+        // From under the left lobe down to the right, bowed out to the right as a `u` turned onto its side.
+        const [x0, y0, cx, cy, x1, y1] = [-0.5, 0.26, -0.12, 0.42, -0.2, 0.86]
 
-        return [0.42 * Math.cos(a), 0.52 + 0.17 * Math.sin(a)] as const
+        return [(1 - u) * (1 - u) * x0 + 2 * u * (1 - u) * cx + u * u * x1, (1 - u) * (1 - u) * y0 + 2 * u * (1 - u) * cy + u * u * y1] as const
       })
 
-      return [...strokeShapes(m, lobe(-1), 0.24, USAGI.line), ...strokeShapes(m, lobe(1), 0.24, USAGI.line), ...strokeShapes(m, chin, 0.2, USAGI.line)]
+      return [
+        ...strokeShapes(m, [[0, -0.36], [0, -0.04]], 0.22, USAGI.line),
+        ...strokeShapes(m, lobe(-1), 0.24, USAGI.line),
+        ...strokeShapes(m, lobe(1), 0.24, USAGI.line),
+        ...strokeShapes(m, chin, 0.22, USAGI.line),
+      ]
     }
     case 'scream': {
       const size = Math.max(0.6, open)
@@ -445,10 +453,10 @@ export const browLine = (inner: number, outer: number, top: number, drop: number
     return [inner + (outer - inner) * Math.sin(turn), top + drop * (1 - Math.cos(turn))] as const
   })
 
-/** A cheek's blush: a pink oval, three short dark strokes on it. */
+/** A cheek's blush: a pink oval, four short dark strokes on it. */
 const blushShapes = (m: Matrix, cx: number, cy: number): Shape[] => [
   { kind: 'ellipse', x: cx - 1.25, y: cy - 0.72, w: 2.5, h: 1.44, fill: USAGI.blush, alpha: 0.95, m },
-  ...[-0.55, 0, 0.55].map((dx): Shape => ({ kind: 'rect', x: -0.11, y: -0.38, w: 0.22, h: 0.76, r: 0.11, fill: USAGI.line, m: chain(m, translate(cx + dx, cy + 0.04), rotate(0.3)) })),
+  ...[-0.63, -0.21, 0.21, 0.63].map((dx): Shape => ({ kind: 'rect', x: -0.1, y: -0.36, w: 0.2, h: 0.72, r: 0.1, fill: USAGI.line, m: chain(m, translate(cx + dx, cy + 0.04), rotate(0.3)) })),
 ]
 
 /** Its tail, at its back as it goes: a white puff, its edge tufted in short dark strokes, `alpha` seen. */
@@ -494,18 +502,18 @@ const usagiShapes = (pose: FigurePose, info: FigureInfo, t: number): Shape[] => 
     inside.push({ kind: 'rect', x: side * 0.95 - 0.45, y: -10.95 - earLength, w: 0.9, h: Math.max(0.6, earLength - 2.2), r: 0.45, fill: USAGI.ear, m: ear })
   }
   const footHeight = Math.max(0, 1.2 * (1 - 0.45 * pose.tuck) * (1 - pose.hideLegs) * (1 - pose.run))
-  for (const [index, x] of [[0, -1.3], [1, 1.3]] as const) {
-    if (footHeight > 0.05) part({ kind: 'rect', x: x - 0.85, y: -footHeight - (pose.legs[index] ?? 0), w: 1.7, h: footHeight, r: Math.min(0.7, footHeight / 2), fill: USAGI.cream, m: body })
+  for (const [index, x] of [[0, -1.55], [1, 1.55]] as const) {
+    if (footHeight > 0.05) part({ kind: 'rect', x: x - 0.92, y: -footHeight - (pose.legs[index] ?? 0), w: 1.85, h: footHeight, r: Math.min(0.7, footHeight / 2), fill: USAGI.cream, m: body })
   }
-  // Its body, small under its big head: some three fifths of the head's height, a little over half its width.
-  part({ kind: 'ellipse', x: -2.88, y: -5.53, w: 5.76, h: 5.18, fill: USAGI.cream, m: body })
+  // Its body, small under its big head: some three quarters of the head's height, two thirds its width.
+  part({ kind: 'ellipse', x: -3.46, y: -6.57, w: 6.92, h: 6.22, fill: USAGI.cream, m: body })
   part({ kind: 'ellipse', x: -5.3, y: -12.7, w: 10.6, h: 8.6, fill: USAGI.cream, m: body })
   // Its hands: nubs sticking out of its sides under its cheeks, raised beside its face, out to its laptop. At rest their
   // line is the silhouette's, under its body (only what sticks out is outlined); raised, in front of it, their line over it.
   const hands = [-1, 1].map(side => {
     const raise = side === -1 ? pose.armL : pose.armR
     const reach = side === 1 ? pose.reach : 0
-    const hand = multiply(body, chain(translate(side * 2.55, -4.1), scale(side, 1), rotate(0.35 * (1 - reach) - raise)))
+    const hand = multiply(body, chain(translate(side * 3.1, -4.5), scale(side, 1), rotate(0.35 * (1 - reach) - raise)))
     const nub: Shape = { kind: 'rect', x: -0.9, y: -0.65, w: 2.5 + 3 * reach, h: 1.3, r: 0.65, fill: USAGI.cream, m: hand }
 
     return { nub, line: grownBy(nub, LINE, USAGI.line), front: Math.max(0, Math.min(1, (raise - 0.45) / 0.6)) }
@@ -514,7 +522,7 @@ const usagiShapes = (pose: FigurePose, info: FigureInfo, t: number): Shape[] => 
   for (const { nub, line, front } of hands) shapes.push(...(front > 0.01 ? [{ ...line, alpha: front }] : []), nub)
   // Going, its tail shows at its back: a white puff out of its side.
   const going = Math.min(1, Math.abs(pose.trail) / 1.5)
-  if (going > 0.05) shapes.push(...tailShapes(body, Math.sign(pose.trail) * 2.95, -2.4, going))
+  if (going > 0.05) shapes.push(...tailShapes(body, Math.sign(pose.trail) * 3.5, -2.8, going))
   // Sprinting: its legs a spinning wheel under it, a blur and four legs turning five times a second.
   if (pose.run > 0.05) shapes.unshift(...wheelShapes(body, pose.run, t))
   // Its face: dot eyes with a small glint, its brows high over them (higher wide-eyed), level over the middle and falling
@@ -525,7 +533,7 @@ const usagiShapes = (pose: FigurePose, info: FigureInfo, t: number): Shape[] => 
     ...blushShapes(body, 3.7, -6.85),
     // Usagi never squeezes its eyes shut `> <`: through a burst its dots stay.
     ...eyeShapes(body, pose.eyes === 'squeeze' ? { ...pose, eyes: 'normal' } : pose, [-2.25, 2.25], -8.15, 0.95, 1.2, USAGI.eye, true),
-    ...[-1, 1].flatMap(side => strokeShapes(body, browLine(side * 1.05 + pose.eyeX, side * 3.55 + pose.eyeX, browTop, 1.75), 0.4, USAGI.line)),
+    ...[-1, 1].flatMap(side => strokeShapes(body, browLine(side * 1.5 + pose.eyeX, side * 3.95 + pose.eyeX, browTop, 1.75), 0.3, USAGI.line)),
   )
   // Its mouth, turned with its eyes: small and open, wide open screaming, a round `o`, a smirk.
   if (pose.blanket < 0.5 && pose.eyes !== 'down') {

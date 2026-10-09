@@ -163,7 +163,7 @@ const usagiFace = (x: number, w: number, y: number, eyes: Eyes): Shape[] => {
     // Its brows: high over each eye (higher wide-eyed), level over the face's middle and falling away to the side.
     const side = at < 0.5 ? -1 : 1
     const top = cy - eh / 2 - eh * 1.1 - (eyes === 'wide' ? CH / 4 : 0)
-    shapes.push(...strokeShapes([1, 0, 0, 1, 0, 0], browLine(cx - side * ew * 1.0, cx + side * ew * 1.5, top, eh * 0.8), 4.5, USAGI.line))
+    shapes.push(...strokeShapes([1, 0, 0, 1, 0, 0], browLine(cx - side * ew * 0.55, cx + side * ew * 1.75, top, eh * 0.8), 3.4, USAGI.line))
   }
   // Its mouth as the scene's, its face's units blown up as its eyes are: its cat's `ω`; wide-eyed, a small `o`.
   const k = ew / 1.2
