@@ -1,5 +1,6 @@
 # engine-generated type declarations
 mod-hud/.claude-plugin/types/
+mod-images/.claude-plugin/types/
 node_modules/
 .DS_Store
 *.log

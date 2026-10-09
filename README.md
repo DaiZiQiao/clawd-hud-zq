@@ -4,7 +4,9 @@ A HUD side pane for Claude Code. It shows your session facts, what needs your at
 
 Your session's own mascot lives in the band just above the prompt, so it is there even with the HUD closed. When the conversation's context has grown, it offers to tidy up (compact the conversation), and it squashes a pile of pages into a cube while any compaction runs.
 
-This repository is a Claude Code marketplace that ships one mod, `mod-hud`.
+And a strip above the prompt: thumbnails of the images you paste into Claude Code, shown before you send, real pixels in kitty and Ghostty and coloured half-block cells in other terminals.
+
+This repository is a Claude Code marketplace that ships two mods, `mod-hud` (the HUD pane) and `mod-images` (the image strip). Each installs on its own: take either, or both. Everything below is mod-hud's until [mod-images](#mod-images).
 
 ## Screenshots
 
@@ -30,15 +32,23 @@ From inside Claude Code:
 ```
 /plugin marketplace add DaiZiQiao/clawd-hud-zq
 /plugin install mod-hud@clawd-hud-zq
+/plugin install mod-images@clawd-hud-zq
 ```
 
-Then restart Claude Code.
+Either install line works on its own. Then restart Claude Code.
 
-Alternatively, clone this repository and add the `mod-hud` folder to `CLAUDE_CODE_PLUGIN_DIRS`:
+Alternatively, clone this repository and add the mod folders you want to `CLAUDE_CODE_PLUGIN_DIRS` (separated by `:`, or `;` on Windows):
 
 ```
 git clone https://github.com/DaiZiQiao/clawd-hud-zq
-export CLAUDE_CODE_PLUGIN_DIRS="$PWD/clawd-hud-zq/mod-hud"
+export CLAUDE_CODE_PLUGIN_DIRS="$PWD/clawd-hud-zq/mod-hud:$PWD/clawd-hud-zq/mod-images"
+```
+
+In PowerShell:
+
+```
+git clone https://github.com/DaiZiQiao/clawd-hud-zq
+$env:CLAUDE_CODE_PLUGIN_DIRS = "$PWD\clawd-hud-zq\mod-hud;$PWD\clawd-hud-zq\mod-images"
 ```
 
 ## Usage
@@ -143,16 +153,87 @@ Every request re-reads the whole conversation, mostly from the prompt cache, whi
 - Pressed, a mascot becomes a TV of itself, in its own colour and wearing its own accessory, hat or crown (pressed in flight, its propeller cap): Clawd's body or Usagi's round head the casing, the screen on its forehead, its eyes (and Usagi's cheeks and mouth) under it, its arms, legs and what it wears around it. With the vector art it flies in and grows smoothly and the giant is drawn smooth, Usagi's ears standing up as the TV's rabbit-ear antenna. See [the TV](mod-hud/docs/mascots.md#the-tv).
 - `character: usagi` swaps every mascot for Usagi (fan art): in the vector art drawn as Chiikawa draws it (a big round head on a small body, long ears together, small glinting dot eyes under high curved brows, pink cheeks with four dark strokes, a mouth like a flat 3 over its cheeky slanted chin, a tufted tail, a bold outline), pale yellow, its role shown by its hat (worker a construction hat, Explore a fedora, reviewer a mortarboard, debugger a miner's helmet, Plan a top hat, frontend a beret), the session's by a small crown on the side of its head; it shouts `Ura!`, `Yaha!`, `HUHHH?` and `UNA!` where Clawd thinks out loud. Like Chiikawa's Usagi it is chaotic: out of nowhere it breaks into the Yaha! dance, an Ura! leap, a HUHHH? lean-in, a smug Fuun, zoomies, a twirl, a backflip or an UNA! shake, and bashes its keyboard at work; on foot it sprints at twice Clawd's pace, its legs a spinning wheel. See [the mascot docs](mod-hud/docs/mascots.md#usagis-chaos).
 
+## mod-images
+
+Thumbnails of the images in the prompt you are writing, in the strip Claude Code keeps directly above the prompt. Paste an image or drag an image file in: Claude Code puts `[Image #1]` in the prompt, and a moment later the strip shows the picture labelled `#1` with the size Claude Code stored, which is what it sends (it shrinks a large paste: a 3000x1875 screenshot is stored as 2000x1250). Delete the chip and its thumbnail goes; send the prompt and the strip clears. It only shows: it never changes the prompt or what is sent. It needs Claude Code 2.1.295 or newer.
+
+```
+▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀ ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀                                      [-]
+▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀ ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀
+▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀ ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀
+▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀ ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀
+▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀ ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀
+▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀ ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀
+#1 1600x1000        #2 1500x1000
+
+────────────────────────────────────────────────────────────────────────────────
+❯ [Image #1] [Image #2] which of these shows the sidebar bug?
+────────────────────────────────────────────────────────────────────────────────
+```
+
+### Terminals
+
+| Terminal | Thumbnails |
+| --- | --- |
+| kitty 0.28 or newer, Ghostty (outside tmux and screen) | Real pixels. |
+| Windows Terminal with PowerShell | Coloured half-block cells, full colour. |
+| WSL in Windows Terminal | Half-block cells in 256 colours; full colour after `export COLORTERM=truecolor` in the WSL shell profile. |
+| macOS Terminal | Half-block cells in 256 colours. |
+| Desktop app, the VS Code extension's panel, mobile app | Nothing: mod-images draws in a terminal only. In VS Code's integrated terminal it draws half-block cells. |
+
+Seen on screen so far only on Linux, in 256 colours and in full colour. kitty's and Ghostty's pixels, Windows Terminal, WSL and macOS Terminal follow from the same code but were not seen yet: `/mod-images test` shows what yours draws.
+
+A half-block cell is the character `▀` coloured as two pixels, one above the other, so a thumbnail 8 rows tall is 16 pixels tall: enough to tell images apart, not to read text in them. In kitty and Ghostty the strip draws pixels, then asks Claude Code whether they reached the screen; where they did not (tmux in between, an older kitty, no answer from the terminal), it switches to half-block cells.
+
+### Usage
+
+- Paste with Ctrl+V (Cmd+V also works in macOS Terminal; Alt+V on Windows and WSL), or drag an image file onto the terminal.
+- Remove an image by deleting its `[Image #N]` chip: Backspace right after the chip deletes all of it, and its tile goes.
+- The strip shows only the images that will be sent: a chip typed by hand or recalled from history with ↑ is a dashed `not attached` tile, since Claude Code does not re-attach images from history. A prompt Claude Code puts back after Esc stops a turn before any answer keeps its images, and the strip shows them.
+- In a short terminal, under a survey, or when another plugin also draws above the prompt, the strip is one line. Claude Code's `[-]` (or ctrl+x ctrl+a) folds and unfolds the whole space above the prompt.
+- To check it is installed, run `/mod-images`: it answers `mod-images: version 1.0.0 on Claude Code …`, then says how it draws in this terminal.
+- Nothing above the prompt? `▸ plugin panel hidden` means the space is folded: press ctrl+x ctrl+a. Otherwise `/mod-images` says how it draws, where it looked for the image folder and what the last strip held.
+
+| Command | What it does |
+| --- | --- |
+| `/mod-images` | Print what the plugin sees: how it draws here and why, the colours and how to get more, the image folder, the last strip and the room it had. |
+| `/mod-images test` | Draw a sample strip for 10 seconds, to check a terminal without pasting anything. |
+
+### Configuration
+
+Change either option from `/plugin` (select mod-images, then its settings).
+
+| Option | Default | What it does |
+| --- | --- | --- |
+| `height` | `8` | The tallest the thumbnails get, from 3 to 20 rows. The strip always shrinks to fit the room above the prompt: about 6 rows in an 80x24 terminal, 8 in 120x30. |
+| `pictures` | `auto` | `auto`: real pixels where the terminal draws them, half-block cells elsewhere, and one line of text when `NO_COLOR` or `CLAUDE_AX_SCREEN_READER` is set. `blocks`: always half-block cells. `text`: one line naming the images; choose it when screen-reader mode is on through its setting or `--ax-screen-reader`, which a plugin cannot see. |
+
+### How it works, and its limits
+
+Claude Code saves each pasted image the moment it is pasted, in a temporary folder of the session's own; mod-images finds that folder and decodes the picture itself (PNG, JPEG, GIF and lossless WebP), in slices of about 8 ms, so Claude Code never waits on it long (a lossless WebP decodes in one go: about 0.1 s for a plain 1280x854 screenshot, up to half a second for a photo). That folder is not a documented interface: this was built and checked against Claude Code 2.1.295 on Linux, with the Windows and macOS locations read from the same code. If a later version moves it, the tiles read `not found` and `/mod-images` shows where it looked. See [the strip](mod-images/docs/strip.md) for the details.
+
+- Lossy and animated WebP files, and CMYK, 12-bit, arithmetic-coded or lossless JPEGs, get a `no preview` tile; files over 4 MiB, and lossless WebP files over about a megapixel (larger than 1280x854), a `too big` one.
+- After Esc Esc and then ↑, Claude Code drops the images of the recalled prompt, but the strip still shows them.
+- No thumbnails when Claude Code keeps no image folder: with `CLAUDE_CODE_SKIP_PROMPT_HISTORY` set, or in a nested session. Each tile then reads `no preview`.
+
 ## Development
 
 ```
+claude plugin validate --strict .
 claude plugin validate mod-hud
 claude plugin test mod-hud
 tsc -p mod-hud/tsconfig.json
+claude plugin validate mod-images
+claude plugin test mod-images
+tsc -p mod-images/tsconfig.json
 ```
 
-`mod-hud/.claude-plugin/types/` is generated by the Claude Code engine each time it loads the mod; it is git-ignored and not edited by hand.
+Each mod's `.claude-plugin/types/` is generated by the Claude Code engine each time it loads the mod (start one session with `claude --plugin-dir <mod>` in a fresh clone before running `tsc`); it is git-ignored and not edited by hand.
 
 ## License
 
 MIT, see [LICENSE](LICENSE). Copyright 2026 Dai Zi Qiao.
+
+mod-images vendors [@nktkas/webp](https://www.npmjs.com/package/@nktkas/webp) 1.0.0 in `mod-images/hooks/vendor-webp/` under its own MIT licence (Copyright (c) 2026 nktkas), kept beside it.
+
+mod-images' PNG tests include [PngSuite](http://www.schaik.com/pngsuite/) by Willem van Schaik, (c) 1996, 2011, whose notice grants permission to use, copy, modify and distribute the images for any purpose and without fee; the notice is kept in `mod-images/hooks/decode-png.fixtures.ts`.
