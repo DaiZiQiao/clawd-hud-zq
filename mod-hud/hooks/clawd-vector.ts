@@ -9,6 +9,13 @@ import type { ThemeKey } from './svg-style'
 /** A sine wave of `period` ms at time `t`, shifted by `phase`: what blinks, bobs and sways on. */
 export const wave = (t: number, period: number, phase = 0): number => Math.sin((2 * Math.PI * t) / period + phase)
 
+/** Smoothstep: 0 to 1 over `x` 0 to 1, easing in and out. */
+export const smooth = (x: number): number => {
+  const k = Math.max(0, Math.min(1, x))
+
+  return k * k * (3 - 2 * k)
+}
+
 /** A 2D affine map `[a, b, c, d, e, f]`: x' = a·x + c·y + e, y' = b·x + d·y + f. */
 export type Matrix = readonly [number, number, number, number, number, number]
 
@@ -254,7 +261,8 @@ export const partMarkup = (shapes: readonly Shape[], limit = Infinity, merged?: 
 export const documentOf = ({ markup, used }: Markup, width: number, height: number, extra = ''): string =>
   `<svg xmlns='http://www.w3.org/2000/svg' width='${width}' height='${height}' viewBox='0 0 ${width} ${height}' pointer-events='none'${extra}>${lightRule(used)}${markup}</svg>`
 
-const rgbOf = (hex: string): [number, number, number] => {
+/** A raw colour's red, green and blue (white for one it cannot read). */
+export const rgbOf = (hex: string): [number, number, number] => {
   const n = Number.parseInt(hex.slice(1, 7), 16)
 
   return Number.isFinite(n) ? [(n >> 16) & 255, (n >> 8) & 255, n & 255] : [255, 255, 255]

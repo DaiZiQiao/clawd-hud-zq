@@ -1,4 +1,4 @@
-import { wave } from './clawd-vector'
+import { smooth, wave } from './clawd-vector'
 import type { Beside, FigurePose } from './smooth-pose'
 import { QUIRK_MS, QUIRK_SAYS } from './usagi-quirks'
 import type { Quirk } from './usagi-quirks'
@@ -8,13 +8,6 @@ import type { Quirk } from './usagi-quirks'
 // says which and when), its toddle and its bounds, and its ears' twitches.
 // Each quirk eases in and out of the pose under it, so it starts from
 // whatever Usagi was doing and goes back to it.
-
-
-const smooth = (x: number): number => {
-  const k = Math.max(0, Math.min(1, x))
-
-  return k * k * (3 - 2 * k)
-}
 
 /** A quirk's weight `at` ms into it: in over its first `inMs`, out over its last `outMs`. */
 const envelope = (at: number, length: number, inMs = 140, outMs = 220): number => smooth(Math.min(at / inMs, (length - at) / outMs, 1))

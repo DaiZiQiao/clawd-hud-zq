@@ -1,3 +1,4 @@
+import { rgbOf, smooth } from './clawd-vector'
 import type { Gradient, Shape } from './clawd-vector'
 import { hashOf } from './motion-rules'
 
@@ -59,18 +60,6 @@ const mod = (a: number, n: number): number => ((a % n) + n) % n
 
 /** A number in [0, 1) chosen by the parts. */
 const rnd = (...parts: readonly (string | number)[]): number => hashOf('scenery', ...parts) / 4_294_967_296
-
-const ease = (t: number): number => {
-  const k = Math.max(0, Math.min(1, t))
-
-  return k * k * (3 - 2 * k)
-}
-
-const rgbOf = (hex: string): number[] => {
-  const n = Number.parseInt(hex.slice(1), 16)
-
-  return [(n >> 16) & 255, (n >> 8) & 255, n & 255]
-}
 
 const mix = (a: string, b: string, w: number): string => {
   if (w <= 0) return a
@@ -622,7 +611,7 @@ const tourAt = (now: number): { leg: number; into: number; pan: number } => {
   const leg = Math.floor(now / LEG_MS)
   const into = now - leg * LEG_MS
 
-  return { leg, into, pan: into < STAY_MS ? 0 : ease((into - STAY_MS) / PAN_MS) }
+  return { leg, into, pan: into < STAY_MS ? 0 : smooth((into - STAY_MS) / PAN_MS) }
 }
 
 /** The left of the view along the world's strip at a leg's start: its stop in the middle. */
@@ -728,7 +717,7 @@ const skyStill = (left: number, span: number, height: number, horizon: number): 
     if (to > from) shapes.push({ ...rect(from, 0, to - from, horizon + 1, '#000000'), grad: skyGradient(stop.sky, horizon) })
     const next = stopAt(Math.round((left + at.x + STOP / 2) / STOP))
     for (let x = Math.max(at.x + STOP / 2 - SEAM, -SLICE); x < Math.min(at.x + STOP / 2 + SEAM, span); x += SLICE) {
-      const w = ease((x + SLICE / 2 - (at.x + STOP / 2 - SEAM)) / (2 * SEAM))
+      const w = smooth((x + SLICE / 2 - (at.x + STOP / 2 - SEAM)) / (2 * SEAM))
       shapes.push({ ...rect(x, 0, SLICE + 0.05, horizon + 1, '#000000'), grad: skyGradient(stop.sky.map((colour, i) => mix(colour, next.sky[i] ?? colour, w)), horizon) })
     }
   }
@@ -839,7 +828,7 @@ const weather = (width: number, height: number, horizon: number, now: number, ne
 
 /** The name of the stop the tour has just come to, a while after it arrives, by a pin. */
 const caption = (stop: Stop, into: number, horizon: number): Shape[] => {
-  const alpha = Math.min(ease((into - 600) / 900), ease((10_500 - into) / 1500))
+  const alpha = Math.min(smooth((into - 600) / 900), smooth((10_500 - into) / 1500))
   if (alpha <= 0.01) return []
   const size = Math.min(3.4, Math.max(2.6, horizon / 7))
   const y = size * 1.25
