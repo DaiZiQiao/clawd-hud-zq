@@ -111,8 +111,9 @@ import type { Who } from './tv-figure'
 import { tvLayoutOf, tvRowsOf } from './tv-model'
 import type { TvInputs, TvLayout, TvRow } from './tv-model'
 import { budgeted, tvHeadOf, tvRowOfInspect, tvWhoOf } from './tv-rows'
-import { giantPicture } from './tv-smooth'
-import { BLINK_EVERY_MS, BLINK_MS, tvPostOf } from './tv-world'
+import { SCENE_THEMES, isThemeKey } from './svg-style'
+import { casingOf, giantPicture } from './tv-smooth'
+import { BLADE_MS, BLINK_EVERY_MS, BLINK_MS, tvPostOf } from './tv-world'
 
 const PANE = 'hud'
 const TWIN = 'mod-hud'
@@ -1042,7 +1043,7 @@ const SCENE_KEY = 'mascots'
 // handed to it; the surfaces it failed on (the pane's own view there); and the mascot back
 // from it, shaken till STARTLED_MS after.
 const TV_KEY = 'tv'
-let tvFrom: { id: string; x: number; y: number; cap?: true } | undefined
+let tvFrom: { id: string; x: number; y: number; mini?: true; cap?: true } | undefined
 const tvPresses = new Map<string, Map<string, () => void>>()
 const tvUp = new Set<string>()
 /** Surfaces whose TV's module said its mascot grew into the giant (as it switches on), till it shrinks back: where pictures are drawn, the giant one under its glass. */
@@ -1054,14 +1055,14 @@ let startled: { id: string; at: number } | undefined
 const sceneTops = new Map<string, number>()
 
 /** A click's post from the scene's surface module: `{ kind: 'inspect', id, at, cap }` (where the mascot stood, in its region's cells; whether it was flying), or undefined for anything else. */
-const inspectAsk = (data: unknown): { id: string; at?: { x: number; y: number }; cap?: true } | undefined => {
+const inspectAsk = (data: unknown): { id: string; at?: { x: number; y: number; mini?: true }; cap?: true } | undefined => {
   if (typeof data !== 'object' || data === null) return undefined
-  const { kind, id, at, cap } = data as { kind?: unknown; id?: unknown; at?: unknown; cap?: unknown }
+  const { kind, id, at, cap, mini } = data as { kind?: unknown; id?: unknown; at?: unknown; cap?: unknown; mini?: unknown }
   if (kind !== 'inspect' || typeof id !== 'string' || id === '' || id.length > 200) return undefined
   const { x, y } = (typeof at === 'object' && at !== null ? at : {}) as { x?: unknown; y?: unknown }
   const placed = typeof x === 'number' && typeof y === 'number' && Number.isFinite(x) && Number.isFinite(y) && Math.abs(x) < 10_000 && Math.abs(y) < 10_000
 
-  return { id, ...(placed ? { at: { x: Math.round(x), y: Math.round(y) } } : {}), ...(cap === true ? { cap: true as const } : {}) }
+  return { id, ...(placed ? { at: { x: Math.round(x), y: Math.round(y), ...(mini === true ? { mini: true as const } : {}) } } : {}), ...(cap === true ? { cap: true as const } : {}) }
 }
 
 const HUD_TABS: readonly HudTab[] = ['task', 'trail', 'said', 'agents', 'overview', 'cost']
@@ -1248,8 +1249,29 @@ const pictureless = new Set<string>()
 const PICTURE_FRESH = 10
 /** Refusals in a row, the alt's aside, that give up on pictures there: three seconds' worth. */
 const PICTURE_GIVE_UP = Math.ceil(3000 / IMAGE_FRAME_MS)
-/** The TV's giant as a picture under its glass, by site: its Image's key, who and where it was drawn for, its frames (eyes open; shut, drawn at its first blink), the one shown, and its own clock for the blinks. */
-type GiantPicture = { requestId: string; surface: string; key: string; drawn: string; open: string; shut?: string; shown: 'open' | 'shut'; ms: number; draw: (eyes: 'open' | 'shut') => string }
+/**
+ * The TV's giant as a picture under its glass, by site: its Image's key, who
+ * and where it was drawn for, its frames by eyes and propeller blade (each
+ * drawn when first shown), the one shown, whether its blade turns (pressed in
+ * flight), and its own clock for the blinks and the blade.
+ */
+type GiantPicture = { requestId: string; surface: string; key: string; drawn: string; frames: Map<string, string>; shown: string; turns: boolean; ms: number; draw: (eyes: 'open' | 'shut', blade: number) => string }
+
+/** A giant's frame at its clock: its eyes shut a moment every few seconds, its blade a frame every BLADE_MS while it turns. */
+const giantFrameOf = (giant: GiantPicture): { key: string; eyes: 'open' | 'shut'; blade: number } => {
+  const eyes = giant.ms % BLINK_EVERY_MS < BLINK_MS ? 'shut' : 'open'
+  const blade = giant.turns ? Math.floor(giant.ms / BLADE_MS) % 2 : 0
+
+  return { key: `${eyes}:${blade}`, eyes, blade }
+}
+
+/** A giant's frame, drawn once. */
+const giantPng = (giant: GiantPicture, frame: { key: string; eyes: 'open' | 'shut'; blade: number }): string => {
+  const drawn = giant.frames.get(frame.key) ?? giant.draw(frame.eyes, frame.blade)
+  giant.frames.set(frame.key, drawn)
+
+  return drawn
+}
 const giantPictures = new Map<string, GiantPicture>()
 /** The last event taken from each hit layer, by its name: kept past the stages, which a session's end clears while their layers live on. */
 const hitSeqs = new Map<string, number>()
@@ -1314,10 +1336,10 @@ const startPictures = ($: EngineInterface): void => {
         }
         for (const [site, giant] of giantPictures) {
           giant.ms += IMAGE_FRAME_MS
-          const eyes = giant.ms % BLINK_EVERY_MS < BLINK_MS ? 'shut' : 'open'
-          if (eyes === giant.shown) continue
-          giant.shown = eyes
-          const png = eyes === 'shut' ? (giant.shut ??= giant.draw('shut')) : giant.open
+          const frame = giantFrameOf(giant)
+          if (frame.key === giant.shown) continue
+          giant.shown = frame.key
+          const png = giantPng(giant, frame)
           let deny: string | undefined
           try {
             deny = (await $.ui.blit({ requestId: giant.requestId, key: giant.key, source: { png } })).deny
@@ -1338,6 +1360,9 @@ const startPictures = ($: EngineInterface): void => {
   })
   pictureTimer = mine
 }
+
+/** A colour as a picture draws it in `scheme`: a theme key's colour there, a raw one as it is. */
+const rawColour = (colour: string, scheme: 'dark' | 'light'): string => (isThemeKey(colour) ? SCENE_THEMES[scheme][colour] : colour)
 
 const schemeFor = async ($: EngineInterface, now: number): Promise<'dark' | 'light'> => {
   if (pictureScheme !== undefined && now - pictureScheme.at < 10_000) return pictureScheme.scheme
@@ -1440,17 +1465,21 @@ const giantPictureOf = async ($: EngineInterface, table: object, surface: string
   const drawn = JSON.stringify([who, layout, scheme])
   let giant = giantPictures.get(site)
   if (giant === undefined || giant.drawn !== drawn) {
-    const draw = (eyes: 'open' | 'shut'): string => giantPicture(who, layout, eyes, scheme)
+    const draw = (eyes: 'open' | 'shut', blade: number): string => giantPicture(who, layout, eyes, scheme, blade)
     // Its clock starts past a blink: the first comes a few seconds on.
-    giant = { requestId, surface, key: `${TV_KEY}:giant`, drawn, open: draw('open'), shown: 'open', ms: BLINK_MS, draw }
+    giant = { requestId, surface, key: `${TV_KEY}:giant`, drawn, frames: new Map(), shown: '', turns: who.cap === true, ms: BLINK_MS, draw }
     giantPictures.set(site, giant)
   }
+  // The frame its clock is at, the one the timer then swaps on from.
+  const frame = giantFrameOf(giant)
+  giant.shown = frame.key
+  const shown = giantPng(giant, frame)
   startPictures($)
   const { Box, Image } = table as { Box: (props: Record<string, unknown>) => RenderElement; Image: (props: ImageProps) => RenderElement }
 
   return (
     <Box key="tv-giant" position="absolute" top={layout.top} left={layout.left} width={layout.width} height={layout.height}>
-      <Image key={giant.key} source={{ png: giant.shown === 'shut' ? giant.shut ?? giant.open : giant.open }} columns={layout.width} rows={layout.height} alt=" " />
+      <Image key={giant.key} source={{ png: shown }} columns={layout.width} rows={layout.height} alt=" " />
     </Box>
   )
 }
@@ -2210,7 +2239,8 @@ export const register: Register = (on, options) => {
           tvGiants.delete(e.surface)
           await selectAgent($, null)
         } else if ('giant' in tv) {
-          if (tv.giant) tvGiants.add(e.surface)
+          // Only for a TV up on that surface: one torn down meanwhile (its agent gone, the session cleared) leaves none behind.
+          if (tv.giant && tvUp.has(e.surface)) tvGiants.add(e.surface)
           else tvGiants.delete(e.surface)
           if (e.surface === 'terminal' && picturesHere === true && !pictureless.has(e.surface)) $.ui.invalidate('ui.render')
         } else if ('tab' in tv) {
@@ -2494,10 +2524,12 @@ export const register: Register = (on, options) => {
         body = tvShow.body.map(row => tvRowOfInspect(row, onAction, presses))
       }
       tvPresses.set(e.surface, presses)
+      // A TV up afresh flies in first: no giant of an earlier one carried over.
+      if (!tvUp.has(e.surface)) tvGiants.delete(e.surface)
       tvUp.add(e.surface)
       const offset = e.props.scroll.offset
       const top = sceneTops.get(e.surface)
-      const from = tvFrom?.id === choice.id && top !== undefined ? { x: tvFrom.x, y: top + tvFrom.y - offset } : undefined
+      const from = tvFrom?.id === choice.id && top !== undefined ? { x: tvFrom.x, y: top + tvFrom.y - offset, ...(tvFrom.mini === true ? { mini: true as const } : {}) } : undefined
       // Pressed in flight, it wears its propeller cap in the TV too.
       const flying = tvFrom?.id === choice.id && tvFrom.cap === true
       const mascots = settings.mascots ? sceneOf(list, hudData, now, { stalledMs: settings.stalledMs, main, shadows: workflow, scenes: settings.scenes, character: settings.character }) : undefined
@@ -2520,7 +2552,8 @@ export const register: Register = (on, options) => {
         ...(tvWheel.seq === 0 ? {} : { wheel: tvWheel }),
         ...(svg === undefined ? {} : { svg: true as const }),
         ...(settings.mascotArt === 'vector' ? { art: 'vector' as const } : {}),
-        ...(pictured ? { pictured: true as const } : {}),
+        // Pictured, the casing's colour as the picture has it (the scheme's own, not the terminal theme's), for the glass's edge rows.
+        ...(pictured ? { pictured: true as const, casing: rawColour(casingOf(who), await schemeFor($, now)) } : {}),
       }
       const { Client } = table as { Client: (props: { key: string; module: string; props?: unknown; width?: number; height?: number }) => RenderElement }
       tv = (

@@ -478,7 +478,7 @@ export const pointer = (world: World, event: ClientPointerEvent, post: (data: Js
         const one = plan?.placements.find(placement => placement.id === grip.id)
         // An agent's mascot, or the session's (its id `main`): the hooks inspect it, told where it stood and whether it was flying (under its propeller cap).
         const mascot = one !== undefined && (one.kind === 'full' || one.kind === 'mini' || one.kind === 'main')
-        if (mascot && world.props.inspect && isClick(grip.downMs, world.ms, px - grip.start.x, py - grip.start.y)) post({ kind: 'inspect', id: grip.id, at: { x: Math.round(grip.start.x - grip.offset.x) + BODY_X, y: Math.round(grip.start.y - grip.offset.y) }, ...(grip.flying ? { cap: true } : {}) })
+        if (mascot && world.props.inspect && isClick(grip.downMs, world.ms, px - grip.start.x, py - grip.start.y)) post({ kind: 'inspect', id: grip.id, at: { x: Math.round(grip.start.x - grip.offset.x) + BODY_X, y: Math.round(grip.start.y - grip.offset.y), ...(one?.kind === 'mini' ? { mini: true } : {}) }, ...(grip.flying ? { cap: true } : {}) })
 
         return false
       }

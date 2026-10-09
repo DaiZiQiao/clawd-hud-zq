@@ -1,6 +1,6 @@
-import { chain, rasterOf, rotate, scale, translate } from './clawd-vector'
+import { IDENTITY, applyTo, chain, coverOf, rasterOf, rotate, scale, translate } from './clawd-vector'
 import type { Shape } from './clawd-vector'
-import { BOX_ROWS, HAT_X, SKY } from './mascot-sprites'
+import { BODY_WIDTH, BODY_X, BOX_ROWS, HAT_X, MINI, MINI_SCALE } from './mascot-sprites'
 import type { MascotRole } from './scene-types'
 import { EYE, accessoryShapes, browLine, crownShapes, figureShapes, propellerShapes, shade, strokeShapes, usagiCapShapes, usagiCrownShapes, usagiHatShapes, usagiMouthShapes } from './smooth-art'
 import type { FigureInfo } from './smooth-art'
@@ -40,11 +40,12 @@ const infoOf = (who: Who): FigureInfo => ({
 /**
  * The scene's figure: its width and height in units with what it wears over
  * its head (its middle across at 0), how far of that is under its feet (its
- * line), and how many rows down its sprite its feet stand.
+ * line), and how many rows under its box's top (its air row, where a click
+ * says it stood) its feet stand, as the scene draws it.
  */
 const FIGURE = {
-  clawd: { w: 16, h: 14, below: 0, feet: SKY + BOX_ROWS - 0.5 },
-  usagi: { w: 11.5, h: 20.2, below: 0.45, feet: SKY + BOX_ROWS },
+  clawd: { w: 16, h: 14, below: 0, feet: BOX_ROWS - 0.5 },
+  usagi: { w: 11.5, h: 20.2, below: 0.45, feet: BOX_ROWS },
 } as const
 
 /** The propeller's turn, radians, by the TV's blade frame. */
@@ -58,6 +59,43 @@ const pixelsOf = (layout: TvLayout) => {
 
   return { left, top, right: left + layout.width * CW, bottom: top + layout.height * CH, body, eyes: top + (layout.tv.y + layout.tv.h + 1) * CH }
 }
+
+/** How far shapes reach, each through its own placement, a line's or an outline's width and all. */
+const reachOf = (shapes: readonly Shape[]): { left: number; top: number; right: number; bottom: number } => {
+  const reach = { left: Infinity, top: Infinity, right: -Infinity, bottom: -Infinity }
+  for (const shape of shapes) {
+    if (shape.kind === 'text') continue
+    const pad = shape.kind === 'line' ? (shape.stroke ?? 0) / 2 : (shape.grow ?? 0) + (shape.outline?.width ?? 0) + (shape.ring ?? 0) / 2
+    const corners = shape.kind === 'poly' || shape.kind === 'line' ? shape.points ?? [] : [[shape.x, shape.y], [shape.x + shape.w, shape.y], [shape.x, shape.y + shape.h], [shape.x + shape.w, shape.y + shape.h]] as const
+    for (const [x, y] of corners) {
+      const [px, py] = applyTo(shape.m ?? IDENTITY, x, y)
+      reach.left = Math.min(reach.left, px - pad)
+      reach.top = Math.min(reach.top, py - pad)
+      reach.right = Math.max(reach.right, px + pad)
+      reach.bottom = Math.max(reach.bottom, py + pad)
+    }
+  }
+
+  return reach
+}
+
+/**
+ * How big what a giant wears may be blown up (pixels a unit): `wanted`, or
+ * less, so that drawn at `wear(1)`'s reach from its anchor (`x`, `y`) it
+ * stays inside its box, over its head no higher than its box's top, and,
+ * hanging down, no lower than `floor` (the TV's top).
+ */
+const wearScale = (wanted: number, reach: { left: number; top: number; right: number; bottom: number }, x: number, y: number, box: { left: number; top: number; right: number }, floor: number): number =>
+  Math.max(
+    1,
+    Math.min(
+      wanted,
+      reach.right > 0 ? (box.right - x) / reach.right : Infinity,
+      reach.left < 0 ? (x - box.left) / -reach.left : Infinity,
+      reach.top < 0 ? (y - box.top) / -reach.top : Infinity,
+      reach.bottom > 0 ? (floor - y) / reach.bottom : Infinity,
+    ),
+  )
 
 /** Clawd's eyes under the TV: tall, notched dark as its head has them; wide, bigger; shut, a line. */
 const clawdEyes = (layout: TvLayout, x: number, w: number, y: number, eyes: Eyes): Shape[] => {
@@ -97,14 +135,25 @@ const giantClawd = (who: Who, layout: TvLayout, eyes: Eyes, spin: number, t: num
     { kind: 'rect', x: body.x + 10, y: body.y + 5, w: body.w - 20, h: 4, r: 2, fill: '#FFFFFF', alpha: 0.16 },
     ...clawdEyes(layout, body.x, body.w, at.eyes, eyes),
   ]
-  // What it wears, its scene's head (12 units across) the body's width, as tall as the rows over the head allow.
-  const k = Math.max(1, Math.min(body.w / 12, (layout.body.y * CH) / 5))
+  // What it wears over the corner of its head it is worn at, blown up from the scene's (its head 12 units across the body's
+  // width, as tall as the rows over its head allow), no bigger than its box holds it; its side its own (a cap's peak to the
+  // side it is worn at).
   const side = who.crown === true ? 'centre' : who.accessory === undefined ? 'left' : who.side ?? 'left'
   const across = side === 'centre' ? 0 : ((HAT_X[side] - HAT_X.centre) * 2 * body.w) / 12
-  const head = chain(translate(body.x + body.w / 2 + across, body.y), scale(k), translate(0, 10))
-  if (who.cap === true) shapes.push(...propellerShapes(chain(head, translate(0, -10)), capOf(who), turnOf(spin)))
-  else if (who.crown === true) shapes.push(...crownShapes(head, 0, -10))
-  else if (who.accessory !== undefined) shapes.push(...accessoryShapes(head, who.accessory, 0, t))
+  const anchor = { x: body.x + body.w / 2 + across, y: body.y }
+  const worn = (k: number): Shape[] => {
+    const head = chain(translate(anchor.x, anchor.y), scale(k), translate(0, 10))
+    // Over the scene's head the side it is worn at: the anchor's own units across, a hair either way.
+    const x = across === 0 ? 0 : Math.sign(across) * 0.001
+    if (who.cap === true) return propellerShapes(chain(head, translate(x, -10)), capOf(who), turnOf(spin))
+    if (who.crown === true) return crownShapes(head, x, -10)
+    if (who.accessory !== undefined) return accessoryShapes(head, who.accessory, x, t)
+
+    return []
+  }
+  const unit = reachOf(worn(1))
+  const k = wearScale(Math.min(body.w / 12, (layout.body.y * CH) / 5), { left: unit.left - anchor.x, top: unit.top - anchor.y, right: unit.right - anchor.x, bottom: 0 }, anchor.x, anchor.y, { left: at.left, top: at.top, right: at.right }, Infinity)
+  shapes.push(...worn(k))
 
   return shapes
 }
@@ -160,9 +209,10 @@ const usagiFace = (x: number, w: number, y: number, eyes: Eyes): Shape[] => {
       shapes.push({ kind: 'ellipse', x: cx - ew / 2, y: cy - eh / 2, w: ew, h: eh, fill: USAGI.eye })
       shapes.push({ kind: 'ellipse', x: cx + ew * 0.04, y: cy - eh * 0.36, w: ew * 0.26, h: ew * 0.26, fill: '#FFFFFF', alpha: 0.95 })
     }
-    // Its brows: high over each eye (higher wide-eyed), level over the face's middle and falling away to the side.
+    // Its brows: high over each eye (higher wide-eyed), level over the face's middle and falling away to the side; never
+    // higher than the row between the TV and its eyes, the glass's bottom edge over it.
     const side = at < 0.5 ? -1 : 1
-    const top = cy - eh / 2 - eh * 1.1 - (eyes === 'wide' ? CH / 4 : 0)
+    const top = Math.max(y - CH + 4, cy - eh / 2 - eh * 1.1 - (eyes === 'wide' ? CH / 4 : 0))
     shapes.push(...strokeShapes([1, 0, 0, 1, 0, 0], browLine(cx - side * ew * 0.55, cx + side * ew * 1.75, top, eh * 0.8), 3.4, USAGI.line))
   }
   // Its mouth as the scene's, its face's units blown up as its eyes are: its cat's `ω`; wide-eyed, a small `o`.
@@ -210,14 +260,22 @@ const giantUsagi = (who: Who, layout: TvLayout, eyes: Eyes, spin: number): Shape
   shapes.splice(shapes.length - 1, 0, ...inside)
   shapes.push(...usagiFace(body.x, body.w, at.eyes, eyes))
   // What it wears, blown up evenly from the scene's: as big as the rows over its head hold its ears (7.8 units), its head (10.6)
-  // the body's width at most; sat on its flat top, in front of its ears.
-  const k = Math.max(1, Math.min(body.w / 10.6, (body.y - at.top) / 7.8))
-  const seat = chain(translate(middle, body.y + 0.25 * k), scale(k))
-  if (who.cap === true) {
-    const cap = usagiCapShapes(seat, capOf(who), turnOf(spin))
-    shapes.push(...cap.cap, ...cap.propeller)
-  } else if (who.hat !== undefined) shapes.push(...usagiHatShapes(seat, who.hat))
-  if (who.crown === true && who.cap !== true) shapes.push(...usagiCrownShapes(chain(translate(middle - earW * 1.6, body.y + 0.5 * k), scale(k * 0.9), rotate(-0.35))))
+  // the body's width at most, and inside its box, hanging no lower than the TV's top; sat on its flat top, in front of its ears.
+  const worn = (k: number): Shape[] => {
+    const seat = chain(translate(middle, body.y + 0.25 * k), scale(k))
+    if (who.cap === true) {
+      const cap = usagiCapShapes(seat, capOf(who), turnOf(spin))
+
+      return [...cap.cap, ...cap.propeller]
+    }
+
+    return who.hat === undefined ? [] : usagiHatShapes(seat, who.hat)
+  }
+  const unit = reachOf(worn(1))
+  const tvTop = at.top + layout.tv.y * CH
+  const k = wearScale(Math.min(body.w / 10.6, (body.y - at.top) / 7.8), { left: unit.left - middle, top: unit.top - body.y, right: unit.right - middle, bottom: unit.bottom - body.y }, middle, body.y, { left: at.left, top: at.top, right: at.right }, tvTop)
+  shapes.push(...worn(k))
+  if (who.crown === true && who.cap !== true) shapes.push(...usagiCrownShapes(chain(translate(middle - earW * 1.6, body.y + 0.1 * k), scale(k * 1.3), rotate(-0.35))))
 
   return shapes
 }
@@ -237,13 +295,15 @@ export const giantShapes = (who: Who, layout: TvLayout, eyes: Eyes = 'open', spi
  * eyes wide; in flight, its propeller cap turning.
  */
 export const spriteShapes = (inputs: Pick<TvInputs, 'layout' | 'from' | 'who'>, travel: number, scaleBy: number, eyes: Eyes, t: number): Shape[] => {
-  const { layout, who } = inputs
+  const { layout, who, from } = inputs
   const figure = FIGURE[who.character]
-  // Its scene size, 4 pixels a unit, as the scene draws it; grown, as big as the giant's box holds it.
-  const k = 4 + (Math.min((layout.width * CW) / figure.w, (layout.height * CH) / figure.h) - 4) * scaleBy
+  // Its scene size, 4 pixels a unit (a child's mini smaller), as the scene draws it; grown, as big as the giant's box holds it.
+  const own = from?.mini === true ? 4 * MINI_SCALE : 4
+  const k = own + (Math.min((layout.width * CW) / figure.w, (layout.height * CH) / figure.h) - own) * scaleBy
   const centre = { x: (layout.left + layout.width / 2) * CW, y: (layout.top + layout.height / 2) * CH }
-  // Where it stood: its middle 4.5 cells from its body's left, its feet `figure.feet` rows down its sprite.
-  const start = inputs.from === undefined ? centre : { x: (inputs.from.x + 4.5) * CW, y: (inputs.from.y + figure.feet) * CH - (figure.h / 2 - figure.below) * 4 }
+  // Where it stood: its middle half its body from its body's left (a mini's from its own left), its feet `figure.feet` rows down its box.
+  const middle = from === undefined ? 0 : from.mini === true ? from.x - BODY_X + MINI / 2 : from.x + BODY_WIDTH / 2
+  const start = from === undefined ? centre : { x: middle * CW, y: (from.y + figure.feet) * CH - (figure.h / 2 - figure.below) * own }
   const x = start.x + (centre.x - start.x) * travel
   const y = start.y + (centre.y - start.y) * travel
   const pose = { ...NEUTRAL, eyes: eyes === 'wide' ? 'wide' as const : 'normal' as const, eyeOpen: eyes === 'shut' ? 0.08 : 1, ...(who.cap === true ? { cap: (t / 1000) * 30 } : {}) }
@@ -251,11 +311,31 @@ export const spriteShapes = (inputs: Pick<TvInputs, 'layout' | 'from' | 'who'>, 
   return figureShapes(pose, infoOf(who), chain(translate(x, y + (figure.h / 2 - figure.below) * k), scale(k)), t)
 }
 
-/** The giant as a picture of its box (a cell 8 by 16 pixels), as the desktop draws it, still: a PNG, base64. */
-export const giantPicture = (who: Who, layout: TvLayout, eyes: Eyes, scheme: 'dark' | 'light' = 'dark'): string => {
+/**
+ * The giant's cells as it is drawn smooth (eyes open), by `y * width + x` in
+ * its box: a cell any of five points of which a shape covers. What of the
+ * mascot round the TV a press lands on.
+ */
+export const giantCells = (who: Who, layout: TvLayout): Set<number> => {
+  const covered = coverOf(giantShapes(who, layout))
+  const cells = new Set<number>()
+  for (let y = 0; y < layout.height; y += 1) {
+    for (let x = 0; x < layout.width; x += 1) {
+      const px = (layout.left + x) * CW
+      const py = (layout.top + y) * CH
+      const points = [[0.5, 0.5], [0.2, 0.2], [0.8, 0.2], [0.2, 0.8], [0.8, 0.8]] as const
+      if (points.some(([fx, fy]) => covered(px + fx * CW, py + fy * CH))) cells.add(y * layout.width + x)
+    }
+  }
+
+  return cells
+}
+
+/** The giant as a picture of its box (a cell 8 by 16 pixels), as the desktop draws it, still (its propeller's blade at `spin`): a PNG, base64. */
+export const giantPicture = (who: Who, layout: TvLayout, eyes: Eyes, scheme: 'dark' | 'light' = 'dark', spin = 0): string => {
   const width = Math.max(1, layout.width) * CW
   const height = Math.max(1, layout.height) * CH
-  const pixels = rasterOf(giantShapes(who, layout, eyes), width, height, translate(-layout.left * CW, -layout.top * CH), undefined, scheme)
+  const pixels = rasterOf(giantShapes(who, layout, eyes, spin), width, height, translate(-layout.left * CW, -layout.top * CH), undefined, scheme)
 
   return base64Of(pngOf(pixels, width, height))
 }

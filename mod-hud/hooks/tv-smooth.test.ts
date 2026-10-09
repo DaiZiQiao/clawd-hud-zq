@@ -1,17 +1,23 @@
 import { describe, expect, mock, test } from 'claude-code/testing'
 
+import { chain, scale } from './clawd-vector'
 import type { Shape } from './clawd-vector'
 import { countColour, pngPixels } from './png.fixtures'
 import { arrange, mount } from './scene-client.fixtures'
-import { TYPIST } from './scene-world.fixtures'
+import { NOW, entry } from './scene-model.fixtures'
+import { smoothFrame } from './scene-smooth'
+import { layoutAt, sceneAt, viewOf } from './scene-view'
+import { createWorld, pointer } from './scene-world'
+import { TYPIST, frameLines, inputs as sceneInputs, press, ticks } from './scene-world.fixtures'
+import { createSmoother } from './smooth-pose'
 import { EYE } from './smooth-art'
 import { spriteOf } from './tv-figure'
 import type { Who } from './tv-figure'
 import { TV_FRAMES, TV_FRAME_MS, tvLayoutOf, tvLookAt } from './tv-model'
 import type { TvInputs, TvRow } from './tv-model'
 import { paintCells, paintSvg } from './tv-paint'
-import { casingOf, giantPicture, giantShapes, spriteShapes } from './tv-smooth'
-import { BLINK_EVERY_MS, createTv, startClose, tickTv, tvPostOf } from './tv-world'
+import { casingOf, giantCells, giantPicture, giantShapes, spriteShapes } from './tv-smooth'
+import { BLINK_EVERY_MS, createTv, pointerTv, startClose, tickTv, tvPostOf } from './tv-world'
 import type { TvPost } from './tv-world'
 import { USAGI } from './usagi-sprites'
 
@@ -62,8 +68,18 @@ const boundsOf = (shapes: readonly Shape[]): { left: number; top: number; right:
 
 describe('the giant, smooth', () => {
   test('inside its box, both mascots, whatever they wear: its body the casing round the TV, its eyes a row under it, a line as it blinks', () => {
-    for (const who of [CLAWD, { ...CLAWD, crown: undefined, accessory: 'bow' as const, side: 'right' as const }, BUNNY, { ...BUNNY, hat: undefined, crown: true as const }]) {
-      const { layout } = inputsOf(who)
+    const accessories = ['beanie', 'cap', 'tophat', 'flower', 'bow', 'halo', 'note', 'propeller'] as const
+    const hats = ['hardhat', 'fedora', 'mortarboard', 'helmet', 'tophat', 'beret'] as const
+    const wearing: Who[] = [
+      CLAWD,
+      { ...CLAWD, crown: undefined, cap: true },
+      ...accessories.flatMap(accessory => (['left', 'right'] as const).map((side): Who => ({ ...CLAWD, crown: undefined, accessory, side }))),
+      ...hats.map((hat): Who => ({ ...BUNNY, hat })),
+      { ...BUNNY, hat: undefined, crown: true },
+      { ...BUNNY, hat: undefined, cap: true },
+    ]
+    for (const [columns, rows] of [[72, 36], [80, 44], [96, 32], [130, 40]] as const) for (const who of wearing) {
+      const layout = tvLayoutOf(who.character, columns, rows)!
       const box = { left: layout.left * 8, top: layout.top * 16, right: (layout.left + layout.width) * 8, bottom: (layout.top + layout.height) * 16 }
       const shapes = giantShapes(who, layout)
       const bounds = boundsOf(shapes)
@@ -95,6 +111,31 @@ describe('the giant, smooth', () => {
     }
   })
 
+  test('drawn smooth, a press lands on what its shapes cover: on its arm the TV stays on; in its box beside its head, it switches off', () => {
+    for (const who of [CLAWD, BUNNY]) {
+      for (const drawn of [{ svg: true as const }, { pictured: true as const }]) {
+        const inputs = inputsOf(who, { art: 'vector', ...drawn })
+        const { layout } = inputs
+        const cells = giantCells(who, layout)
+        const tv = createTv(inputs)
+        for (let frame = 0; frame < 100 && tv.phase !== 'on'; frame += 1) tickTv(tv, () => {})
+        expect(tv.phase).toBe('on')
+        const press = (fx: number, fy: number): void => {
+          for (const type of ['down', 'up'] as const) pointerTv(tv, { type, x: layout.left + fx, y: layout.top + fy, button: 'left' }, () => {})
+        }
+        // Its arm, at its box's left edge on the arms' row.
+        const arm = Array.from({ length: layout.height }, (_, fy) => fy).find(fy => cells.has(fy * layout.width))
+        expect(arm, who.character).toBeDefined()
+        press(0, arm!)
+        expect(tv.phase, who.character).toBe('on')
+        // Its box's top left corner, beside its head: nothing drawn there.
+        expect(cells.has(0)).toBe(false)
+        press(0, 0)
+        expect(tv.phase, who.character).toBe('power-off')
+      }
+    }
+  })
+
   test('a picture of its box: a PNG a cell 8 by 16 pixels, in its colours on a clear ground; its eyes shut, another', () => {
     const { layout } = inputsOf(CLAWD)
     const open = giantPicture(CLAWD, layout, 'open')
@@ -113,7 +154,7 @@ describe('flying in, smooth', () => {
       const { layout } = inputs
       const start = boundsOf(spriteShapes(inputs, 0, 0, 'wide', 0))
       expect(Math.abs((start.left + start.right) / 2 - 14.5 * 8)).toBeLessThan(2)
-      expect(Math.abs(start.bottom - (20 + (who.character === 'usagi' ? 5 : 4.5)) * 16)).toBeLessThan(2)
+      expect(Math.abs(start.bottom - (20 + (who.character === 'usagi' ? 4 : 3.5)) * 16)).toBeLessThan(2)
       expect(start.right - start.left).toBeLessThan(80)
       const grown = boundsOf(spriteShapes(inputs, 1, 1, 'wide', 0))
       const box = { left: layout.left * 8, top: layout.top * 16, right: (layout.left + layout.width) * 8, bottom: (layout.top + layout.height) * 16 }
@@ -125,6 +166,50 @@ describe('flying in, smooth', () => {
       expect(Math.max((grown.right - grown.left) / (box.right - box.left), (grown.bottom - grown.top) / (box.bottom - box.top))).toBeGreaterThan(0.9)
       const own = boundsOf(spriteShapes({ ...inputs, from: undefined }, 1, 0, 'wide', 0))
       expect(Math.abs((grown.right - grown.left) / (grown.bottom - grown.top) - (own.right - own.left) / (own.bottom - own.top))).toBeLessThan(0.05)
+    }
+  })
+})
+
+describe('flying from the scene', () => {
+  test('it starts where the scene drew the mascot pressed: its body\'s middle and its foot as the scene\'s, a child\'s mini at its own size', () => {
+    for (const character of ['clawd', 'usagi'] as const) {
+      const world = createWorld(sceneInputs([entry('parent', { currentTool: 'Edit', startedAt: NOW - 120_000 }), entry('kid', { parentId: 'parent', currentTool: 'Grep', startedAt: NOW - 60_000 })], { art: 'vector', svg: true, ...(character === 'usagi' ? { character } : {}) }))
+      ticks(world, 4)
+      // A cell of a mascot as drawn now: a full one's head's middle; a mini's first cell found.
+      const cellOf = (id: string): { x: number; y: number } => {
+        if (id === 'parent') return press(world, id)
+        frameLines(world)
+        for (const [y, row] of (world.owners ?? []).entries()) for (const [x, owner] of row.entries()) if (owner === id) return { x, y }
+        throw new Error(`no ${id} drawn`)
+      }
+      for (const id of ['parent', 'kid']) {
+        const at = cellOf(id)
+        const posts: unknown[] = []
+        for (const type of ['down', 'up'] as const) pointer(world, { type, ...at, button: 'left' }, data => posts.push(data))
+        const ask = posts.find(one => (one as { kind?: string }).kind === 'inspect') as { at: { x: number; y: number; mini?: true } } | undefined
+        expect(ask?.at.mini === true, id).toBe(id === 'kid')
+        // The scene's figure under the press, its body (Clawd's in its colour, Usagi's cream head) in the region's pixels.
+        const plan = world.cur!
+        const frame = smoothFrame(sceneAt(world, world.sceneNow), layoutAt(world, plan.tick), plan, viewOf(world).sprites, createSmoother(), world.sceneNow)!
+        const colour = character === 'usagi' ? USAGI.cream : sceneAt(world, world.sceneNow).agents.find(one => one.id === id)!.colour
+        const bodyOf = (shapes: readonly Shape[]): { left: number; top: number; right: number; bottom: number } | undefined => {
+          const bodies = shapes.filter(one => one.fill === colour && (one.kind === 'rect' || one.kind === 'ellipse'))
+          const body = bodies.reduce<Shape | undefined>((best, one) => (best === undefined || one.w * one.h > best.w * best.h ? one : best), undefined)
+
+          return body === undefined ? undefined : boundsOf([body])
+        }
+        const inPixels = (shapes: readonly Shape[]): Shape[] => shapes.map(one => ({ ...one, m: chain(scale(4), one.m ?? [1, 0, 0, 1, 0, 0]) }))
+        const figures = frame.wholes.map(([from, to]) => inPixels(frame.shapes.slice(from, to)))
+        // The body nearest the press.
+        const away = (body: { left: number; top: number; right: number; bottom: number }): number => Math.hypot((body.left + body.right) / 2 - (at.x * 8 + 4), (body.top + body.bottom) / 2 - (at.y * 16 + 8))
+        const drawn = figures.map(bodyOf).reduce<ReturnType<typeof bodyOf>>((best, body) => (body !== undefined && (best === undefined || away(body) < away(best)) ? body : best), undefined)
+        expect(drawn, `${character} ${id}`).toBeDefined()
+        expect(away(drawn!), `${character} ${id}`).toBeLessThan(40)
+        const flying = bodyOf(spriteShapes({ ...inputsOf({ character, colour }), from: ask!.at }, 0, 0, 'open', world.sceneNow))!
+        expect(Math.abs((flying.left + flying.right) / 2 - (drawn!.left + drawn!.right) / 2), `${character} ${id}`).toBeLessThan(3)
+        expect(Math.abs(flying.bottom - drawn!.bottom), `${character} ${id}`).toBeLessThan(3)
+        expect(Math.abs((flying.right - flying.left) / (drawn!.right - drawn!.left) - 1), `${character} ${id}`).toBeLessThan(0.05)
+      }
     }
   })
 })
@@ -177,6 +262,8 @@ describe('the TV with the vector art', () => {
       })
     }
     expect(posts).toEqual([{ kind: 'tv', giant: true }])
+    // Told as its growing ends, the glass about to switch on: not while it flies.
+    expect(phases).toEqual(['grow'])
     expect(tv.phase).toBe('on')
     startClose(tv)
     for (let frame = 0; frame < 40 && tv.phase !== 'gone'; frame += 1) tickTv(tv, post => posts.push(post))
@@ -219,6 +306,8 @@ describe('in a terminal that shows pictures', () => {
     await ui.redraw()
     const inputs = (await tvOf())?.props.props as TvInputs
     expect(inputs.pictured).toBe(true)
+    // The casing's colour as the picture has it, raw, for the glass's edge rows over it.
+    expect(inputs.casing).toMatch(/^#[0-9A-Fa-f]{6}$/)
     const image = await giantOf()
     expect(image).toBeDefined()
     expect([image?.props.columns, image?.props.rows]).toEqual([inputs.layout.width, inputs.layout.height])
@@ -235,6 +324,28 @@ describe('in a terminal that shows pictures', () => {
     await ui.advance((TV_FRAMES['power-off'] + 1) * TV_FRAME_MS)
     await ui.redraw()
     expect(await giantOf()).toBe(undefined)
+    await ui.unmount()
+  })
+
+  test('pressed in flight, the giant\'s propeller turns in its picture too: its blade\'s two frames swapped in turn', { timeoutMs: 20_000 }, async ($, on) => {
+    const { clock } = arrange(on, [TYPIST])
+    mock.env(on, GHOSTTY)
+    const sent: string[] = []
+    on('ui.blit', (_$, e) => {
+      const args = e as unknown as { key: string; source: { png?: string } }
+      if (args.key === 'tv:giant') sent.push(args.source.png ?? '')
+
+      return { value: {} }
+    })
+    const ui = await mount($, 'terminal', 72, 36)
+    await ui.post({ kind: 'inspect', id: 'a', at: { x: 10, y: 1 }, cap: true }, { in: 'mascots' })
+    await ui.redraw()
+    await ui.advance((TV_FRAMES.travel + TV_FRAMES.grow + 1) * TV_FRAME_MS)
+    await ui.redraw()
+    expect((await ui.findAll({ type: 'Image' })).some(one => one.key === 'tv:giant')).toBe(true)
+    await clock.advance(400)
+    expect(new Set(sent).size).toBe(2)
+    expect(sent.length).toBeGreaterThanOrEqual(3)
     await ui.unmount()
   })
 

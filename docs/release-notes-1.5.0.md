@@ -18,6 +18,6 @@ The mascots are drawn smooth.
 - In block characters too its ears now stand together and its body is narrower than its head.
 - Like Chiikawa's Usagi, it bursts into something out of nowhere, about once every six or seven seconds, each Usagi on a clock of its own: the Yaha! dance, an Ura! leap, a HUHHH? lean-in, a smug Fuun, zoomies, a twirl, a backflip, or an UNA! shake. At its laptop it bashes the keys with both hands. Its line bursts out in a spiky balloon.
 - It sprints: on foot it covers twice Clawd's ground, rests half as long and leaps more often. Its legs become a spinning cartoon wheel, it leans hard into its run with arms pumping and ears streaming back, kicking up dust behind speed lines. In block characters, four feet flurry instead.
-- A new face: dot eyes with a glint, squeezed shut (`> <`) when it screams, half-lidded when smug; a small open mouth with a tongue, a wide D when it yells, a round `o`, a smirk. Its ears twitch now and then, and asleep a bubble swells from its nose.
+- A new face: dot eyes with a glint, turning spirals when it bursts out (crosses knocked flat), half-lidded when bored, drowsy, unimpressed or smug; a mouth like a flat 3, a wide D with its tongue in it when it yells, a round `o`, a smirk. Its ears twitch now and then, and asleep a bubble swells from its nose.
 - The quirks play in the block characters too, with their lines over its head.
 

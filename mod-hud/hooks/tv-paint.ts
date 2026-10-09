@@ -222,7 +222,7 @@ export const paintCells = (inputs: TvInputs, look: TvLook | undefined, scroll: n
   if (inputs.pictured !== true) lay(giantOf(inputs.who, shapeOf(layout), look.eyes, look.spin ?? 0), layout.left, layout.top)
   const placed: TvInputs = { ...inputs, layout: { ...layout, glass: shifted(layout.glass) } }
   // The panel's round rows and the glass's sit on the body's colour (the smooth giant's, under them as a picture).
-  const bodyColour = inputs.pictured === true ? casingOf(inputs.who) : inputs.who.colour
+  const bodyColour = inputs.pictured === true ? inputs.casing ?? casingOf(inputs.who) : inputs.who.colour
   glassCells(grid, placed, look.glass, scroll, osd)
   panelCells(grid, shifted(layout.panel), panelOf(layout.screen), 'CH')
   for (const box of [layout.glass, layout.panel]) {

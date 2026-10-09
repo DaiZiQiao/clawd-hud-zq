@@ -5,6 +5,7 @@ import type { Figure } from './tv-figure'
 import { TV_FRAMES, TV_FRAME_MS, channelOf, roomOf, scrolledBy, tvHitAt, tvKeyOf, tvLookAt } from './tv-model'
 import type { TvHit, TvInputs, TvLook, TvPhase } from './tv-model'
 import { shapeOf } from './tv-paint'
+import { giantCells } from './tv-smooth'
 
 // The TV's life in its surface module (hooks/tv-client.tsx), kept apart from
 // the engine so it runs in a test as it does on a surface: its phase and
@@ -227,15 +228,17 @@ const act = (tv: TvWorld, hit: TvHit, post: (data: TvPost) => void): boolean => 
   }
 }
 
-/** The giant's cells drawn, by `y * width + x` in its box: what of the mascot round the TV a press lands on. */
-const drawnOf = (tv: TvWorld): Set<number> => {
+/** The giant's cells drawn (as its quarters, or `smooth` as its shapes), by `y * width + x` in its box: what of the mascot round the TV a press lands on. */
+const drawnOf = (tv: TvWorld, smooth: boolean): Set<number> => {
   const { layout, who } = tv.inputs
-  const key = JSON.stringify([who, layout.width, layout.height, layout.body, layout.tv])
+  const key = JSON.stringify([smooth, who, layout.left, layout.top, layout.width, layout.height, layout.body, layout.tv])
   if (tv.drawn?.key === key) return tv.drawn.cells
-  const cells = new Set<number>()
-  figureCells(giantOf(who, shapeOf(layout))).forEach((row, y) => row.forEach((cell, x) => {
-    if (cell !== undefined) cells.add(y * layout.width + x)
-  }))
+  const cells = smooth ? giantCells(who, layout) : new Set<number>()
+  if (!smooth) {
+    figureCells(giantOf(who, shapeOf(layout))).forEach((row, y) => row.forEach((cell, x) => {
+      if (cell !== undefined) cells.add(y * layout.width + x)
+    }))
+  }
   tv.drawn = { key, cells }
 
   return cells
@@ -259,9 +262,9 @@ export const pointerTv = (tv: TvWorld, event: ClientPointerEvent, post: (data: T
   }
   if (tv.phase === 'power-off' || tv.phase === 'shrink' || tv.phase === 'return') return false
   const { layout } = tv.inputs
-  // Drawn smooth (on the desktop, or the hooks' picture), its whole box is the mascot's: its quarters are not what shows.
+  // Drawn smooth (on the desktop, or the hooks' picture), its shapes are what shows, not its quarters.
   const smooth = tv.inputs.art === 'vector' && (tv.inputs.svg === true || tv.inputs.pictured === true)
-  const hit = tvHitAt(tv.inputs, tv.scroll, event.x, event.y, smooth ? () => true : (fx, fy) => drawnOf(tv).has(fy * layout.width + fx))
+  const hit = tvHitAt(tv.inputs, tv.scroll, event.x, event.y, (fx, fy) => drawnOf(tv, smooth).has(fy * layout.width + fx))
   if (event.type === 'down') {
     tv.down = hit
     if (hit.kind === 'scroll' && tv.phase === 'on') {

@@ -1,6 +1,6 @@
 import { chain, rasterOf, scale, shapesMarkup, svgOf, translate } from './clawd-vector'
 import type { Shape } from './clawd-vector'
-import { BODY_WIDTH, BODY_X, BOX_ROWS, MINI, SKY } from './mascot-sprites'
+import { BODY_WIDTH, BODY_X, BOX_ROWS, MINI, MINI_SCALE, SKY } from './mascot-sprites'
 import { ACCENT } from './scene-model'
 import { PIPE_COLOUR, PIPE_SHINE, PIPE_WIDTH } from './scene-pipe'
 import { placedSprites } from './scene-placement'
@@ -19,9 +19,6 @@ import { CELL_HEIGHT, CELL_WIDTH } from './svg-style'
 // (hooks/smooth-pose.ts), the pipes, the marks and the strip; as an SVG for
 // the desktop, as pixels for a terminal's Image. World units: a cell is 2
 // across and 4 down, the canvas's top-left (the sky's first row) the origin.
-
-/** A child's mini, drawn at this share of a full mascot's size. */
-export const MINI_SCALE = 0.6
 
 /**
  * A frame of the smooth scene: its shapes, back to front, its size in units,

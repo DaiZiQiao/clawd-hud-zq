@@ -56,6 +56,8 @@ export const HAT_X = { left: 3, centre: 5, right: 7 } as const
 export type HatSide = keyof typeof HAT_X
 /** A mini's cells across. */
 export const MINI = 5
+/** A child's mini drawn smooth, at this share of a full mascot's size. */
+export const MINI_SCALE = 0.6
 
 // --- the figure ------------------------------------------------------------------
 

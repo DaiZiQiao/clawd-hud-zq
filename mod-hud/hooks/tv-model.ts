@@ -179,11 +179,13 @@ export type TvInputs = {
   tabs: string[]
   tab: string
   view: string
-  from?: { x: number; y: number }
+  from?: { x: number; y: number; mini?: true }
   wheel?: { seq: number; by: number; page?: true }
   svg?: true
   art?: 'vector'
   pictured?: true
+  /** Pictured: the casing's colour as the picture draws it, for what the module lays on it. */
+  casing?: string
 }
 
 /** The glass's rows for the tab's body: the text rows less the pinned head (one at least). */

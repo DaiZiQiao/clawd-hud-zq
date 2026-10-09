@@ -351,6 +351,30 @@ const layShape = (pixels: Uint8Array, width: number, height: number, shape: Shap
 }
 
 /**
+ * Whether the shapes cover a point (world units), each through its own
+ * placement, a shape seen through more than half not counted: a press's
+ * test against what is drawn. Made once for the shapes.
+ */
+export const coverOf = (shapes: readonly Shape[]): ((x: number, y: number) => boolean) => {
+  const tests = shapes.flatMap(shape => {
+    if (!visible(shape) || shape.kind === 'text' || (shape.alpha ?? 1) < 0.5) return []
+    const back = invert(shape.m ?? IDENTITY)
+    if (back === undefined) return []
+    const distance = distanceTo(shape)
+    const reach = shape.kind === 'poly' ? shape.outline?.width ?? 0 : 0
+
+    return [{ back, distance, reach }]
+  })
+
+  return (x, y) =>
+    tests.some(({ back, distance, reach }) => {
+      const [lx, ly] = applyTo(back, x, y)
+
+      return distance(lx, ly) <= reach
+    })
+}
+
+/**
  * The shapes as `width` by `height` RGBA pixels (straight alpha, clear where
  * nothing is drawn), `view` mapping world units to pixels: each edge covers
  * its pixels as far as it reaches into them, so edges are smooth at any size.

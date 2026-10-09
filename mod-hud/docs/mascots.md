@@ -542,7 +542,7 @@ always ends inside its window:
 
 | quirk | how long | what it does | its line |
 | --- | --- | --- | --- |
-| `yaha` | 2 s | the Yaha! dance: arms waving in turn, swaying, bouncing, eyes squeezed shut `> <`, mouth wide | `Yaha!` |
+| `yaha` | 2 s | the Yaha! dance: arms waving in turn, swaying, bouncing, eyes turning spirals (in its cells shut), mouth wide | `Yaha!` |
 | `ura` | 1.4 s | a crouch, a leap with arms flung up, a landing that squashes and wobbles | `Ura!` |
 | `huh` | 1.3 s | it looms at you, head tilted, eyes wide, mouth a round `o` | `HUHHH?` |
 | `fuun` | 1.7 s | smug: lids half down, a smirk, leaning back, hands on hips, a huff | `Fuun` |
