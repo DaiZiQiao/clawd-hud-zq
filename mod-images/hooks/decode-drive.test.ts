@@ -363,7 +363,8 @@ describe('slicing', () => {
     )
     expect(outcome).toBe('done')
     durations.sort((a, b) => a - b)
-    expect(durations.length).toBeGreaterThan(10)
+    // Sliced, however fast the machine: a fast one decodes it in a few slices.
+    expect(durations.length).toBeGreaterThan(3)
     expect(durations[Math.floor(durations.length / 2)]!).toBeLessThan(8)
     expect(durations.at(-1)!).toBeLessThan(100)
   })
