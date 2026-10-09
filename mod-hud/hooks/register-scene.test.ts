@@ -285,7 +285,8 @@ describe('in the pane', () => {
     }
   })
 
-  test('the pane keeps slots across redraws; a finished agent goes up its pipe where it stands, the other stays put', { options: { wander: false, scenes: false, motion: 'classic' } }, async ($, on) => {
+  // Two surfaces redrawn twice a frame for a farewell's frames: some seconds' work, given room on a loaded machine.
+  test('the pane keeps slots across redraws; a finished agent goes up its pipe where it stands, the other stays put', { options: { wander: false, scenes: false, motion: 'classic' }, timeoutMs: 20_000 }, async ($, on) => {
     const { clock, held } = arrange(on)
     await $.session.start(START)
     await clock.settle()

@@ -1,7 +1,10 @@
-// A smooth Clawd: the session's mascot drawn as shapes, not cells, for the
-// surfaces that draw pictures (the desktop's `Svg`, a terminal's `Image`).
-// Pure functions: shapes in world units to SVG markup, or to RGBA pixels with
-// anti-aliased edges. hooks/clawd-moves.ts says where the shapes are.
+import { CLASSES, SCENE_THEMES, escapeText, isThemeKey, lightRule, num } from './svg-style'
+import type { ThemeKey } from './svg-style'
+
+// The smooth mascots' drawing: shapes in world units (a terminal quadrant is
+// one unit wide and two tall, so a cell is 2 by 4, and a desktop pixel a
+// quarter of a unit) to SVG markup for the desktop's `Svg`, or to RGBA pixels
+// with anti-aliased edges for a terminal's `Image`. Pure functions.
 
 /** A 2D affine map `[a, b, c, d, e, f]`: x' = a·x + c·y + e, y' = b·x + d·y + f. */
 export type Matrix = readonly [number, number, number, number, number, number]
@@ -32,7 +35,7 @@ export const rotate = (radians: number): Matrix => {
 /** About a point: there, the map, back. */
 export const about = (x: number, y: number, map: Matrix): Matrix => chain(translate(x, y), map, translate(-x, -y))
 
-const applyTo = (m: Matrix, x: number, y: number): [number, number] => [m[0] * x + m[2] * y + m[4], m[1] * x + m[3] * y + m[5]]
+export const applyTo = (m: Matrix, x: number, y: number): [number, number] => [m[0] * x + m[2] * y + m[4], m[1] * x + m[3] * y + m[5]]
 
 const invert = (m: Matrix): Matrix | undefined => {
   const det = m[0] * m[3] - m[1] * m[2]
@@ -41,104 +44,234 @@ const invert = (m: Matrix): Matrix | undefined => {
   return [m[3] / det, -m[1] / det, -m[2] / det, m[0] / det, (m[2] * m[5] - m[3] * m[4]) / det, (m[1] * m[4] - m[0] * m[5]) / det]
 }
 
+/** A colour: raw (`#rrggbb`), or a theme key, drawn in the page's scheme. */
+export type Paint = string
+
 /**
- * One shape: a rectangle (its corners rounded by `r`) or an ellipse (the one
- * its box holds), in world units, filled with `fill` (`#rrggbb`) at `alpha`,
- * placed by `m`.
+ * One shape, placed by `m`: a rectangle (corners rounded by `r`), an ellipse
+ * (its box's; a ring `ring` thick instead of a disc), a convex polygon
+ * (`points`), or a line of text (its baseline's middle, start or end at
+ * `x`, `y`; `size` its height in units). Filled with `fill` at `alpha`.
  */
 export type Shape = {
-  kind: 'rect' | 'ellipse'
+  kind: 'rect' | 'ellipse' | 'poly' | 'text'
   x: number
   y: number
   w: number
   h: number
   r?: number
-  fill: string
+  ring?: number
+  points?: readonly (readonly [number, number])[]
+  text?: string
+  size?: number
+  anchor?: 'start' | 'middle' | 'end'
+  bold?: boolean
+  fill: Paint
   alpha?: number
   m?: Matrix
 }
 
-const round = (n: number): string => String(Math.round(n * 1000) / 1000)
+const hexOf = (fill: Paint, scheme: 'dark' | 'light' = 'dark'): string => (isThemeKey(fill) ? SCENE_THEMES[scheme][fill] : fill)
 
-/** The shapes as one SVG document `width` by `height` pixels, `view` mapping world units to them. */
-export const svgOf = (shapes: readonly Shape[], width: number, height: number, view: Matrix): string => {
-  const parts = shapes.flatMap(shape => {
-    const alpha = shape.alpha ?? 1
-    if (!(alpha > 0.004) || !(shape.w > 0) || !(shape.h > 0)) return []
-    const m = multiply(view, shape.m ?? IDENTITY)
-    const placed = ` transform="matrix(${m.map(round).join(' ')})" fill="${shape.fill}"${alpha < 1 ? ` fill-opacity="${round(alpha)}"` : ''}`
-    if (shape.kind === 'ellipse') {
-      return [`<ellipse cx="${round(shape.x + shape.w / 2)}" cy="${round(shape.y + shape.h / 2)}" rx="${round(shape.w / 2)}" ry="${round(shape.h / 2)}"${placed}/>`]
+const matrixAttr = (m: Matrix | undefined): string =>
+  m === undefined || m === IDENTITY ? '' : ` transform='matrix(${m.map(num).join(' ')})'`
+
+/** One shape's element, without its group's transform. */
+const elementOf = (shape: Shape): string => {
+  const theme = isThemeKey(shape.fill) ? ` class='${CLASSES[shape.fill]}'` : ''
+  const alpha = shape.alpha ?? 1
+  const paint = shape.kind === 'ellipse' && shape.ring !== undefined
+    ? ` fill='none' stroke='${hexOf(shape.fill)}' stroke-width='${num(shape.ring)}'${alpha < 1 ? ` stroke-opacity='${num(alpha)}'` : ''}`
+    : `${theme} fill='${hexOf(shape.fill)}'${alpha < 1 ? ` fill-opacity='${num(alpha)}'` : ''}`
+  switch (shape.kind) {
+    case 'rect': {
+      const r = Math.min(shape.r ?? 0, shape.w / 2, shape.h / 2)
+
+      return `<rect x='${num(shape.x)}' y='${num(shape.y)}' width='${num(shape.w)}' height='${num(shape.h)}'${r > 0 ? ` rx='${num(r)}'` : ''}${paint}/>`
     }
-    const r = Math.min(shape.r ?? 0, shape.w / 2, shape.h / 2)
+    case 'ellipse':
+      return `<ellipse cx='${num(shape.x + shape.w / 2)}' cy='${num(shape.y + shape.h / 2)}' rx='${num(shape.w / 2)}' ry='${num(shape.h / 2)}'${paint}/>`
+    case 'poly':
+      return `<polygon points='${(shape.points ?? []).map(([x, y]) => `${num(x)},${num(y)}`).join(' ')}'${paint}/>`
+    case 'text':
+      return `<text x='${num(shape.x)}' y='${num(shape.y)}' font-size='${num(shape.size ?? 3)}'${shape.anchor === undefined || shape.anchor === 'middle' ? '' : ` text-anchor='${shape.anchor}'`}${shape.bold === true ? ` font-weight='700'` : ''}${paint}>${escapeText(shape.text ?? '')}</text>`
+  }
+}
 
-    return [`<rect x="${round(shape.x)}" y="${round(shape.y)}" width="${round(shape.w)}" height="${round(shape.h)}"${r > 0 ? ` rx="${round(r)}"` : ''}${placed}/>`]
-  })
+const visible = (shape: Shape): boolean =>
+  (shape.alpha ?? 1) > 0.004 && (shape.kind === 'text' ? (shape.text ?? '') !== '' : shape.kind === 'poly' ? (shape.points?.length ?? 0) >= 3 : shape.w > 0 && shape.h > 0)
 
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">${parts.join('')}</svg>`
+/**
+ * The shapes as one SVG document `width` by `height` CSS pixels, `view`
+ * mapping world units to them: shapes in a row that share one placement in
+ * one group; theme keys in the dark scheme's colours, the light scheme's by
+ * the page's (`prefers-color-scheme`). Shapes past `limit` characters are left
+ * out, the earliest kept.
+ */
+export const svgOf = (shapes: readonly Shape[], width: number, height: number, view: Matrix, limit = Infinity, extra = ''): string => {
+  const used = new Set<ThemeKey>()
+  const parts: string[] = []
+  let length = 0
+  let index = 0
+  const drawn = shapes.filter(visible)
+  while (index < drawn.length) {
+    const m = drawn[index]?.m
+    let end = index
+    while (end < drawn.length && drawn[end]?.m === m) end += 1
+    const run = drawn.slice(index, end)
+    const inner = run.map(elementOf).join('')
+    const placed = matrixAttr(m)
+    // One shape carries its own transform; several share a group's; unplaced ones need neither.
+    const group = placed === '' ? inner : run.length > 1 ? `<g${placed}>${inner}</g>` : inner.startsWith('<text') ? inner.replace(/^<text/, `<text${placed}`) : inner.replace(/\/>$/, `${placed}/>`)
+    index = end
+    if (length + group.length > limit) continue
+    for (const one of run) if (isThemeKey(one.fill)) used.add(one.fill)
+    parts.push(group)
+    length += group.length
+  }
+
+  return `<svg xmlns='http://www.w3.org/2000/svg' width='${width}' height='${height}' viewBox='0 0 ${width} ${height}' pointer-events='none'${extra}>${lightRule(used)}<g transform='matrix(${view.map(num).join(' ')})'>${parts.join('')}</g></svg>`
 }
 
 const rgbOf = (hex: string): [number, number, number] => {
   const n = Number.parseInt(hex.slice(1, 7), 16)
 
-  return Number.isFinite(n) ? [(n >> 16) & 255, (n >> 8) & 255, n & 255] : [0, 0, 0]
+  return Number.isFinite(n) ? [(n >> 16) & 255, (n >> 8) & 255, n & 255] : [255, 255, 255]
 }
 
-/** How far a local point is outside a shape (negative inside), in local units. */
-const distanceOf = (shape: Shape, x: number, y: number): number => {
+/** How far a local point is outside a shape (negative inside), in local units: a function made once per shape, its constants worked out. */
+const distanceTo = (shape: Shape): ((x: number, y: number) => number) => {
   const cx = shape.x + shape.w / 2
   const cy = shape.y + shape.h / 2
-  if (shape.kind === 'ellipse') {
-    const rx = shape.w / 2
-    const ry = shape.h / 2
-    const k = Math.hypot((x - cx) / rx, (y - cy) / ry)
+  switch (shape.kind) {
+    case 'ellipse': {
+      const rx = shape.w / 2
+      const ry = shape.h / 2
+      const small = Math.min(rx, ry)
+      const ring = shape.ring
 
-    return (k - 1) * Math.min(rx, ry)
+      return ring === undefined
+        ? (x, y) => (Math.hypot((x - cx) / rx, (y - cy) / ry) - 1) * small
+        : (x, y) => Math.abs((Math.hypot((x - cx) / rx, (y - cy) / ry) - 1) * small) - ring / 2
+    }
+    case 'poly': {
+      const points = shape.points ?? []
+      let area = 0
+      for (let i = 0; i < points.length; i += 1) {
+        const [ax, ay] = points[i] ?? [0, 0]
+        const [bx, by] = points[(i + 1) % points.length] ?? [0, 0]
+        area += ax * by - bx * ay
+      }
+      const turn = area >= 0 ? 1 : -1
+      // Each edge's outward normal, by the winding, and its offset.
+      const edges = points.map((point, i) => {
+        const [ax, ay] = point
+        const [bx, by] = points[(i + 1) % points.length] ?? [0, 0]
+        const length = Math.hypot(bx - ax, by - ay) || 1
+        const nx = (turn * (by - ay)) / length
+        const ny = (turn * -(bx - ax)) / length
+
+        return [nx, ny, ax * nx + ay * ny] as const
+      })
+
+      return (x, y) => {
+        let d = -Infinity
+        for (const [nx, ny, offset] of edges) d = Math.max(d, x * nx + y * ny - offset)
+
+        return d
+      }
+    }
+    case 'rect': {
+      const r = Math.min(shape.r ?? 0, shape.w / 2, shape.h / 2)
+      const hx = shape.w / 2 - r
+      const hy = shape.h / 2 - r
+
+      return (x, y) => {
+        const qx = Math.abs(x - cx) - hx
+        const qy = Math.abs(y - cy) - hy
+
+        return (qx > 0 || qy > 0 ? Math.hypot(Math.max(qx, 0), Math.max(qy, 0)) : Math.max(qx, qy)) - r
+      }
+    }
+    case 'text':
+      return () => Infinity
   }
-  const r = Math.min(shape.r ?? 0, shape.w / 2, shape.h / 2)
-  const qx = Math.abs(x - cx) - (shape.w / 2 - r)
-  const qy = Math.abs(y - cy) - (shape.h / 2 - r)
+}
 
-  return Math.hypot(Math.max(qx, 0), Math.max(qy, 0)) + Math.min(Math.max(qx, qy), 0) - r
+/** The local box a shape covers, for its pixels' bounds. */
+const boundsOf = (shape: Shape): [number, number, number, number] => {
+  if (shape.kind === 'poly') {
+    const xs = (shape.points ?? []).map(one => one[0])
+    const ys = (shape.points ?? []).map(one => one[1])
+
+    return [Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)]
+  }
+  const pad = shape.ring ?? 0
+
+  return [shape.x - pad, shape.y - pad, shape.x + shape.w + pad, shape.y + shape.h + pad]
+}
+
+/** One shape's pixels laid over `pixels` (straight alpha), a theme key in `scheme`'s colour. */
+const layShape = (pixels: Uint8Array, width: number, height: number, shape: Shape, m: Matrix, scheme: 'dark' | 'light'): void => {
+  const back = invert(m)
+  if (back === undefined) return
+  const alpha = shape.alpha ?? 1
+  // A device pixel's size in local units, for the edge's coverage.
+  const pixel = 1 / Math.sqrt(Math.abs(m[0] * m[3] - m[1] * m[2]))
+  const [lx0, ly0, lx1, ly1] = boundsOf(shape)
+  const corners = [applyTo(m, lx0, ly0), applyTo(m, lx1, ly0), applyTo(m, lx0, ly1), applyTo(m, lx1, ly1)]
+  const x0 = Math.max(0, Math.floor(Math.min(...corners.map(one => one[0]))) - 1)
+  const x1 = Math.min(width - 1, Math.ceil(Math.max(...corners.map(one => one[0]))) + 1)
+  const y0 = Math.max(0, Math.floor(Math.min(...corners.map(one => one[1]))) - 1)
+  const y1 = Math.min(height - 1, Math.ceil(Math.max(...corners.map(one => one[1]))) + 1)
+  const [red, green, blue] = rgbOf(hexOf(shape.fill, scheme))
+  const distance = distanceTo(shape)
+  const [b0, b1, b2, b3, b4, b5] = back
+  for (let py = y0; py <= y1; py += 1) {
+    // The row's first pixel's middle, back in local units; each pixel on, a step along the row.
+    let lx = b0 * (x0 + 0.5) + b2 * (py + 0.5) + b4
+    let ly = b1 * (x0 + 0.5) + b3 * (py + 0.5) + b5
+    for (let px = x0; px <= x1; px += 1, lx += b0, ly += b1) {
+      const cover = 0.5 - distance(lx, ly) / pixel
+      if (cover <= 0) continue
+      const a = (cover >= 1 ? 1 : cover) * alpha
+      const at = (py * width + px) * 4
+      const below = (pixels[at + 3] ?? 0) / 255
+      if (a >= 1 || below === 0) {
+        // Opaque over anything, or anything over nothing: the colour itself.
+        pixels[at] = red
+        pixels[at + 1] = green
+        pixels[at + 2] = blue
+        pixels[at + 3] = Math.round(a * 255)
+        continue
+      }
+      const keep = below * (1 - a)
+      const out = a + keep
+      pixels[at] = Math.round((red * a + (pixels[at] ?? 0) * keep) / out)
+      pixels[at + 1] = Math.round((green * a + (pixels[at + 1] ?? 0) * keep) / out)
+      pixels[at + 2] = Math.round((blue * a + (pixels[at + 2] ?? 0) * keep) / out)
+      pixels[at + 3] = Math.round(out * 255)
+    }
+  }
 }
 
 /**
  * The shapes as `width` by `height` RGBA pixels (straight alpha, clear where
  * nothing is drawn), `view` mapping world units to pixels: each edge covers
  * its pixels as far as it reaches into them, so edges are smooth at any size.
+ * Theme keys in `scheme`'s colours; text in `glyphs`' shapes (in the text's
+ * own frame), when given.
  */
-export const rasterOf = (shapes: readonly Shape[], width: number, height: number, view: Matrix): Uint8Array => {
+export const rasterOf = (shapes: readonly Shape[], width: number, height: number, view: Matrix, glyphs?: (shape: Shape) => readonly Shape[], scheme: 'dark' | 'light' = 'dark'): Uint8Array => {
   const pixels = new Uint8Array(width * height * 4)
   for (const shape of shapes) {
-    const alpha = shape.alpha ?? 1
-    if (!(alpha > 0.004) || !(shape.w > 0) || !(shape.h > 0)) continue
+    if (!visible(shape)) continue
     const m = multiply(view, shape.m ?? IDENTITY)
-    const back = invert(m)
-    if (back === undefined) continue
-    // A device pixel's size in local units, for the edge's coverage.
-    const pixel = 1 / Math.sqrt(Math.abs(m[0] * m[3] - m[1] * m[2]))
-    const corners = [applyTo(m, shape.x, shape.y), applyTo(m, shape.x + shape.w, shape.y), applyTo(m, shape.x, shape.y + shape.h), applyTo(m, shape.x + shape.w, shape.y + shape.h)]
-    const x0 = Math.max(0, Math.floor(Math.min(...corners.map(one => one[0]))) - 1)
-    const x1 = Math.min(width - 1, Math.ceil(Math.max(...corners.map(one => one[0]))) + 1)
-    const y0 = Math.max(0, Math.floor(Math.min(...corners.map(one => one[1]))) - 1)
-    const y1 = Math.min(height - 1, Math.ceil(Math.max(...corners.map(one => one[1]))) + 1)
-    const [red, green, blue] = rgbOf(shape.fill)
-    for (let py = y0; py <= y1; py += 1) {
-      for (let px = x0; px <= x1; px += 1) {
-        const [lx, ly] = applyTo(back, px + 0.5, py + 0.5)
-        const cover = Math.min(1, Math.max(0, 0.5 - distanceOf(shape, lx, ly) / pixel))
-        if (cover <= 0) continue
-        const a = cover * alpha
-        const at = (py * width + px) * 4
-        const below = (pixels[at + 3] ?? 0) / 255
-        const out = a + below * (1 - a)
-        if (out <= 0) continue
-        pixels[at] = Math.round((red * a + (pixels[at] ?? 0) * below * (1 - a)) / out)
-        pixels[at + 1] = Math.round((green * a + (pixels[at + 1] ?? 0) * below * (1 - a)) / out)
-        pixels[at + 2] = Math.round((blue * a + (pixels[at + 2] ?? 0) * below * (1 - a)) / out)
-        pixels[at + 3] = Math.round(out * 255)
-      }
+    if (shape.kind === 'text') {
+      for (const one of glyphs?.(shape) ?? []) layShape(pixels, width, height, one, multiply(m, one.m ?? IDENTITY), scheme)
+      continue
     }
+    layShape(pixels, width, height, shape, m, scheme)
   }
 
   return pixels

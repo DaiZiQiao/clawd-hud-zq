@@ -1,4 +1,5 @@
 import type { AgentBoardEntry, HudMainFacts, ShadowAgentEntry } from '../types'
+import type { LookContext, Look, MiniLook } from './mascot-poses'
 import type { Accessory, Ink } from './mascot-sprites'
 import type { CollisionMode, FlightReason, Memo, Motion } from './motion-types'
 
@@ -200,6 +201,12 @@ export type SceneInputs = {
    * is no grid of equal cells); absent, as rows of text (the terminal).
    */
   svg?: true
+  /**
+   * Where the scene is drawn in pixels: its mascots as shapes in eased poses
+   * (hooks/scene-smooth.ts, the `mascotArt` option's `vector`); absent, the
+   * cells' blocks.
+   */
+  art?: 'vector'
   /** Usagi for the mascots (the `character` option); absent, Clawd. */
   character?: 'usagi'
   /** The mascot grown into the TV: not drawn, out of the choreography, its place kept. */
@@ -322,6 +329,24 @@ export type MascotPlan = {
 export type PlacedPipe = { x: number; kind: 'full' | 'mini'; lip: number }
 
 /**
+ * What the smooth scene draws a mascot from (hooks/scene-smooth.ts): its
+ * look this frame (a full mascot's, or a mini's), who it is and what it
+ * wears, the look's context (its motion, the person's touches, the scene's
+ * cues), its phase; the session's tidy-up and stretch, by time.
+ */
+export type SpriteFigure = {
+  look?: Look
+  mini?: MiniLook
+  info: { character: 'clawd' | 'usagi'; colour: string; role?: MascotRole; letter?: string; accessory?: Accessory; side?: 'left' | 'right'; crown?: true; energy: Energy }
+  context: LookContext
+  phase?: Phase
+  tidyMs?: number
+  stretchMs?: number
+  /** The rows its cells were raised this frame for a bounce (the walk's, the dance's): the smooth scene bounces its own way. */
+  bob?: number
+}
+
+/**
  * One sprite where the plan put it, renderer-agnostic: its grid of cells (a
  * mascot's sky row and box; the strip's four rows), its left column, the
  * canvas row of its grid's first row (counted from the back row's box top;
@@ -351,6 +376,8 @@ export type PlacedSprite = {
   pose?: 'dangle' | 'tumble'
   /** Inside the pipe at and above this row (counted as `top`): those of its cells are not drawn. */
   clip?: number
+  /** What the smooth scene draws it from; absent for the strip. */
+  figure?: SpriteFigure
 }
 
 /**

@@ -4,14 +4,14 @@
     "name": "Dai Zi Qiao",
     "url": "https://github.com/DaiZiQiao"
   },
-  "description": "clawd-hud-zq: a HUD side pane for Claude Code with session facts, subagents and animated mascots; the session's mascot lives above the prompt and tidies the conversation up when its context has grown.",
-  "version": "1.4.0",
+  "description": "clawd-hud-zq: a HUD side pane for Claude Code with session facts, subagents and animated mascots; the session's mascot lives above the prompt and tidies the conversation up when its context has grown; smooth vector mascots in the desktop app, Ghostty and kitty.",
+  "version": "1.5.0",
   "plugins": [
     {
       "name": "mod-hud",
       "source": "./mod-hud",
-      "description": "A side pane, toggled by /mod-hud: a HUD of the session (session, alerts, context, limits, cost, git, the tool running now, todos) above every subagent in it (type, model, status, elapsed time, tool calls, current tool, result), with an opt-in status line. The session's own mascot lives in the band above the prompt and offers to tidy up (compact) the conversation once its context has grown.",
-      "version": "1.4.0",
+      "description": "A side pane, toggled by /mod-hud: a HUD of the session (session, alerts, context, limits, cost, git, the tool running now, todos) above every subagent in it (type, model, status, elapsed time, tool calls, current tool, result), with an opt-in status line. The session's own mascot lives in the band above the prompt and offers to tidy up (compact) the conversation once its context has grown. In the desktop app and in terminals that show pictures (Ghostty, kitty) the mascots are smooth vector art at 30 frames a second.",
+      "version": "1.5.0",
       "author": {
         "name": "Dai Zi Qiao",
         "url": "https://github.com/DaiZiQiao"

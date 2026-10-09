@@ -2,12 +2,15 @@ import type { ClientElements, ClientModule, ElementConstructor, JsonValue, Rende
 
 import { sceneCanvas } from './scene-canvas'
 import { renderCanvas } from './scene-render'
-import { sceneAlt, sceneSvg } from './scene-svg'
+import { smoothFrame, smoothSvg } from './scene-smooth'
+import { SVG_MAX, sceneAlt, sceneSvg } from './scene-svg'
 import type { SceneSvg } from './scene-svg'
 import type { SceneInputs } from './scene-types'
 import { layoutAt, sceneAt, viewOf } from './scene-view'
 import { FRAME_MS, createWorld, pointer, receive, tick } from './scene-world'
 import type { World } from './scene-world'
+import { createSmoother } from './smooth-pose'
+import type { Smoother } from './smooth-pose'
 
 // The mascot scene as a `Client` surface module: it runs on the surface's
 // own frame clock, keeps every bit of motion in its local state, and takes
@@ -19,10 +22,26 @@ import type { World } from './scene-world'
 // `mascotPlan`) steps in its 250 ms frames, a frame ahead of the drawing,
 // which glides between the two at FRAME_MS (sub-cell positions, drawn at the
 // nearest cell; hooks/scene-view.ts); the person's bodies
-// (hooks/motion-physics.ts) step at FRAME_MS (hooks/scene-world.ts).
+// (hooks/motion-physics.ts) step at FRAME_MS (hooks/scene-world.ts); the
+// vector art (hooks/scene-smooth.ts) draws a frame every VECTOR_FRAME_MS.
 // docs/mascots.md, "Physics and controls".
 
-type State = { world: World; frame: number; drawing?: string; stopEvery?: () => void }
+type State = { world: World; frame: number; step?: number; drawing?: string; stopEvery?: () => void }
+
+/** The vector art's frame: thirty a second, where the cells step at FRAME_MS. */
+export const VECTOR_FRAME_MS = 33
+
+/** Each world's eased poses, kept with it from frame to frame. */
+const smoothers = new WeakMap<World, Smoother>()
+
+const smootherOf = (world: World): Smoother => {
+  const kept = smoothers.get(world)
+  if (kept !== undefined) return kept
+  const made = createSmoother()
+  smoothers.set(world, made)
+
+  return made
+}
 
 /** What the module draws with: its table's Box and Text, and `Svg` where the table has it. */
 export type SceneElements = Pick<ClientElements, 'Box' | 'Text'> & { Svg?: ElementConstructor<SvgProps> }
@@ -54,13 +73,19 @@ const pixelsOf = (elements: SceneElements, drawn: SceneSvg, room: { columns: num
   )
 }
 
+/** Whether the scene is drawn in pixels: where the hooks say the surface draws them (`svg`, the desktop), or the table has `Svg`. */
+const inPixels = (inputs: SceneInputs, elements: SceneElements): boolean => inputs.svg === true || elements.Svg !== undefined
+
+/** The frame clock's step: the vector art's in pixels, else the cells'. */
+const stepOf = (inputs: SceneInputs, elements: SceneElements): number => (inputs.art === 'vector' && inPixels(inputs, elements) ? VECTOR_FRAME_MS : FRAME_MS)
+
 /**
  * The frame drawn: the scene at its time, every row of the region, whose
  * sprite owns each cell kept for the pointer. As rows of text (the terminal),
- * or, where the hooks say the surface draws pixels (`svg`, the desktop) or
- * the table has `Svg`, as one `Svg` the region's size under a hit layer
- * (`pixelsOf`): each sprite at its unrounded place, so a move glides by the
- * pixel.
+ * or, where the surface draws pixels (`inPixels`), as one `Svg` the region's
+ * size under a hit layer (`pixelsOf`): the mascots as shapes in eased poses
+ * with the vector art (`art`), else as the cells' blocks, each sprite at its
+ * unrounded place, so a move glides by the pixel.
  */
 export const draw = (world: World, elements: SceneElements): RenderElement => {
   if (world.props.paused === true) {
@@ -68,7 +93,7 @@ export const draw = (world: World, elements: SceneElements): RenderElement => {
     return <Box key="scene" height={0} />
   }
   const plan = world.cur
-  const pixels = world.props.svg === true || elements.Svg !== undefined
+  const pixels = inPixels(world.props, elements)
   const room = { columns: world.props.columns, rows: Math.max(1, world.props.rows) }
   const blank = (): RenderElement => {
     if (!pixels) return renderCanvas(elements, Array.from({ length: room.rows }, () => []), 'scene')
@@ -78,12 +103,17 @@ export const draw = (world: World, elements: SceneElements): RenderElement => {
   if (plan === undefined) return blank()
   const view = viewOf(world)
   const scene = sceneAt(world, world.sceneNow)
-  const canvas = sceneCanvas(scene, layoutAt(world, plan.tick), plan, view.sprites)
+  const layout = layoutAt(world, plan.tick)
+  const canvas = sceneCanvas(scene, layout, plan, view.sprites)
   world.owners = canvas?.owners
   if (canvas === undefined) return blank()
   if (!pixels) return renderCanvas(elements, canvas.grid, 'scene')
+  const alt = sceneAlt(scene, canvas.layers, plan.collapsed.length)
+  // The vector art: the same plan and view, each mascot's pose eased from its last frame.
+  const frame = world.props.art === 'vector' ? smoothFrame(scene, layout, plan, view.sprites, smootherOf(world), world.sceneNow) : undefined
+  if (frame !== undefined) return pixelsOf(elements, { ...smoothSvg(frame, room.columns, room.rows, SVG_MAX), alt }, room)
 
-  return pixelsOf(elements, sceneSvg(canvas.layers, room, sceneAlt(scene, canvas.layers, plan.collapsed.length)), room)
+  return pixelsOf(elements, sceneSvg(canvas.layers, room, alt), room)
 }
 
 /** The surface module: the scene on its own frame clock, the person's pointer, and a post when a click inspects. */
@@ -101,14 +131,18 @@ const SceneClient: ClientModule<JsonValue, State> = (props, surface) => {
     surface.setState(state)
   }
   receive(state.world, inputs)
+  const step = stepOf(inputs, surface.elements)
   if (inputs.paused === true) {
     state.stopEvery?.()
     state.stopEvery = undefined
-  } else if (state.stopEvery === undefined) {
-    state.stopEvery = surface.every(FRAME_MS, () => {
+  } else if (state.stopEvery === undefined || state.step !== step) {
+    // The clock at the art's step, started again when the art changes.
+    state.stopEvery?.()
+    state.step = step
+    state.stopEvery = surface.every(step, () => {
       const held = surface.state
       if (held === undefined || held.world.props.paused === true) return
-      tick(held.world)
+      tick(held.world, step)
       const drawing = JSON.stringify(draw(held.world, surface.elements))
       if (drawing !== held.drawing) surface.setState({ ...held, frame: held.frame + 1, drawing })
     })

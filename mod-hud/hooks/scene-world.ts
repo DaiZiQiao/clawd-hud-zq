@@ -412,10 +412,10 @@ const releaseGrip = (world: World): boolean => {
   return true
 }
 
-/** One frame of the frame clock: the scene's time on, the choreography caught up, bodies stepped, meetings played. */
-export const tick = (world: World): void => {
+/** One frame of the frame clock, `step` ms long (FRAME_MS, or the smooth art's shorter frame): the scene's time on, the choreography caught up, bodies stepped, meetings played. */
+export const tick = (world: World, step = FRAME_MS): void => {
   if (world.props.paused === true) return
-  world.ms += FRAME_MS
+  world.ms += step
   world.sceneNow = Math.max(world.sceneNow, world.anchor.now + (world.ms - world.anchor.ms))
   world.view = undefined
   advance(world)
@@ -424,7 +424,7 @@ export const tick = (world: World): void => {
   if (world.grip !== undefined && world.ms - world.grip.movedMs >= GRIP_IDLE_MS) releaseGrip(world)
   const grip = world.grip
   if (grip !== undefined && !grip.lifted && world.ms - grip.downMs >= CLICK_MS) pickUp(world, grip)
-  stepCarried(world, FRAME_MS / 1000)
+  stepCarried(world, step / 1000)
   meetInAir(world)
   for (const [id, touch] of world.touches) {
     if ((touch.squashUntil ?? 0) <= world.ms && (touch.wobbleUntil ?? 0) <= world.ms) world.touches.delete(id)

@@ -20,6 +20,9 @@ import { CELL_HEIGHT, CELL_WIDTH, SCENE_THEMES } from './svg-style'
 // The scene in pixels on the desktop: one Svg as big as the region, read
 // back into the text rows' cells, under the cap, in both themes.
 
+// The pane's tests read the desktop's Svg back into cells: its block art.
+const BLOCKS = { options: { mascotArt: 'blocks' } }
+
 
 /** A table with `Svg`, as the desktop's: the module's frame through it, as plain data. */
 const PIXELS: SceneElements = {
@@ -61,7 +64,7 @@ const alone = (...cells: Cell[]): SceneLayer => ({ x: 0, y: 0, cells: [cells] })
 const rectsOf = (layer: SceneLayer) => svgRects(layerSvg(layer))
 
 describe('the desktop draws it in pixels', () => {
-  test('one Svg as big as the region, its alt the scene in words, no Text rows; asked for by the hooks on the desktop only', async ($, on) => {
+  test('one Svg as big as the region, its alt the scene in words, no Text rows; asked for by the hooks on the desktop only', BLOCKS, async ($, on) => {
     arrange(on, [TYPIST, REVIEWER])
     for (const [columns, rows] of [[72, 24], [100, 30]] as const) {
       const ui = await mount($, 'desktop', columns, rows)
@@ -278,7 +281,7 @@ describe('the desktop draws it in pixels', () => {
     expect(sceneAlt(sceneFromInputs(crowd.props, crowd.sceneNow), [])).toBe('No mascots')
   })
 
-  test('the pointer hits on the desktop as on the terminal: the cell it presses is the sprite drawn there', async ($, on) => {
+  test('the pointer hits on the desktop as on the terminal: the cell it presses is the sprite drawn there', BLOCKS, async ($, on) => {
     const { held } = arrange(on, [TYPIST])
     const ui = await mount($, 'desktop')
     await ui.advance(2000)

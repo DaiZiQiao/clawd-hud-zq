@@ -289,7 +289,7 @@ const pageShapes = (x: number, y: number, angle: number, alpha: number, squash =
   ]
 }
 
-const propShapes = (prop: Prop): Shape[] => {
+export const propShapes = (prop: Prop): Shape[] => {
   switch (prop.kind) {
     case 'pages': {
       const pitch = mix(1, 0.2, prop.squash)

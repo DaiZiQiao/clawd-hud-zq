@@ -1,11 +1,11 @@
 {
   "name": "mod-hud",
-  "version": "1.4.0",
+  "version": "1.5.0",
   "author": {
     "name": "Dai Zi Qiao",
     "url": "https://github.com/DaiZiQiao"
   },
-  "description": "A side pane, toggled by /mod-hud: a HUD of the session (header, alerts, then session, context and prompt cache, limits, usage and todos in labelled sections) above every subagent in it (type, model, status, elapsed time, tool calls, current tool, result), with an opt-in status line; the session's own mascot lives in the band above the prompt and tidies the conversation up (compacts it) when its context has grown.",
+  "description": "A side pane, toggled by /mod-hud: a HUD of the session (header, alerts, then session, context and prompt cache, limits, usage and todos in labelled sections) above every subagent in it (type, model, status, elapsed time, tool calls, current tool, result), with an opt-in status line; the session's own mascot lives in the band above the prompt and tidies the conversation up (compacts it) when its context has grown; in the desktop app and in Ghostty or kitty the mascots are smooth vector art.",
   "types": "./types/index.d.ts",
   "userConfig": {
     "stalledAfterSec": {
@@ -109,6 +109,12 @@
       "title": "Mascot motion",
       "description": "smooth (default): where the surface can (terminal, desktop), the scene runs in its own module at 20 frames a second, gliding between cells, and mascots can be clicked to inspect or picked up, dragged and thrown; classic: the Box/Text scene at 4 frames a second everywhere, with a pick button under each mascot.",
       "default": "smooth"
+    },
+    "mascotArt": {
+      "type": "string",
+      "title": "Mascot art",
+      "description": "vector (default): in the desktop app, and in Ghostty or kitty (known by their own environment variables, never under tmux), the mascots are drawn shapes that move smoothly at 30 frames a second, every pose eased into the next; blocks: the block characters there too. Other terminals (macOS Terminal, Windows Terminal) and VS Code draw the blocks either way, as does a terminal that refuses a picture. Needs motion smooth.",
+      "default": "vector"
     },
     "todoRows": {
       "type": "number",

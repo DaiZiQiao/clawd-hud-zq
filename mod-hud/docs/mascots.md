@@ -36,6 +36,11 @@ Two renderers draw the scene, chosen by the `motion` option and the surface:
   surface's classic plan; it never stops another surface's clock or clears
   that surface's plan.
 
+Where the smooth scene is drawn in pixels (the desktop app, and a terminal
+that shows pictures: Ghostty, kitty), the `mascotArt` option (`vector`, the
+default) draws the mascots as shapes in eased poses instead of the cells'
+blocks; see "The vector art". Text-only terminals draw the blocks either way.
+
 `mascotLines()` returns the classic drawing as plain text. Every frame below
 is its output (`spriteSheet()`).
 
@@ -140,6 +145,73 @@ region, the empty sky rows too, so a row of the drawing is a row of the
 region and the pointer maps to it directly. The rows are the same keyed
 Boxes, each one Text cut to the region. With fewer than 4 spare rows, or
 fewer columns than a slot, there is no `Client` at all.
+
+## The vector art
+
+With `mascotArt: vector` (the default) the smooth scene draws its mascots as
+shapes wherever it draws pixels. The choreography is the same as the
+blocks': the same plan, view and look for each mascot each frame
+(`placedSprites`, `mainLook`, `agentLook`, `miniLook`). Only the drawing
+differs. Every interaction the blocks show has its smooth counterpart: the
+pipe, typing, flights under the propeller cap, asking, messages, hand-offs,
+collisions and the dizzy stars, sleeping under the blanket, tidying up and
+the stretch, pick up, dangle, throw and tumble.
+
+- **The pose** (`hooks/smooth-pose.ts`): a look is read as a continuous pose
+  (the body's offset, lowering, squash and stretch, lean, turn onto its back
+  and spin; the eyes' offset and openness; each arm's raise and the reach;
+  the legs' lifts; the laptop and the blanket; Usagi's ears and mouth) and
+  what is beside it (a thought, a shout, the clock, the `?`, the tick, the
+  cross, the sweat drop, the cigarette, the dizzy stars, the paper, the
+  scroll, the baton, the tidy-up's pages). A smoother eases each mascot's
+  pose from frame to frame. The body's numbers ride springs that overshoot,
+  so a squash bounces back and a fall turns over; the eyes, arms and ears
+  glide. On top, what only time draws: the blink and the breath, a walk's
+  legs and bounce, a dangle's kicks, a tumble's spin, the propeller, the
+  keys under a typing hand, and the session's tidy-up and stretch.
+- **The art** (`hooks/smooth-art.ts`): Clawd keeps Claude Code's own
+  proportions (its logo's 18 by 6 quadrants) and wears its accessory, letter
+  and energy marks. Usagi keeps its sprite's: its ears through its hat's brim
+  (lowered squatting, drooping slumped bare-headed, trailing a walk), its
+  round body, cheeks, mouth (wide open on a shout), hat, side crown and
+  energy. Its thoughts are its phrases (`Yahaa!`, `HUHHH?`) in the cloud, its
+  shouts on the cigarette's puffs (`Ura!`, `HUHHH?`, `UNA!`, hands up), and
+  `HUHHH?` getting up from a fall. Knocked flat, a hat or crown lies on the
+  floor beside it. A child's mini is the same figure at 0.6 the size.
+- **The frame** (`hooks/scene-smooth.ts`): each mascot's feet on its floor,
+  the pipes, the marks (`✓`, `✦`, the envelope), and the strip's status dots
+  as shapes. World units: a cell is 2 across and 4 down.
+- **The desktop** (`hooks/scene-client.tsx`): the `Svg` the region's size,
+  under the same hit layer, a frame every 33 ms (`VECTOR_FRAME_MS`, thirty a
+  second). Whose mascot is under the pointer still comes from the cells.
+- **A terminal that shows pictures** (`hooks/scene-image.ts`): the pane's
+  scene and the band's yard are each a keyed `Image`, its frames swapped in by
+  `$.ui.blit` from the hooks. The hooks run the scene's world themselves, as
+  the `Client` runs it on its surface. Each frame is rasterized
+  (`rasterOf`, anti-aliased by each edge's coverage), its text in a small
+  bitmap font (`hooks/raster-font.ts`), the theme keys in the person's
+  theme's dark or light colours, and written as a PNG (`hooks/png.ts`: rows
+  filtered by `Sub`, deflated with the fixed Huffman codes; the hooks have
+  no zlib). A pane's cell is 8 by 16 pixels; a region of 200 cells or fewer
+  (the band) is drawn at 16 by 32. Frames come every 33 ms while anything
+  moves, and every third (about ten a second) while every mascot stands
+  still, so a breath or a blink costs little. A 76 by 15 scene takes about 5
+  ms a frame (2 to rasterize, 3 to write) and 12 KiB. Over the picture is a
+  `Client` drawing nothing (`hooks/scene-hit.tsx`). It numbers each pointer
+  event and posts its recent ones, so a press, a drag and a throw reach the
+  world whole, and a click still asks to inspect.
+- **Which terminals**: kitty and Ghostty, the terminals the engine draws an
+  `Image` in, known by their own environment variables (`TERM`,
+  `TERM_PROGRAM`, `KITTY_WINDOW_ID`, `GHOSTTY_RESOURCES_DIR`), read once a
+  load; never under tmux (`TMUX`), which passes no picture through. Every
+  other terminal (macOS Terminal, Windows Terminal) draws the blocks, no
+  picture tried, so no blank first.
+- **Falling back**: a terminal that draws the `Image`'s `alt` anyway (a
+  blank) refuses the first swap. From then on that surface draws the scene's
+  own `Client` with its blocks, for the session. The same happens when swaps
+  are refused for three seconds, or the hit layer fails. `mascotArt: blocks`
+  keeps the blocks on every surface. The TV (below) keeps its giant in
+  blocks either way.
 
 ## Layout
 

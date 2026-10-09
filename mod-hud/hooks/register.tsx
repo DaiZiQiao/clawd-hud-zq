@@ -1,5 +1,5 @@
 import { atom, read, update } from 'claude-code'
-import type { BuiltinToolResults, EngineInterface, ProcessRunResult, Register, RenderElement, Timer, ToolCallResult } from 'claude-code'
+import type { BuiltinToolResults, EngineInterface, ImageProps, JsonValue, ProcessRunResult, Register, RenderElement, Timer, ToolCallResult } from 'claude-code'
 
 import type {
   AgentBoardEntry,
@@ -96,6 +96,8 @@ import type { AgentBody, InspectAction, InspectHeader, InspectRow, Trails } from
 import { inspectedOf, overviewOf } from './inspect-model'
 import { STARTLED_MS } from './mascot-poses'
 import { GRID_ROWS, SLOT } from './mascot-sprites'
+import { IMAGE_FRAME_MS, createStage, hitsOf, restage, stageFrame, stageHits, stageTick } from './scene-image'
+import type { HitPost, Stage } from './scene-image'
 import { sceneInputsOf, sceneOf } from './scene-model'
 import { MESSAGE_TICKS, SCENE_FRAME_MS } from './scene-phases'
 import { mascotPlan } from './scene-plan'
@@ -1222,6 +1224,178 @@ const factsText = async ($: EngineInterface, settings: Settings): Promise<string
 }
 
 // --- the band above the prompt -------------------------------------------------
+// --- the vector scene as a picture ---------------------------------------------
+// In a terminal that shows pictures (Ghostty, kitty), with the vector art,
+// the pane's scene and the band's yard are each an `Image` the hooks swap a
+// frame into (hooks/scene-image.ts), the scene's world run here as the
+// `Client` runs it on its surface; over the picture a `Client` drawing
+// nothing hands them the pointer (hooks/scene-hit.tsx). A terminal that
+// draws the Image's alt instead (no pictures there) refuses the first swap:
+// the scene's own `Client` and its blocks on that surface for the session.
+// Module memory, never state: a picture is its drawing's alone.
+
+const HIT_MODULE = 'hooks/scene-hit.tsx'
+/** Each picture by its site (`<requestId>:<surface>`): its stage, its Image's key, frames left in which a swap may find it not yet mounted, swaps refused in a row. */
+type Picture = { stage: Stage; requestId: string; surface: string; key: string; fresh: number; refused: number }
+const pictures = new Map<string, Picture>()
+/** Surfaces whose terminal shows no pictures, or whose hit layer failed: the scene's `Client` there. */
+const pictureless = new Set<string>()
+/** A drawing just handed over may not be mounted for a few frames. */
+const PICTURE_FRESH = 10
+/** Refusals in a row, the alt's aside, that give up on pictures there: three seconds' worth. */
+const PICTURE_GIVE_UP = Math.ceil(3000 / IMAGE_FRAME_MS)
+let pictureTimer: Timer | undefined
+let pictureBusy = false
+/** The person's theme as the picture's scheme (a light theme's colours on a light one), read again after ten seconds. */
+let pictureScheme: { scheme: 'dark' | 'light'; at: number } | undefined
+
+const stopPictures = (): void => {
+  pictureTimer?.cancel()
+  pictureTimer = undefined
+}
+
+/** Whether a refused swap says the terminal draws the Image's alt there: no pictures. */
+const drawsAlt = (deny: string): boolean => /\balt\b|placeholder|cannot read/i.test(deny)
+
+/** No pictures on `surface` from now on: its scenes' `Client`s again, drawn at once. */
+const noPictures = ($: EngineInterface, surface: string, why: string): void => {
+  if (pictureless.has(surface)) return
+  pictureless.add(surface)
+  for (const [site, picture] of pictures) if (picture.surface === surface) pictures.delete(site)
+  if (pictures.size === 0) stopPictures()
+  $.ui.log(`the scene's picture on ${surface} is refused (${printable(why).slice(0, 160)}): its blocks there`, { to: 'debug' })
+  $.clock.after(0, () => $.ui.invalidate('ui.render'))
+}
+
+// Every IMAGE_FRAME_MS each picture's world steps on and, when its frame is due
+// and new, is swapped in; one no longer mounted is let go, the timer with the last.
+const startPictures = ($: EngineInterface): void => {
+  if (pictureTimer !== undefined) return
+  const mine = $.clock.every(IMAGE_FRAME_MS, () => {
+    if (pictureBusy || pictureTimer !== mine) return
+    pictureBusy = true
+    void quietly($, async () => {
+      try {
+        const scheme = pictureScheme?.scheme ?? 'dark'
+        for (const [site, picture] of pictures) {
+          if (picture.fresh > 0) picture.fresh -= 1
+          const png = stageTick(picture.stage, IMAGE_FRAME_MS, scheme)
+          if (png === undefined) continue
+          // A swap that throws is refused as much as one denied.
+          let deny: string | undefined
+          try {
+            deny = (await $.ui.blit({ requestId: picture.requestId, key: picture.key, source: { png } })).deny
+          } catch (error) {
+            deny = String(error)
+          }
+          if (deny === undefined) picture.refused = 0
+          else if (drawsAlt(deny)) noPictures($, picture.surface, deny)
+          else if (/mount/i.test(deny) && picture.fresh === 0) pictures.delete(site)
+          else if (++picture.refused >= PICTURE_GIVE_UP) noPictures($, picture.surface, deny)
+        }
+        if (pictures.size === 0 && pictureTimer === mine) stopPictures()
+      } finally {
+        pictureBusy = false
+      }
+    })
+  })
+  pictureTimer = mine
+}
+
+const schemeFor = async ($: EngineInterface, now: number): Promise<'dark' | 'light'> => {
+  if (pictureScheme !== undefined && now - pictureScheme.at < 10_000) return pictureScheme.scheme
+  const theme = (await attempt(() => $.config.list()))?.find(row => row.key === 'theme')?.value
+  const scheme = typeof theme === 'string' && theme.startsWith('light') ? 'light' : 'dark'
+  pictureScheme = { scheme, at: now }
+
+  return scheme
+}
+
+/**
+ * Whether the terminal shows pictures, read once a load off its environment:
+ * kitty's and Ghostty's own variables (the terminals the engine draws an
+ * `Image` in); never under tmux, which passes none through. Anything else
+ * draws the blocks with no picture tried, and so no blank alt first.
+ */
+let picturesHere: boolean | undefined
+
+const terminalShowsPictures = async ($: EngineInterface): Promise<boolean> => {
+  if (picturesHere !== undefined) return picturesHere
+  const term = (await attempt(() => $.env.get('TERM'))) ?? ''
+  const program = (await attempt(() => $.env.get('TERM_PROGRAM'))) ?? ''
+  const kitty = await attempt(() => $.env.get('KITTY_WINDOW_ID'))
+  const ghostty = await attempt(() => $.env.get('GHOSTTY_RESOURCES_DIR'))
+  const tmux = await attempt(() => $.env.get('TMUX'))
+  picturesHere = tmux === undefined && (/kitty|ghostty/i.test(`${term} ${program}`) || kitty !== undefined || ghostty !== undefined)
+
+  return picturesHere
+}
+
+/** Whether the scene is a picture on this surface: the vector art, a terminal that shows pictures (`terminalShowsPictures`) whose table has `Image`, not refused there. */
+const picturedOn = async ($: EngineInterface, settings: Settings, surface: string, table: object): Promise<boolean> =>
+  settings.mascotArt === 'vector' && surface === 'terminal' && 'Image' in table && 'Client' in table && !pictureless.has(surface) && (await terminalShowsPictures($))
+
+/** A picture's stage handed the props while it is not drawn (paused while inspecting): it keeps its world for when it is back. */
+const holdPicture = (requestId: string, surface: string, inputs: SceneInputs): void => {
+  const picture = pictures.get(`${requestId}:${surface}`)
+  if (picture !== undefined) restage(picture.stage, { ...inputs, paused: true })
+}
+
+/**
+ * The scene as a picture at `requestId`, `columns` by `rows` cells: its
+ * stage made or handed the props, its last frame the Image's source, and
+ * over it the hit layer under `key` (the key the scene's own `Client` takes,
+ * so a click asks to inspect as from it); the timer swapping frames in.
+ */
+const pictureOf = async (
+  $: EngineInterface,
+  table: object,
+  surface: string,
+  requestId: string,
+  key: string,
+  inputs: SceneInputs,
+  now: number,
+): Promise<RenderElement> => {
+  const scheme = await schemeFor($, now)
+  const site = `${requestId}:${surface}`
+  let picture = pictures.get(site)
+  if (picture === undefined) {
+    picture = { stage: createStage(inputs), requestId, surface, key: `${key}:picture`, fresh: PICTURE_FRESH, refused: 0 }
+    pictures.set(site, picture)
+  } else {
+    restage(picture.stage, inputs)
+    picture.fresh = PICTURE_FRESH
+  }
+  const png = picture.stage.png ?? stageFrame(picture.stage, scheme)
+  picture.stage.png = png
+  startPictures($)
+  const { columns, rows } = inputs
+  const { Box, Image, Client } = table as {
+    Box: (props: Record<string, unknown>) => RenderElement
+    Image: (props: ImageProps) => RenderElement
+    Client: (props: { key: string; module: string; props?: unknown; width?: number; height?: number }) => RenderElement
+  }
+
+  return (
+    <Box key={`${key}:stage`} width={columns} height={rows} flexShrink={0}>
+      <Image key={picture.key} source={{ png }} columns={columns} rows={rows} alt=" " />
+      <Box position="absolute" top={0} left={0} width={columns} height={rows}>
+        <Client key={key} module="./scene-hit.tsx" props={{ columns, rows }} width={columns} height={rows} />
+      </Box>
+    </Box>
+  )
+}
+
+/** The hit layer's events at `requestId` played on its picture's world; what that asks (a click's inspect), as the scene's `Client` would have posted it. */
+const pictureHits = (requestId: string, surface: string, post: HitPost): JsonValue[] => {
+  const picture = pictures.get(`${requestId}:${surface}`)
+  if (picture === undefined) return []
+  const asks: JsonValue[] = []
+  stageHits(picture.stage, post, data => asks.push(data))
+
+  return asks
+}
+
 // The session's own mascot in its yard at the band's left (the `sessionMascot`
 // option), and beside it what tidying up has to say (hooks/tidy.ts): the offer,
 // the `auto` countdown, a compaction of the main conversation running, its
@@ -1410,6 +1584,7 @@ const bandYard = async (
   $: EngineInterface,
   settings: Settings,
   surface: string,
+  requestId: string,
   table: ReturnType<EngineInterface['ui']['resolve']>,
   columns: number,
   now: number,
@@ -1436,8 +1611,11 @@ const bandYard = async (
       only: 'main',
       ...(tidyingSince === undefined ? {} : { tidyingSince }),
       ...(svg === undefined ? {} : { svg: true as const }),
+      ...(settings.mascotArt === 'vector' ? { art: 'vector' as const } : {}),
       ...(settings.character === 'usagi' ? { character: 'usagi' as const } : {}),
     })
+    // A terminal that shows pictures: the vector art as one, swapped frame by frame.
+    if (await picturedOn($, settings, surface, table)) return pictureOf($, table, surface, requestId, BAND_KEY, props, now)
     const { Client } = table as { Client: (props: { key: string; module: string; props?: unknown; width?: number; height?: number }) => RenderElement }
 
     return <Client key={BAND_KEY} module="./scene-client.tsx" props={props} width={columns} height={GRID_ROWS} />
@@ -1508,6 +1686,36 @@ const runBoard = async ($: EngineInterface, args: string, settings: Settings): P
   return { text: 'HUD opened.' }
 }
 
+// A scene's post (its `Client`'s, or a picture's world's): a click asking to inspect a mascot.
+const askedOf = async ($: EngineInterface, settings: Settings, component: string, element: string, data: unknown): Promise<void> => {
+  const ask = inspectAsk(data)
+  if (settings.inspect && settings.mascots && element === SCENE_KEY && ask !== undefined) {
+    const asked = ask.id
+    tvFrom = ask.at === undefined ? undefined : { id: asked, ...ask.at, ...(ask.cap === true ? { cap: true as const } : {}) }
+    await quietly($, async () => {
+      // The crowned mascot is the session's own.
+      if (asked === 'main') return selectAgent($, { id: 'main', kind: 'main' })
+      const board = await read($, agents)
+      const held = board[asked] === undefined && settings.showWorkflows ? (await read($, shadows))[asked] : undefined
+      if (board[asked] !== undefined) await selectAgent($, { id: asked, kind: 'agent' })
+      else if (held !== undefined) await selectAgent($, { id: asked, kind: 'shadow' })
+    })
+  }
+  // A click on the session's mascot in the band: the HUD opens (where it is
+  // not) on the session's own inspect view.
+  if (settings.inspect && component === 'AbovePrompt' && element === BAND_KEY && ask?.id === 'main') {
+    tvFrom = undefined
+    await quietly($, async () => {
+      const pane = (await $.ui.panes()).find(one => one.id === PANE)
+      if (!(pane?.isPlaced === true && pane.isShown)) {
+        const opened = await $.ui.open({ id: PANE, title: 'HUD', columns: 72, rows: 16, ...(pane?.isPlaced === true ? { focus: true } : {}) })
+        if (opened.isPlaced) startTicking($, settings)
+      }
+      await selectAgent($, { id: 'main', kind: 'main' })
+    })
+  }
+}
+
 export const register: Register = (on, options) => {
   const settings = settingsOf(options)
 
@@ -1515,6 +1723,9 @@ export const register: Register = (on, options) => {
   // already ran one drops what that left running.
   stopTicking()
   stopSceneClock()
+  stopPictures()
+  pictures.clear()
+  picturesHere = undefined
   stopStatusTimer()
   stopBandClock()
   stopCountdown()
@@ -1832,6 +2043,9 @@ export const register: Register = (on, options) => {
     stopSceneClock()
     stopCountdown()
     stopBandClock()
+    // The pictures' worlds end with their session; the next drawing starts them afresh.
+    stopPictures()
+    pictures.clear()
     await quietly($, () => tidyTimersGone($))
     sceneEvents = []
     // Nothing selected, read or trailed outlives its session.
@@ -1889,32 +2103,15 @@ export const register: Register = (on, options) => {
   // A click on a mascot in the smooth scene: its surface module asks to inspect
   // that agent, and the selection (the hooks') follows, as a row's button does.
   on('ui.message', async ($, e, next) => {
-    const ask = inspectAsk(e.data)
-    if (settings.inspect && settings.mascots && e.element === SCENE_KEY && ask !== undefined) {
-      const asked = ask.id
-      tvFrom = ask.at === undefined ? undefined : { id: asked, ...ask.at, ...(ask.cap === true ? { cap: true as const } : {}) }
-      await quietly($, async () => {
-        // The crowned mascot is the session's own.
-        if (asked === 'main') return selectAgent($, { id: 'main', kind: 'main' })
-        const board = await read($, agents)
-        const held = board[asked] === undefined && settings.showWorkflows ? (await read($, shadows))[asked] : undefined
-        if (board[asked] !== undefined) await selectAgent($, { id: asked, kind: 'agent' })
-        else if (held !== undefined) await selectAgent($, { id: asked, kind: 'shadow' })
-      })
+    // A picture's hit layer: its pointer played on the picture's world; what that asks (a click's
+    // inspect) read as the scene's `Client` posts it, the layer under the same key.
+    const hits = e.module === HIT_MODULE ? hitsOf(e.data) : undefined
+    if (hits !== undefined) {
+      for (const data of pictureHits(e.requestId, e.surface, hits)) await askedOf($, settings, e.component, e.element, data)
+
+      return next(e)
     }
-    // A click on the session's mascot in the band: the HUD opens (where it is
-    // not) on the session's own inspect view.
-    if (settings.inspect && e.component === 'AbovePrompt' && e.element === BAND_KEY && ask?.id === 'main') {
-      tvFrom = undefined
-      await quietly($, async () => {
-        const pane = (await $.ui.panes()).find(one => one.id === PANE)
-        if (!(pane?.isPlaced === true && pane.isShown)) {
-          const opened = await $.ui.open({ id: PANE, title: 'HUD', columns: 72, rows: 16, ...(pane?.isPlaced === true ? { focus: true } : {}) })
-          if (opened.isPlaced) startTicking($, settings)
-        }
-        await selectAgent($, { id: 'main', kind: 'main' })
-      })
-    }
+    await askedOf($, settings, e.component, e.element, e.data)
     // The TV: closed (its mascot home, shaken), a channel, or a press on its glass.
     const tv = e.element === TV_KEY ? tvPostOf(e.data) : undefined
     if (tv !== undefined) {
@@ -1948,6 +2145,12 @@ export const register: Register = (on, options) => {
   // A TV that failed on a surface: the pane's own inspect view there from now
   // on; the band's scene that failed, the classic scene there.
   on('ui.fault', ($, e, next) => {
+    // A picture's hit layer that failed: no pictures there, the scene's own `Client` instead.
+    if (e.module === HIT_MODULE) {
+      noPictures($, e.surface, e.reason)
+
+      return next(e)
+    }
     if (e.element === TV_KEY && !tvFaulted.has(e.surface)) {
       tvFaulted.add(e.surface)
       $.ui.invalidate('ui.render')
@@ -2120,6 +2323,7 @@ export const register: Register = (on, options) => {
               inspect: settings.inspect,
               ...(inspecting === undefined ? {} : { paused: true }),
               ...(svg === undefined ? {} : { svg: true as const }),
+              ...(settings.mascotArt === 'vector' ? { art: 'vector' as const } : {}),
               ...(settings.character === 'usagi' ? { character: 'usagi' as const } : {}),
               ...(away === undefined ? {} : { away }),
               ...(shaken === undefined ? {} : { startled: shaken }),
@@ -2127,7 +2331,14 @@ export const register: Register = (on, options) => {
               ...(tidyingSince === undefined ? {} : { tidyingSince }),
             })
             const { Client } = table as { Client: (props: { key: string; module: string; props?: unknown; width?: number; height?: number }) => RenderElement }
-            scene = <Client key={SCENE_KEY} module="./scene-client.tsx" props={props} width={columns} height={inspecting === undefined ? spare : 0} />
+            // A terminal that shows pictures: the vector art as one, swapped frame by frame; while
+            // inspecting none is drawn, its world kept, paused, for when it is back.
+            if (await picturedOn($, settings, e.surface, table)) {
+              if (inspecting === undefined) scene = await pictureOf($, table, e.surface, e.requestId, SCENE_KEY, props, now)
+              else holdPicture(e.requestId, e.surface, props)
+            } else {
+              scene = <Client key={SCENE_KEY} module="./scene-client.tsx" props={props} width={columns} height={inspecting === undefined ? spare : 0} />
+            }
             sceneTop = bodyRows === undefined ? undefined : bodyRows - spare
           }
         } else {
@@ -2257,7 +2468,7 @@ export const register: Register = (on, options) => {
     let yard: RenderElement | undefined
     if (settings.mascots && settings.sessionMascot === 'band' && yardColumns >= SLOT) {
       try {
-        yard = await bandYard($, settings, e.surface, table, yardColumns, now)
+        yard = await bandYard($, settings, e.surface, e.requestId, table, yardColumns, now)
       } catch {
         // Nothing more to draw.
       }

@@ -1,6 +1,6 @@
 # clawd-hud-zq
 
-A HUD side pane for Claude Code. It shows your session facts, what needs your attention, git state and the tool running now, context and prompt-cache bars, rate limits, cost, TODO progress and every running subagent, including ultracode and Workflow agents, next to a live, animated scene of Claude mascots. The mascots work, sleep, hop, fly and collide, and you can grab them with the mouse and throw them.
+A HUD side pane for Claude Code. It shows your session facts, what needs your attention, git state and the tool running now, context and prompt-cache bars, rate limits, cost, TODO progress and every running subagent, including ultracode and Workflow agents, next to a live, animated scene of Claude mascots. The mascots work, sleep, hop, fly and collide, and you can grab them with the mouse and throw them. In the desktop app and in terminals that show pictures (Ghostty, kitty), they are drawn as smooth vector art at 30 frames a second, with every pose easing into the next.
 
 Your session's own mascot lives in the band just above the prompt, so it is there even with the HUD closed. When the conversation's context has grown, it offers to tidy up (compact the conversation), and it squashes a pile of pages into a cube while any compaction runs.
 
@@ -20,6 +20,7 @@ This repository is a Claude Code marketplace that ships one mod, `mod-hud`.
 - A terminal font with box-drawing glyphs.
 - The pane docks at 110 columns or wider, or in fullscreen.
 - Works in the terminal and in Claude Desktop. Mouse drag and throw need the terminal or the desktop app; VS Code and mobile fall back to the classic renderer.
+- The smooth vector mascots need the desktop app or a terminal with the kitty graphics protocol (Ghostty, kitty). Other terminals (macOS Terminal, Windows Terminal, tmux) draw the block-character mascots.
 - Windows and WSL are expected to work but are unverified.
 
 ## Install
@@ -75,6 +76,7 @@ Change any option from `/plugin` (select mod-hud, then its settings).
 | `scenes` | `true` | Mascots act out real events: handing a task over, handing a report back, messages, review and fix visits, and a workflow squad's baton. |
 | `collisions` | `rare` | `off`: wanderers that meet step back. `rare`: only two moving mascots collide, falling over dizzy, at most once per pair in 30 s. `normal`: a moving mascot knocks over a standing one too, once per pair in 10 s. In `rare` and `normal` a thrown mascot knocks over whoever it hits. |
 | `motion` | `smooth` | `smooth`: on the terminal and desktop the scene runs at 20 frames a second, gliding between cells, with click, pick up, drag and throw. `classic`: the Box/Text scene at 4 frames a second everywhere, with a pick button under each mascot. |
+| `mascotArt` | `vector` | `vector`: in the desktop app, and in Ghostty or kitty (known by their own environment variables, never under tmux), the mascots are drawn shapes at 30 frames a second, each pose eased into the next. Other terminals draw the block characters, as does a terminal that refuses a picture. `blocks`: the block characters everywhere. Needs `motion: smooth`. The TV keeps its block-drawn giant either way. |
 | `todoRows` | `6` | Opened, the TODO section lists at most this many items and counts the rest. |
 | `sessionMascot` | `band` | `band`: the session's mascot lives in the band above the prompt on the terminal and desktop, so it shows with the HUD closed too, and the pane's scene holds the subagents. VS Code and mobile draw no band, so there it stays in the pane. `pane`: in the pane's scene with the subagents, as before 1.4.0. |
 | `tidy` | `ask` | `ask`: once the context passes `tidyAt` and the main loop is idle, the band offers to tidy up, with how many requests it takes to pay for itself. `auto`: when a main turn ends with no subagent running, the band counts down ten seconds, then tidies up; **Not now** or a new prompt stops it. `off`: never offered. Whatever it says, the mascot tidies up during any compaction and the band shows the result. |
@@ -137,6 +139,7 @@ Every request re-reads the whole conversation, mostly from the prompt cache, whi
 - Flights carry meaning: a web call sends a mascot into the sky, Explore agents scan the floor from above, a reading streak lifts off, finished agents fly out, and the session flies up on a compaction.
 - Collisions (`collisions` setting) knock mascots over, dizzy, before they get up and carry on.
 - Motion is `smooth` (20 fps, mouse grab and throw) or `classic` (4 fps, everywhere).
+- In the desktop app and in Ghostty or kitty, Clawd and Usagi are drawn as vector art (`mascotArt: vector`): round edges, squash and stretch that bounce back, falls that turn over, blinking and breathing, legs that walk, propellers that spin, every interaction the block art shows. In a terminal the scene is a picture swapped about 30 times a second, about 10 while everyone stands still. Other terminals get the block art automatically. See [the vector art](mod-hud/docs/mascots.md#the-vector-art).
 - Pressed, a mascot becomes a TV of itself, in its own colour and wearing its own accessory, hat or crown (pressed in flight, its propeller cap): Clawd's body or Usagi's round head the casing, the screen on its forehead, its eyes (and Usagi's cheeks and mouth) under it, its arms, legs and what it wears around it. See [the TV](mod-hud/docs/mascots.md#the-tv).
 - `character: usagi` swaps every mascot for Usagi (fan art): pale yellow, its role shown by its hat (worker a construction hat, Explore a fedora, reviewer a mortarboard, debugger a miner's helmet, Plan a top hat, frontend a beret), the session's by a small crown on the side of its head; it shouts `Ura!`, `Yaha!`, `HUHHH?` and `UNA!` where Clawd thinks out loud. See [the mascot docs](mod-hud/docs/mascots.md#usagi).
 

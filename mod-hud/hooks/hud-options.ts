@@ -41,6 +41,13 @@ export type Settings = {
   /** `smooth`: the scene runs in a `Client` surface module where the surface has one; `classic` keeps the Box/Text scene everywhere. */
   motion: 'smooth' | 'classic'
   /**
+   * How the smooth scene draws the mascots where it draws pixels (the
+   * desktop's `Svg`, a terminal that shows pictures): `vector`, drawn shapes
+   * eased between poses (hooks/scene-smooth.ts); `blocks`, the cells' block
+   * characters. Text-only terminals draw the blocks either way.
+   */
+  mascotArt: 'vector' | 'blocks'
+  /**
    * Where the session's own mascot lives: `band`, in the band above the
    * prompt where the surface draws one (terminal, desktop), the subagents in
    * the pane; `pane`, in the pane's scene with them, as before 1.4.0.
@@ -76,6 +83,7 @@ export const settingsOf = (options: PluginOptions): Settings => ({
   todoRows: Math.max(1, Math.floor(positive(options.todoRows, TODO_ROWS))),
   collisions: options.collisions === 'off' || options.collisions === 'normal' ? options.collisions : 'rare',
   motion: options.motion === 'classic' ? 'classic' : 'smooth',
+  mascotArt: options.mascotArt === 'blocks' ? 'blocks' : 'vector',
   cacheTtl: options.cacheTtl === '5m' || options.cacheTtl === '1h' ? options.cacheTtl : 'auto',
   sessionMascot: options.sessionMascot === 'pane' ? 'pane' : 'band',
   tidy: options.tidy === 'auto' || options.tidy === 'off' ? options.tidy : 'ask',

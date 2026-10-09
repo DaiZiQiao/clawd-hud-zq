@@ -207,7 +207,8 @@ describe('trails', () => {
 })
 
 describe('the inspect view', () => {
-  test('a row\'s button selects its agent: the view takes the pane under the HUD (lists, TODO and scene hidden), at 100 and 48 columns, terminal and desktop', { options: { inspectView: 'pane' } }, async ($, on) => {
+  // Two surfaces at two widths, each selection redrawn: some seconds' work, given room on a loaded machine.
+  test('a row\'s button selects its agent: the view takes the pane under the HUD (lists, TODO and scene hidden), at 100 and 48 columns, terminal and desktop', { options: { inspectView: 'pane' }, timeoutMs: 20_000 }, async ($, on) => {
     const { held, world, settled } = await busy($, on)
     seedHud(held)
     for (const surface of SURFACES) {

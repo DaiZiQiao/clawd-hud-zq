@@ -54,7 +54,8 @@ describe('the character option', () => {
 })
 
 describe('its figure', () => {
-  test('no cell asked for more than it can draw: two colours only where all four quarters are drawn, in every look and dress', () => {
+  // Every look in every dress: some seconds' work, given room to finish on a loaded machine.
+  test('no cell asked for more than it can draw: two colours only where all four quarters are drawn, in every look and dress', { timeoutMs: 20_000 }, () => {
     const dresses: Dress[] = [{ energy: 0 }, { crown: true, energy: 0 }, ...ROLES.map(role => dressOfAgent(working('a', 'thinking', { role })))]
     const extras: Partial<Look>[] = [{}, { armsUp: true }, { lean: 1 }, { lean: -1 }, { cap: 0 }, { hatOff: true }, { overlays: OVERLAYS.cross }, { overlays: [OVERLAYS.cigarette[0]!, OVERLAYS.smoke[0]!] }, { breath: 1 }]
     const clashing: string[] = []

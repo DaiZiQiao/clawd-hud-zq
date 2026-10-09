@@ -3,9 +3,11 @@ import { describe, expect, test } from 'claude-code/testing'
 
 import type { HudSelection } from '../types'
 import { CROWN, HEADS, flipped } from './mascot-sprites'
+import { VECTOR_FRAME_MS } from './scene-client'
 import { arrange, headAt, mount, rowsOf } from './scene-client.fixtures'
 import { NOW, entry } from './scene-model.fixtures'
 import { SCENE_FRAME_MS } from './scene-phases'
+import { SVG_MAX } from './scene-svg'
 import { svgRows } from './scene-svg.fixtures'
 import type { SceneInputs } from './scene-types'
 import { FRAME_MS } from './scene-world'
@@ -13,6 +15,7 @@ import { LAPTOP, TYPIST } from './scene-world.fixtures'
 import { CELL_HEIGHT, CELL_WIDTH } from './svg-style'
 import { svgsOf } from './text-svg.fixtures'
 import { displayWidth } from './text-width'
+import { USAGI } from './usagi-sprites'
 
 // The mascot scene as a `Client`: tested through the engine (the pane's tree,
 // its pointer, its posts) on the terminal and the desktop.
@@ -23,8 +26,11 @@ const WIDE = HEADS.wide.slice(1, 8)
 // Dizzy on its back: the head upside down, its eyes crossed or rolled apart.
 const DIZZY = new RegExp([HEADS.spiral, HEADS.spin].map(row => flipped(row).slice(1, 8)).join('|'))
 
+// These read the desktop's scene back into cells (hooks/scene-svg.fixtures.ts): its block art.
+const BLOCKS = { options: { mascotArt: 'blocks' } }
+
 describe('the scene is a Client', () => {
-  test('on terminal and desktop: its module, the scene\'s inputs as props, the spare rows as its region; drawn a row per row', async ($, on) => {
+  test('on terminal and desktop: its module, the scene\'s inputs as props, the spare rows as its region; drawn a row per row', BLOCKS, async ($, on) => {
     const { held } = arrange(on, [TYPIST])
     for (const surface of SURFACES) {
       const ui = await mount($, surface)
@@ -116,7 +122,7 @@ describe('the scene is a Client', () => {
 })
 
 describe('the pointer', () => {
-  test('a press lifts a mascot: it dangles, its laptop gone; it follows the pointer; let go, it flies on and comes down on the floor', async ($, on) => {
+  test('a press lifts a mascot: it dangles, its laptop gone; it follows the pointer; let go, it flies on and comes down on the floor', BLOCKS, async ($, on) => {
     const { world } = arrange(on, [TYPIST])
     for (const surface of SURFACES) {
       // A pane where its head is seven rows down or more: room to carry it five rows up and throw it higher.
@@ -181,7 +187,7 @@ describe('the pointer', () => {
     }
   })
 
-  test('let go gently it is set down where it is, then walks back to its place and its laptop comes back', async ($, on) => {
+  test('let go gently it is set down where it is, then walks back to its place and its laptop comes back', BLOCKS, async ($, on) => {
     arrange(on, [TYPIST])
     for (const surface of SURFACES) {
       const ui = await mount($, surface)
@@ -211,7 +217,7 @@ describe('the pointer', () => {
     }
   })
 
-  test('a click (up within 300 ms, under a cell away) on an agent inspects it: the hooks select it, its detail view takes the scene\'s place; on the crowned one it asks for `main`', { options: { inspectView: 'pane' } }, async ($, on) => {
+  test('a click (up within 300 ms, under a cell away) on an agent inspects it: the hooks select it, its detail view takes the scene\'s place; on the crowned one it asks for `main`', { options: { inspectView: 'pane', mascotArt: 'blocks' } }, async ($, on) => {
     const { held, world } = arrange(on, [TYPIST])
     for (const surface of SURFACES) {
       held.set('selected', { value: null, version: (held.get('selected')?.version ?? 0) + 1 })
@@ -301,7 +307,7 @@ describe('its own clock', () => {
     await smooth.unmount()
   })
 
-  test('no state is written while it runs: the hooks are not ticking the scene; its clock runs only while it is drawn', async ($, on) => {
+  test('no state is written while it runs: the hooks are not ticking the scene; its clock runs only while it is drawn', BLOCKS, async ($, on) => {
     const { world, clock } = arrange(on, [TYPIST, entry('w', { startedAt: NOW - 30_000 }), entry('e', { type: 'Explore', startedAt: NOW - 20_000, currentTool: 'Read' })])
     for (const surface of SURFACES) {
       const ui = await mount($, surface, 100, 30)
@@ -318,5 +324,65 @@ describe('its own clock', () => {
       await ui.unmount()
       await expect(ui.advance(FRAME_MS)).rejects.toBeDefined()
     }
+  })
+})
+
+describe('the vector art', () => {
+  test('on the desktop the mascots are drawn shapes, one Svg the region\'s size, a frame every 33 ms (each pose eased into the next); the terminal keeps its rows', async ($, on) => {
+    arrange(on, [TYPIST])
+    const ui = await mount($, 'desktop')
+    const props = (await ui.find({ type: 'Client' }))?.props.props as SceneInputs
+    expect(props.art).toBe('vector')
+    const svg = await ui.find({ type: 'Svg', in: 'mascots' })
+    const source = String(svg?.props.source)
+    expect([svg?.props.width, svg?.props.height]).toEqual([72 * CELL_WIDTH, props.rows * CELL_HEIGHT])
+    expect(source.length).toBeLessThanOrEqual(SVG_MAX)
+    // Shapes, not quadrants: Clawd's rounded body and its eyes, the crown's gold, the laptop's lit screen.
+    expect(source).toMatch(/<rect [^>]*rx=/)
+    expect(source).toMatch(/<ellipse /)
+    expect(source).toContain(CROWN.colour)
+    expect(source).toContain('#D77757')
+    // What it shows, in words, as the cells would say it.
+    expect(String(svg?.props.alt)).toMatch(/^2 mascots: session /)
+    // Alive between the scene's frames: the next one differs (a breath, the keys under its hand).
+    await ui.advance(VECTOR_FRAME_MS)
+    expect(String((await ui.find({ type: 'Svg', in: 'mascots' }))?.props.source)).not.toBe(source)
+    await ui.unmount()
+    // A text terminal draws its rows of cells either way.
+    const text = await mount($, 'terminal')
+    expect(await text.find({ type: 'Svg', in: 'mascots' })).toBe(undefined)
+    expect((await rowsOf(text)).join('\n')).toContain(CROWN.art)
+    await text.unmount()
+  })
+
+  test('Usagi too: its round pale yellow body, its pink cheeks', { options: { character: 'usagi' } }, async ($, on) => {
+    arrange(on, [TYPIST])
+    const ui = await mount($, 'desktop')
+    const source = String((await ui.find({ type: 'Svg', in: 'mascots' }))?.props.source)
+    expect(source).toContain(`rx='3.6' fill='${USAGI.body}'`)
+    expect(source).toMatch(new RegExp(`<ellipse [^>]*fill='${USAGI.blush}'`))
+    await ui.unmount()
+  })
+
+  test('a click on a mascot drawn as shapes inspects it, where the cells place it', { options: { inspectView: 'pane' } }, async ($, on) => {
+    const { held } = arrange(on, [TYPIST])
+    // Where the typist's head is, as the terminal's cells have it at the same moment.
+    const text = await mount($, 'terminal')
+    const at = headAt(await rowsOf(text), `${HEADS.right.trim()}  ${LAPTOP}`)!
+    await text.unmount()
+    const ui = await mount($, 'desktop')
+    await ui.pointer({ type: 'down', x: at.x, y: at.y, button: 'left' })
+    await ui.advance(FRAME_MS)
+    await ui.pointer({ type: 'up', x: at.x, y: at.y, button: 'left' })
+    expect(held.get('selected')?.value as HudSelection).toEqual({ id: 'a', kind: 'agent' })
+    await ui.unmount()
+  })
+
+  test('with mascotArt blocks the desktop draws the cells\' blocks', BLOCKS, async ($, on) => {
+    arrange(on, [TYPIST])
+    const ui = await mount($, 'desktop')
+    expect(((await ui.find({ type: 'Client' }))?.props.props as SceneInputs).art).toBe(undefined)
+    expect((await rowsOf(ui)).join('\n')).toContain(CROWN.art)
+    await ui.unmount()
   })
 })

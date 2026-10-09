@@ -7,12 +7,15 @@ import { ACCENT, isNumber } from './scene-model'
 import { SCENE_FRAME_MS, holdTicks, soloPipe } from './scene-phases'
 import { PIPE_SLIDE_MS, PIPE_WIDTH, PIPE_X, batchPipeAt, droppedAt, farewellAt } from './scene-pipe'
 import { SETTLED, mascotPlan } from './scene-plan'
-import type { Cell, Mark, MascotAgent, MascotLayout, MascotPlan, MascotScene, Phase, PlacedPipe, PlacedSprite, Placement, SceneView } from './scene-types'
+import type { Cell, Mark, MascotAgent, MascotLayout, MascotPlan, MascotScene, Phase, PlacedPipe, PlacedSprite, Placement, SceneView, SpriteFigure } from './scene-types'
 import { dressOfAgent, dressOfMain, drawUsagi, drawUsagiMini } from './usagi-glyphs'
 
 // The plan's frame as placed sprites, renderer-agnostic: each mascot's look
 // drawn into cells (hooks/mascot-poses.ts, hooks/mascot-glyphs.ts) where it
 // stands, the pipes over those arriving and leaving, and the scenes' marks.
+
+/** The session's Clawd drawn as shapes (hooks/scene-smooth.ts): the accent's own orange. */
+const CLAWD_COLOUR = '#D77757'
 
 // --- the pipe ----------------------------------------------------------------
 
@@ -197,22 +200,40 @@ export const placedSprites = (scene: MascotScene, layout: MascotLayout, plan = m
     let cells: (Cell | undefined)[][]
     let lift: number
     let bob = 0
+    let figure: SpriteFigure
+    const character = usagi ? 'usagi' as const : 'clawd' as const
     // Drawn as the scene's character: Clawd, or Usagi.
     if (one.kind === 'main') {
       const look = lifted(mainLook(scene.main, tick, context))
       bob = bobOf(look, sky)
       cells = usagi ? drawUsagi(look, dressOfMain(scene.main), sky - look.lift - bob) : drawLook(look, wearOfMain(scene.main), ACCENT, sky - look.lift - bob)
       lift = look.lift
+      figure = {
+        look,
+        info: { character, colour: CLAWD_COLOUR, crown: true, energy: scene.main.energy ?? 0 },
+        context,
+        ...(scene.main.tidyMs === undefined ? {} : { tidyMs: scene.main.tidyMs }),
+        ...(scene.main.stretchMs === undefined ? {} : { stretchMs: scene.main.stretchMs }),
+      }
     } else if (one.kind === 'mini') {
-      const look = lifted(miniLook(agent as MascotAgent, one.phase as Phase, tick, context))
-      cells = usagi ? drawUsagiMini(look, agent as MascotAgent) : drawMini(look, agent as MascotAgent, (agent as MascotAgent).colour)
+      const self = agent as MascotAgent
+      const look = lifted(miniLook(self, one.phase as Phase, tick, context))
+      cells = usagi ? drawUsagiMini(look, self) : drawMini(look, self, self.colour)
       lift = look.lift
+      figure = { mini: look, info: { character, colour: self.colour, ...(self.role === undefined ? {} : { role: self.role }), ...(self.accessory === undefined ? {} : { accessory: self.accessory }), energy: 0 }, context, ...(one.phase === undefined ? {} : { phase: one.phase }) }
     } else {
       const self = agent as MascotAgent
       const look = lifted(agentLook(self, one.phase as Phase, tick, context))
+      const wear = wearOfAgent(self)
       bob = bobOf(look, sky)
-      cells = usagi ? drawUsagi(look, dressOfAgent(self), sky - look.lift - bob) : drawLook(look, wearOfAgent(self), self.colour, sky - look.lift - bob)
+      cells = usagi ? drawUsagi(look, dressOfAgent(self), sky - look.lift - bob) : drawLook(look, wear, self.colour, sky - look.lift - bob)
       lift = look.lift
+      figure = {
+        look,
+        info: { character, colour: self.colour, ...(self.role === undefined ? {} : { role: self.role }), ...(wear.letter === undefined ? {} : { letter: wear.letter }), ...(self.accessory === undefined ? {} : { accessory: self.accessory, side: self.side ?? 'left' }), energy: self.energy ?? 0 },
+        context,
+        ...(one.phase === undefined ? {} : { phase: one.phase }),
+      }
     }
     const topExact = dExact - (liftExact ?? lift) - bob - SKY
     const top = rowOf(topExact)
@@ -233,6 +254,7 @@ export const placedSprites = (scene: MascotScene, layout: MascotLayout, plan = m
       ...exact,
       ...posed,
       ...(piped?.lip === undefined ? {} : { clip: rowOf(piped.lip) }),
+      figure: bob === 0 ? figure : { ...figure, bob },
     })
   }
 
