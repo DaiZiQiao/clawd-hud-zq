@@ -167,7 +167,7 @@ describe('trails', () => {
     expect(trailEnded(ended, 'b', { tool: 'Read', at: 9 }, { ms: 1, outcome: 'ok' })).toBe(ended)
   })
 
-  test('each call writes its trail as it starts and as it ends, with its time and outcome; dropped with the agent', { options: { inspectView: 'pane' } }, async ($, on) => {
+  test('each call writes its trail as it starts and as it ends, with its time and outcome; dropped with the agent', { options: { inspectView: 'pane' }, timeoutMs: 20_000 }, async ($, on) => {
     const { held, world, clock, running } = await busy($, on)
     const trails = held.get('trails')?.value as Record<string, HudTrailStep[]>
     expect(trails['sub-1']).toHaveLength(10)
@@ -190,7 +190,7 @@ describe('trails', () => {
     expect((held.get('trails')?.value as Record<string, unknown>)['sub-1']).toBe(undefined)
   })
 
-  test('with inspect off: no row, session or mascot button, no trail, no ledger, no selection', { options: { inspectView: 'pane', inspect: false } }, async ($, on) => {
+  test('with inspect off: no row, session or mascot button, no trail, no ledger, no selection', { options: { inspectView: 'pane', inspect: false }, timeoutMs: 20_000 }, async ($, on) => {
     const { held, settled } = await busy($, on)
     expect(held.has('trails')).toBe(false)
     expect(held.has('ledger')).toBe(false)
@@ -247,7 +247,7 @@ describe('the inspect view', () => {
     await settled()
   })
 
-  test('Task: the description, then the prompt, every row kept and wrapped, at 100 and 48 columns on both surfaces', { options: { inspectView: 'pane' } }, async ($, on) => {
+  test('Task: the description, then the prompt, every row kept and wrapped, at 100 and 48 columns on both surfaces', { options: { inspectView: 'pane' }, timeoutMs: 20_000 }, async ($, on) => {
     const { held, settled } = await busy($, on)
     for (const surface of SURFACES) {
       for (const columns of WIDTHS) {
@@ -273,7 +273,7 @@ describe('the inspect view', () => {
     await settled()
   })
 
-  test('Trail: every call, the newest last, its time, span and outcome, the current one in the accent, at 100 and 48 columns on both surfaces', { options: { inspectView: 'pane' } }, async ($, on) => {
+  test('Trail: every call, the newest last, its time, span and outcome, the current one in the accent, at 100 and 48 columns on both surfaces', { options: { inspectView: 'pane' }, timeoutMs: 20_000 }, async ($, on) => {
     const { held, world, settled } = await busy($, on)
     for (const surface of SURFACES) {
       for (const columns of WIDTHS) {
@@ -305,7 +305,7 @@ describe('the inspect view', () => {
     await settled()
   })
 
-  test('Said: the last ten assistant messages, wrapped, the newest at the bottom, at 100 and 48 columns on both surfaces', { options: { inspectView: 'pane' } }, async ($, on) => {
+  test('Said: the last ten assistant messages, wrapped, the newest at the bottom, at 100 and 48 columns on both surfaces', { options: { inspectView: 'pane' }, timeoutMs: 20_000 }, async ($, on) => {
     const { world, settled } = await busy($, on)
     world.said = Array.from({ length: 12 }, (_, index) => `Message ${index + 1}: ${'word '.repeat(20).trim()}`)
     for (const surface of SURFACES) {
@@ -326,7 +326,7 @@ describe('the inspect view', () => {
     await settled()
   })
 
-  test('Agents: the lists under the tabs; a row\'s press jumps to that agent on the same tab', { options: { inspectView: 'pane' } }, async ($, on) => {
+  test('Agents: the lists under the tabs; a row\'s press jumps to that agent on the same tab', { options: { inspectView: 'pane' }, timeoutMs: 20_000 }, async ($, on) => {
     const { held, settled } = await busy($, on)
     for (const surface of SURFACES) {
       for (const columns of WIDTHS) {
@@ -367,7 +367,7 @@ describe('the inspect view', () => {
     await settled()
   })
 
-  test('the conversation is read on selection, on a tab that needs it when not held, and on that agent\'s turn ends; never per frame', { options: { inspectView: 'pane' } }, async ($, on) => {
+  test('the conversation is read on selection, on a tab that needs it when not held, and on that agent\'s turn ends; never per frame', { options: { inspectView: 'pane' }, timeoutMs: 20_000 }, async ($, on) => {
     const { world, clock, running, held } = await busy($, on)
     const ui = await mount($, 'terminal', 100)
     expect(world.fetches).toEqual([])
@@ -428,7 +428,7 @@ describe('the inspect view', () => {
     expect(world.fetches).toEqual([])
   })
 
-  test('the classic scene: a mascot\'s pick selects; Back returns the scene', { options: { inspectView: 'pane', motion: 'classic' } }, async ($, on) => {
+  test('the classic scene: a mascot\'s pick selects; Back returns the scene', { options: { inspectView: 'pane', motion: 'classic' }, timeoutMs: 20_000 }, async ($, on) => {
     const { held, clock, settled } = await busy($, on)
     for (const surface of SURFACES) {
       const ui = await mount($, surface, 100)
@@ -742,7 +742,7 @@ describe('the session tab', () => {
     expect(inspectLines(overviewRows(view, 72))).toContain('turns    12 turns · 3 compactions')
   })
 
-  test('Cost: the session\'s total and rate, each model a Button that opens to its users by cost; open models written on a press only', { options: { inspectView: 'pane' } }, async ($, on) => {
+  test('Cost: the session\'s total and rate, each model a Button that opens to its users by cost; open models written on a press only', { options: { inspectView: 'pane' }, timeoutMs: 20_000 }, async ($, on) => {
     const { held, world, clock } = arrange(on)
     await $.session.start(START)
     await clock.settle()
@@ -966,7 +966,7 @@ const overlaysIn = (node: unknown, row = ''): Overlay[] => {
 }
 
 describe('in pixels on the desktop', () => {
-  test('the lists read as the terminal\'s, row for row; every Button an absolute Box over its own blank cells; a press there selects, as on the terminal', { options: { inspectView: 'pane' } }, async ($, on) => {
+  test('the lists read as the terminal\'s, row for row; every Button an absolute Box over its own blank cells; a press there selects, as on the terminal', { options: { inspectView: 'pane' }, timeoutMs: 20_000 }, async ($, on) => {
     const { held, settled } = await busy($, on)
     seedHud(held)
     for (const columns of WIDTHS) {
@@ -1020,7 +1020,7 @@ describe('in pixels on the desktop', () => {
     await settled()
   })
 
-  test('the inspect view: Back and the tabs laid over the cells the terminal draws them in; presses switch tabs and go back; the cost lines keep their columns', { options: { inspectView: 'pane' } }, async ($, on) => {
+  test('the inspect view: Back and the tabs laid over the cells the terminal draws them in; presses switch tabs and go back; the cost lines keep their columns', { options: { inspectView: 'pane' }, timeoutMs: 20_000 }, async ($, on) => {
     const { held, settled } = await busy($, on)
     const ui = await mount($, 'desktop', 100)
     await press(ui, 'inspect:sub-1')

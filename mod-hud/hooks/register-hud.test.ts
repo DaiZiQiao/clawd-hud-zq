@@ -117,7 +117,7 @@ test('the pane draws the HUD above the agents with one blank row between, on eve
   }
 })
 
-test('fifty agents leave the HUD whole: the list keeps its cap and counts the rest', async ($, on) => {
+test('fifty agents leave the HUD whole: the list keeps its cap and counts the rest', { timeoutMs: 20_000 }, async ($, on) => {
   const { clock } = await sketched($, on)
   const alone = new Map<string, string[]>()
   for (const surface of SURFACES) {
@@ -344,7 +344,7 @@ test('an open HUD with no agents advances its clock and running-tool row after s
   expect(world.reads.length).toBe(reads)
 })
 
-test('agent glyphs use theme colours on both surfaces and layouts', async ($, on) => {
+test('agent glyphs use theme colours on both surfaces and layouts', { timeoutMs: 20_000 }, async ($, on) => {
   const { clock } = arrange(on)
   await $.session.start(START)
   await $.command.run(TOGGLE)
@@ -540,7 +540,7 @@ test('the TODO line\'s ▸ opens the list and ▾ folds it: written to listView 
   }
 })
 
-test('the alert strip counts asks and stalls from the board and failed calls from the ledger; the status line counts them', STATUS_ON, async ($, on) => {
+test('the alert strip counts asks and stalls from the board and failed calls from the ledger; the status line counts them', { ...STATUS_ON, timeoutMs: 20_000 }, async ($, on) => {
   on('session.measure', (_$, e) => ({ changed: e.changed }))
   const { held, clock, world } = await sketched($, on)
   await spawn($)

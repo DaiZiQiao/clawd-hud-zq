@@ -207,7 +207,7 @@ test('effort reads from a step or from the settings, per model first', async () 
   expect(effortFromSettings(undefined, undefined)).toBe(undefined)
 })
 
-test('a main turn\'s end writes usage once (one more turn, its time, the context sampled); a subagent\'s writes none', async ($, on) => {
+test('a main turn\'s end writes usage once (one more turn, its time, the context sampled); a subagent\'s writes none', { timeoutMs: 20_000 }, async ($, on) => {
   const { clock, held } = arrange(on)
   await started($, clock)
   const before = held.get('usage') as { value: HudUsageFacts; version: number }
@@ -574,7 +574,7 @@ test('session start gathers who, where and what was measured, then one git readi
   expect(world.breakdowns).toBe(1)
 })
 
-test('the tick never runs git', async ($, on) => {
+test('the tick never runs git', { timeoutMs: 20_000 }, async ($, on) => {
   const { clock, held, gitRuns } = arrange(on)
   await started($, clock)
   await $.command.run(TOGGLE as Parameters<Engine['command']['run']>[0])

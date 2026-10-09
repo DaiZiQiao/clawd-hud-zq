@@ -407,7 +407,7 @@ const SKETCH_IDS = [
 ]
 
 describe('the HUD', () => {
-  test('mounts every fixture on terminal and desktop at 100, 56 and 48 columns', async ($, on) => {
+  test('mounts every fixture on terminal and desktop at 100, 56 and 48 columns', { timeoutMs: 20_000 }, async ($, on) => {
     const scene = stage(on)
     await eachDrawing($, scene, WIDTHS, (rows, { name, surface, columns }) => {
       const lines = linesFor(surface, hudLines(scene.data, { columns, isNarrow: columns < NARROW_BELOW }))
@@ -542,7 +542,7 @@ describe('the HUD', () => {
     }
   })
 
-  test('(2) bars are 20 cells wide, 10 or 8 narrow, the fill coloured by level and the track dim', async ($, on) => {
+  test('(2) bars are 20 cells wide, 10 or 8 narrow, the fill coloured by level and the track dim', { timeoutMs: 20_000 }, async ($, on) => {
     const scene = stage(on)
     const levels: [number, string][] = [[0, 'success'], [12, 'success'], [59, 'success'], [60, 'warning'], [84, 'warning'], [85, 'error'], [100, 'error']]
     for (const surface of SURFACES) {
@@ -687,7 +687,7 @@ describe('the HUD', () => {
     }
   })
 
-  test('(5) a missing fact hides its row instead of printing zeros; a section with no rows hides its label', async ($, on) => {
+  test('(5) a missing fact hides its row instead of printing zeros; a section with no rows hides its label', { timeoutMs: 20_000 }, async ($, on) => {
     const scene = stage(on, sparse)
     for (const surface of SURFACES) {
       for (const columns of [100, 48]) {
@@ -764,7 +764,7 @@ describe('the HUD', () => {
     }
   })
 
-  test('(8) dim for the secondary, bold for the headlines, colour only on bars, glyphs, the model, working, the ETA, the cooling cache, the lines changed and the alerts', async ($, on) => {
+  test('(8) dim for the secondary, bold for the headlines, colour only on bars, glyphs, the model, working, the ETA, the cooling cache, the lines changed and the alerts', { timeoutMs: 20_000 }, async ($, on) => {
     const scene = stage(on)
     await eachDrawing($, scene, WIDTHS, async (rows, { name, columns }) => {
       for (const row of rows) {

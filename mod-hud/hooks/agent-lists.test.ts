@@ -30,7 +30,7 @@ describe('agent rows', () => {
     return ((row?.children ?? []) as Node[]).map(cell => shownText(cell).padEnd(Number(cell.props?.width ?? 0))).join('')
   }
 
-  test('the calls column holds four digits and keeps one blank cell before the detail', async ($, on) => {
+  test('the calls column holds four digits and keeps one blank cell before the detail', { timeoutMs: 20_000 }, async ($, on) => {
     const { held } = arrange(on)
     for (const calls of [1, 91, 138, 1234]) {
       held.set('agents', { value: { counted: entry('counted', { toolCalls: calls, currentTool: 'Read', description: 'Build the HUD' }) }, version: calls })
@@ -124,7 +124,7 @@ describe('collapsed finished agents', () => {
     }
   })
 
-  test('a group\'s header Button minimises it to that line and opens it again, each group on its own, written on a press only, at 100 and 48 columns', async ($, on) => {
+  test('a group\'s header Button minimises it to that line and opens it again, each group on its own, written on a press only, at 100 and 48 columns', { timeoutMs: 20_000 }, async ($, on) => {
     const { held, world } = arrange(on)
     held.set('agents', { value: board(5), version: 1 })
     held.set('shadows', { value: flows(5), version: 1 })

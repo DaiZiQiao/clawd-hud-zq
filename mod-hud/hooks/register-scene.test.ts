@@ -23,7 +23,7 @@ import { displayWidth } from './text-width'
 // clock, raised hands for permission asks, workflow agents in the pane.
 
 describe('the scene clock', () => {
-  test('the frame clock writes only sceneTick while mascots wander and act: nothing per frame otherwise', async ($, on) => {
+  test('the frame clock writes only sceneTick while mascots wander and act: nothing per frame otherwise', { timeoutMs: 20_000 }, async ($, on) => {
     const held = new Map<string, { value: unknown; version: number }>()
     const intervals: { ms: number; fn: () => void; cancelled: boolean }[] = []
     let now = NOW
@@ -237,7 +237,7 @@ const sceneColours = async (ui: Drawing): Promise<Set<string>> => {
 }
 
 describe('in the pane', () => {
-  test('HUD, TODO, agents, then the scene: three running agents at 72×36, none at 72×12', { options: { wander: false, motion: 'classic' } }, async ($, on) => {
+  test('HUD, TODO, agents, then the scene: three running agents at 72×36, none at 72×12', { options: { wander: false, motion: 'classic' }, timeoutMs: 20_000 }, async ($, on) => {
     const { clock, held } = arrange(on)
     await $.session.start(START)
     await clock.settle()

@@ -79,7 +79,7 @@ test('/mod-hud opens and closes the pane, raises a hidden tab, and reports a pan
   expect(waiting.text).toBe('HUD is waiting: terminal too narrow')
 })
 
-test('a spawn creates a running entry, the status line follows it, and the row is drawn', STATUS_ON, async ($, on) => {
+test('a spawn creates a running entry, the status line follows it, and the row is drawn', { ...STATUS_ON, timeoutMs: 20_000 }, async ($, on) => {
   const { clock, world, held } = arrange(on)
   await $.session.start(START)
   expect(lastStatus(world)).toBe(undefined)

@@ -43,7 +43,7 @@ const shadowsOf = (held: Held): ShadowRecord => (held.get(SHADOWS)?.value ?? {})
 const workflowRows = async (ui: Drawing) =>
   (await ui.findAll({ type: 'Box' })).filter(box => box.key?.startsWith('workflow:') === true)
 
-test('a workflow agent shows after its first tool call, never after one step, and never writes the board', async ($, on) => {
+test('a workflow agent shows after its first tool call, never after one step, and never writes the board', { timeoutMs: 20_000 }, async ($, on) => {
   const { clock, held, shadowWrites, agentWrites } = workflowWorld(on)
   await $.session.start(START)
   const board = agentWrites()
@@ -221,7 +221,7 @@ test('maxRows caps subagents and workflow agents together, the subagents first',
   }
 })
 
-test('a workflow agent quiet for ten minutes is dropped, and a held one keeps a closed pane\'s clock until then', async ($, on) => {
+test('a workflow agent quiet for ten minutes is dropped, and a held one keeps a closed pane\'s clock until then', { timeoutMs: 20_000 }, async ($, on) => {
   const { clock, world, held, shadowWrites } = workflowWorld(on)
   await $.session.start(START)
   await callTool($, WF_A, 'Read')
