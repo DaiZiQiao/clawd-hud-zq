@@ -4,9 +4,8 @@ import type { AgentBoardEntry } from '../types'
 import { boxed, cellOf, drawnAlone, placementOf } from './mascot-glyphs.fixtures'
 import { HEADS, LEGS, OVERLAYS, SLOT, TORSOS } from './mascot-sprites'
 import { sceneOf } from './scene-model'
-import { DONE_HOLD, FAIL_HOLD, NOW, entry, idleHud, oneAgent, trio, working } from './scene-model.fixtures'
+import { ARRIVE_TICKS, DONE_HOLD, FAIL_HOLD, NOW, entry, idleHud, oneAgent, trio, working } from './scene-model.fixtures'
 import {
-  ARRIVE_TICKS,
   BLANKET_AFTER_MS,
   CHEER_TICKS,
   EXIT_TICKS,
@@ -21,7 +20,7 @@ import {
 import { PIPE_DROP_MS, PIPE_SLIDE_MS } from './scene-pipe'
 import { placedSprites } from './scene-placement'
 import { mascotPlan } from './scene-plan'
-import { mascotLines } from './scene-render'
+import { mascotLines } from './scene-render.fixtures'
 import type { MascotLayout, MascotPlan, MascotScene } from './scene-types'
 import { displayWidth } from './text-width'
 

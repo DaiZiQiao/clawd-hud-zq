@@ -3,7 +3,7 @@ import type { ButtonProps, ElementConstructor, RenderElement } from 'claude-code
 import type { HudDetailFacts, HudSelection, HudTab, HudTokenFacts, HudTrailStep } from '../types'
 import type { CostModel, RunCounts } from './hud-ledger'
 import { formatCost, formatTokens } from './hud'
-import { displayWidth, padEnd, truncate } from './text-width'
+import { displayWidth, pad2, padEnd, truncate } from './text-width'
 import type { HudElements } from './hud'
 import { renderTextRow } from './text-svg'
 import type { TextCell } from './text-svg'
@@ -134,9 +134,6 @@ type MessageRow = { role: string; text: string }
 export const assistantTexts = (messages: readonly MessageRow[], max = SAID_MAX): string[] =>
   messages.filter(one => one.role === 'assistant' && one.text.trim() !== '').slice(-max).map(one => one.text.trim().slice(0, SAID_CHARS))
 
-/** The last assistant message with text, from `$.session.messages({ agentId })`'s rows. */
-export const lastAssistantText = (messages: readonly MessageRow[]): string | undefined => assistantTexts(messages, 1)[0]
-
 /** The first user message with text: the agent's prompt, at most PROMPT_CHARS characters. */
 export const promptOf = (messages: readonly MessageRow[]): string | undefined =>
   messages.find(one => one.role === 'user' && one.text.trim() !== '')?.text.trim().slice(0, PROMPT_CHARS)
@@ -164,38 +161,6 @@ export type InspectRow = { key: string; cells: Cell[] }
 const isButton = (cell: Cell): cell is ButtonCell => 'button' in cell
 
 const dim = (text: string): Part => ({ text, dimColor: true })
-
-/** A cell as the terminal draws it: `[ label ]` for a primary Button, the label for a plain one. */
-export const cellText = (cell: Cell): string => (isButton(cell) ? (cell.button.primary === true ? `[ ${cell.button.label} ]` : cell.button.label) : cell.text)
-
-/** A row as plain text: what docs/pane-sketch.md shows. */
-export const rowText = (row: InspectRow): string => row.cells.map(cellText).join('').trimEnd()
-
-/** The rows as plain text. */
-export const inspectLines = (rows: readonly InspectRow[]): string[] => rows.map(rowText)
-
-/** Words wrapped into rows of at most `width` cells, at most `rows` rows, the last ending in `…` when cut. */
-export const wrapText = (text: string, width: number, rows: number): string[] => {
-  const words = flat(text).split(' ').filter(word => word !== '')
-  const out: string[] = []
-  let line = ''
-  for (const word of words) {
-    const candidate = line === '' ? word : `${line} ${word}`
-    if (displayWidth(candidate) <= width) {
-      line = candidate
-      continue
-    }
-    if (line !== '') out.push(line)
-    line = displayWidth(word) <= width ? word : truncate(word, width)
-    if (out.length >= rows) break
-  }
-  if (line !== '' && out.length < rows) out.push(line)
-  const cut = out.length > rows || (out.length === rows && out.join(' ').length < words.join(' ').length)
-  const kept = out.slice(0, rows)
-  if (cut && kept.length > 0) kept[kept.length - 1] = truncate(`${kept[kept.length - 1] ?? ''} …`, width).replace(/ …$/, '…')
-
-  return kept
-}
 
 // A word wider than the row is broken into row-wide pieces.
 const pieces = (word: string, width: number): string[] => {
@@ -337,8 +302,6 @@ export const taskRows = (body: AgentBody, columns: number): InspectRow[] => {
 
   return rows.length === 0 || more.length === 0 ? [...rows, ...more] : [...rows, gap('task:gap'), ...more]
 }
-
-const pad2 = (n: number): string => String(n).padStart(2, '0')
 
 /** `14:02:11`, local time. */
 export const clockOf = (at: number): string => {

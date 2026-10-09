@@ -56,8 +56,6 @@ export type Carried = {
   kind: Placement['kind']
   /** Down and dizzy when it lands, however softly (it hit someone, or was knocked out of the air). */
   knock?: boolean
-  /** Landed and sliding to a stop. */
-  grounded?: boolean
   ride?: { on: string; dx: number; until: number }
   /** Who it already knocked over on this throw. */
   hit?: string[]
@@ -308,14 +306,8 @@ const stepCarried = (world: World, dt: number): void => {
     const stepped = step(carried.body, dt)
     carried.body = stepped.body
     if (carried.mode === 'thrown') bowl(world, carried, from, rectAt(plan, carried.kind, carried.d, carried.body.x, carried.body.lift))
-    if (stepped.landed === 'knockout') {
-      settle(world, carried, 'knockout')
-    } else if (stepped.landed !== undefined) {
-      carried.grounded = true
-      if (stepped.resting) settle(world, carried, stepped.landed)
-    } else if (stepped.resting) {
-      settle(world, carried, 'soft')
-    }
+    if (stepped.landed === 'knockout') settle(world, carried, 'knockout')
+    else if (stepped.resting) settle(world, carried, stepped.landed ?? 'soft')
   }
 }
 

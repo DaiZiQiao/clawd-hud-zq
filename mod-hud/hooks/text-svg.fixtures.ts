@@ -1,6 +1,7 @@
 import { displayWidth } from './text-width'
 import { CELL_HEIGHT, CELL_WIDTH, CLASSES } from './svg-style'
-import { BAR_RECTS } from './text-svg'
+import { BAR_RECTS, buttonText, isTextButton } from './text-svg'
+import type { TextCell } from './text-svg'
 
 // The pane's text rows in pixels read back, for the tests: each `<text>` run
 // and bar rect back to the cells and the `Text` styles it was drawn from, and
@@ -90,6 +91,10 @@ export const textPieces = (source: string): { text: string; props: Record<string
 
 /** The row's document as text: every run at its cell, blanks between, trailing blanks dropped. */
 export const textLine = (source: string): string => textPieces(source).map(piece => piece.text).join('').trimEnd()
+
+/** The cells a row takes, its Buttons included. */
+export const rowWidth = (cells: readonly TextCell[]): number =>
+  cells.reduce((sum, cell) => sum + displayWidth(isTextButton(cell) ? buttonText(cell.button) : cell.text), 0)
 
 const isSvgRow = (node: Described): boolean => (node.children ?? []).some(child => (child as Described)?.type === 'Svg' || (child as Described)?.props?.position === 'absolute')
 

@@ -187,3 +187,6 @@ export const truncateStart = (text: string, width: number): string => {
 export const padStart = (text: string, width: number): string => ' '.repeat(Math.max(0, width - displayWidth(text))) + text
 
 export const padEnd = (text: string, width: number): string => text + ' '.repeat(Math.max(0, width - displayWidth(text)))
+
+/** A clock's two digits: `7` as `07`. */
+export const pad2 = (n: number): string => String(n).padStart(2, '0')

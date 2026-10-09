@@ -6,7 +6,7 @@ import { NOW, busy, crowd, entry, everyState, everything, family, hotHud, idleHu
 import { SCENE_FRAME_MS } from './scene-phases'
 import { mascotPlan } from './scene-plan'
 import { T0, room, run } from './scene-plan.fixtures'
-import { mascotLines } from './scene-render'
+import { mascotLines } from './scene-render.fixtures'
 import { displayWidth } from './text-width'
 
 // The scene stays in its room: from 20 to 130 columns, no row wider than the

@@ -14,7 +14,7 @@ import type { TvWorld } from './tv-world'
 // redraws and hear from it a channel, a press or, once it has played its
 // closing out, the close.
 
-type State = { tv: TvWorld; frame: number; stop?: () => void }
+type State = { tv: TvWorld; frame: number }
 
 /** What the module draws with: its table's Box and Text, and `Svg` where the table has it. */
 export type TvElements = Pick<ClientElements, 'Box' | 'Text'> & { Svg?: ElementConstructor<SvgProps> }
@@ -108,7 +108,7 @@ const TvClient: ClientModule<JsonValue, State> = (props, surface) => {
       const held = surface.state
       if (held !== undefined && keyTv(held.tv, event, post)) redraw(held)
     })
-    state.stop = surface.every(TV_FRAME_MS, () => {
+    surface.every(TV_FRAME_MS, () => {
       const held = surface.state
       if (held !== undefined && tickTv(held.tv, post)) redraw(held)
     })

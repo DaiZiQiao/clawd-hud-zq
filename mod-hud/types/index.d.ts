@@ -31,8 +31,6 @@ export type AgentBoardEntry = {
    * never on its own). The mascot scene's reading streak.
    */
   readingSince?: number
-  /** Reserved for later mods. */
-  labels?: string[]
 }
 
 declare module 'claude-code' {
@@ -402,7 +400,7 @@ export type HudInventoryFacts = {
 }
 
 // --- what the HUD renderer draws (hooks/hud.tsx) ------------------------------
-// `renderHud` and `statusLineText` read one `HudData`. Every field may be
+// `renderHudBlock` and `statusLineText` read one `HudData`. Every field may be
 // absent and every row copes: a fact not given hides its row or cell. Each
 // part is a structural supertype of the matching `Hud*Facts` above, so the
 // facts as held assign to it directly.

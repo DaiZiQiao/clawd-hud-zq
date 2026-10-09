@@ -9,7 +9,7 @@ import { oneAgent, working } from './scene-model.fixtures'
 import { SCENE_FRAME_MS } from './scene-phases'
 import { mascotPlan } from './scene-plan'
 import { T0, lineRows, room, run, wanderers } from './scene-plan.fixtures'
-import { mascotLines } from './scene-render'
+import { mascotLines } from './scene-render.fixtures'
 import type { MascotLayout, MascotPlan, MascotScene, Placement } from './scene-types'
 
 // The field stepped frame by frame (`stepField`, through `mascotPlan`):

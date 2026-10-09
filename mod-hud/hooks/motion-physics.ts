@@ -1,3 +1,5 @@
+import { clamp } from './motion-rules'
+
 // The mascot scene's physics, for what the person does with the pointer and
 // what happens when bodies meet in the air: pure functions of a body, the
 // room and a fixed time step, no randomness. The `Client` surface module
@@ -61,8 +63,6 @@ export type Impact = { kind: 'wall' | 'ceiling' | 'floor'; speed: number }
 export type Landing = 'soft' | 'bounce' | 'knockout'
 
 export type Stepped = { body: Body; impacts: Impact[]; landed?: Landing; resting: boolean }
-
-const clamp = (value: number, lo: number, hi: number): number => Math.max(lo, Math.min(hi, value))
 
 /** A velocity no faster than MAX_SPEED either way. */
 export const capped = (v: number): number => clamp(v, -MAX_SPEED, MAX_SPEED)

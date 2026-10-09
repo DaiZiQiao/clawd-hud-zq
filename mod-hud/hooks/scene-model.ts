@@ -1,6 +1,6 @@
 import type { AgentBoardEntry, HudData, ShadowAgentEntry } from '../types'
 import { READ_TOOLS, isShadowLive, isShadowVisible } from './agent-shadows'
-import { ACCESSORIES, ACCESSORY_NAMES, BLANKET, CROWN, LAPTOP_COLOUR, OVERLAYS } from './mascot-sprites'
+import { ACCESSORY_NAMES } from './mascot-sprites'
 import type { Accessory } from './mascot-sprites'
 import { hashOf } from './motion-rules'
 import {
@@ -20,7 +20,7 @@ import {
   TIDY_STALE_MS,
   holdTicks,
 } from './scene-phases'
-import { PIPE_BATCH_MS, PIPE_COLOUR, PIPE_SHINE, PIPE_SLIDE_MS, pipeBatch } from './scene-pipe'
+import { PIPE_BATCH_MS, PIPE_SLIDE_MS, pipeBatch } from './scene-pipe'
 import type {
   Energy,
   MascotActivity,
@@ -35,8 +35,7 @@ import type {
   SceneOptions,
   SceneShadowInput,
 } from './scene-types'
-import { defined } from './state-json'
-import { USAGI_COLOURS } from './usagi-sprites'
+import { defined, isNumber } from './state-json'
 
 // The mascot scene drawn in the pane's spare rows, under the agent list: the
 // session's own mascot first, then one per subagent and workflow agent, all
@@ -73,20 +72,6 @@ export const PALETTE = [
   '#008D80',
   '#B26C4B',
 ] as const
-
-/** The raw colours of what is worn and used: the accessories, the crown, the laptop, the blanket, the cigarette. */
-export const KIT_COLOURS: readonly string[] = [
-  ...new Set([
-    ...Object.values(ACCESSORIES).map(one => one.colour),
-    CROWN.colour,
-    LAPTOP_COLOUR,
-    BLANKET.colour,
-    ...OVERLAYS.cigarette.map(one => one.colour ?? ''),
-  ]),
-].filter(colour => colour !== '')
-
-/** Every colour the scene draws in, the palette, the kit and the red pipe included. */
-export const SCENE_COLOURS: readonly string[] = [ACCENT, GOOD, WARN, HOT, ASK, DROP, ...PALETTE, ...KIT_COLOURS, PIPE_COLOUR, PIPE_SHINE, ...USAGI_COLOURS]
 
 /**
  * An agent's colour, the same for the same id every time (an FNV-1a hash into
@@ -194,7 +179,7 @@ export const energyOf = (effort: string | undefined): Energy => {
 /** A type whose desk a reviewer visits: one that writes or fixes. */
 export const isMakerType = (type: string | undefined): boolean => /worker|frontend|debug/i.test(type ?? '')
 
-export const isNumber = (value: unknown): value is number => typeof value === 'number' && Number.isFinite(value)
+export { isNumber }
 
 const contextPercentOf = (hud: HudData | undefined): number | undefined => {
   const usage = hud?.usage

@@ -1,9 +1,14 @@
-import type { HudData } from '../types'
+import type { RenderElement } from 'claude-code'
 
-// The HUD's test fixtures. NOW is one fixed instant, so the mascots'
-// choreography, which hashes absolute frames, moves the same way in every
-// time zone. A reset and a trail step are drawn on the local clock: the labels
-// below are what the zone the tests run in draws for them.
+import type { HudData, HudLayout } from '../types'
+import { TODO_ROWS, renderHudBlock, rowsOf, todoRows } from './hud'
+import type { HudElements } from './hud'
+
+// The HUD's test fixtures, and the HUD read back as plain text. NOW is one
+// fixed instant, so the mascots' choreography, which hashes absolute frames,
+// moves the same way in every time zone. A reset and a trail step are drawn
+// on the local clock: the labels below are what the zone the tests run in
+// draws for them.
 
 /** Saturday 3 October 2026, 12:00 UTC. */
 export const NOW = Date.UTC(2026, 9, 3, 12, 0, 0)
@@ -32,8 +37,6 @@ export const AT_7D = `↻ ${['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][ne
 export const AT_SPEND = `↻ Nov ${new Date(RESET_SPEND).getDate()}`
 /** `↻14:20`: RESET_5H as the shared limits row and the alert strip draw it, tight. */
 export const TIGHT_5H = AT_5H.replace('↻ ', '↻')
-/** `↻Tue`: RESET_7D, tight. */
-export const TIGHT_7D = AT_7D.replace('↻ ', '↻')
 
 /**
  * The 5h window's percent over the last 35 minutes: 11 % at its start, 31 %
@@ -222,3 +225,16 @@ export const calm: HudData = {
 }
 
 export const FIXTURES = { full, sparse, empty, manyTools, longBranch, fullContext, alarmed, calm, coldCache, coolingCache } as const
+
+/** Each HUD row as plain text, top to bottom: what `renderHudBlock` draws, uncoloured (the blank row between header and sections `''`). */
+export const hudLines = (data: HudData, layout: HudLayout): string[] => rowsOf(data, layout).map(row => row.spans.map(span => span.text).join(''))
+
+/** The ids of the HUD's rows, top to bottom (`header`, `alerts`, `gap`, `session.repo`, ..., `motto`). */
+export const hudRowIds = (data: HudData, layout: HudLayout): string[] => rowsOf(data, layout).map(row => row.id)
+
+/** The HUD block's drawing alone. */
+export const renderHud = (ui: HudElements, data: HudData, layout: HudLayout): RenderElement | undefined => renderHudBlock(ui, data, layout).element
+
+/** The TODO section as plain text, the label row first: what `renderTodos` draws, uncoloured. */
+export const todoLines = (todos: HudData['todos'], columns: number, max = TODO_ROWS, expanded = false): string[] =>
+  todoRows(todos, columns, max, expanded).map(row => row.text)

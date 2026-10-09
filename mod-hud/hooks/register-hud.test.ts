@@ -3,8 +3,8 @@ import { expect, test } from 'claude-code/testing'
 import type { Engine } from 'claude-code/testing'
 
 import type { HudData } from '../types'
-import { hudLines, statusLineText } from './hud'
-import { NOW as SKETCH_NOW, full } from './hud.fixtures'
+import { statusLineText } from './hud'
+import { NOW as SKETCH_NOW, full, hudLines } from './hud.fixtures'
 import { register } from './register'
 import {
   HUD_KEYS,

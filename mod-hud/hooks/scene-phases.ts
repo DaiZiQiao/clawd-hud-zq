@@ -10,13 +10,6 @@ import type { MascotAgent, Phase, PipeShare } from './scene-types'
 // --- timing, in quarter-second frames ----------------------------------------
 
 export const SCENE_FRAME_MS = 250
-/**
- * Arriving by the red pipe (hooks/scene-pipe.ts): the pipe comes down over its slot
- * (2 frames) and it drops out to its floor (2); the pipe goes back up as it
- * starts. One of several spawned within two seconds waits its turn in the
- * shared pipe (`MascotAgent.pipe`).
- */
-export const ARRIVE_TICKS = (PIPE_SLIDE_MS + PIPE_DROP_MS) / SCENE_FRAME_MS
 /** Leaving by the pipe: it comes down over it (2), sucks it up (4) and goes (2). */
 export const FAREWELL_TICKS = PIPE_FAREWELL_MS / SCENE_FRAME_MS
 /** Delegation: the spawner holds out its hand, then the newcomer takes the task. */
@@ -75,7 +68,13 @@ export const holdTicks = (agent: Pick<MascotAgent, 'status' | 'spawner' | 'workf
 
 // --- phases --------------------------------------------------------------------
 
-/** Frames from its spawn until it is on its floor: its own pipe's, or its turn in a shared one. */
+/**
+ * Frames from its spawn until it is on its floor, arriving by the red pipe
+ * (hooks/scene-pipe.ts): alone, the pipe comes down over its slot (2 frames)
+ * and it drops out to its floor (2), the pipe going back up as it starts;
+ * one of several spawned within two seconds waits its turn in the shared
+ * pipe (`MascotAgent.pipe`).
+ */
 export const arriveTicksOf = (agent: Pick<MascotAgent, 'id' | 'pipe'>): number => {
   const share = agent.pipe ?? soloPipe(agent.id)
 

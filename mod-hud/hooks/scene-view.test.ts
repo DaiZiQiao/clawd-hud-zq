@@ -4,7 +4,7 @@ import { HEADS } from './mascot-sprites'
 import { HOP_AIR, HOP_HEIGHT, HOP_REACH, LOOP_TICKS } from './motion-rules'
 import { NOW, entry } from './scene-model.fixtures'
 import { SCENE_FRAME_MS, holdTicks } from './scene-phases'
-import { PIPE_ARRIVAL_MS, PIPE_FAREWELL_MS } from './scene-pipe'
+import { PIPE_DROP_MS, PIPE_FAREWELL_MS, PIPE_SLIDE_MS } from './scene-pipe'
 import { viewOf } from './scene-view'
 import { FRAME_MS, createWorld, inject, tick } from './scene-world'
 import { LAPTOP, TYPIST, frameLines, inputs, memoOf, ticks } from './scene-world.fixtures'
@@ -48,10 +48,11 @@ describe('motion', () => {
 
   test('a newcomer comes by the red pipe: down over its slot, out of the mouth falling ever faster to its floor, the pipe back up; a finished one is sucked up it after its cheer', () => {
     const LIP = '█████████'
+    const ARRIVAL_MS = PIPE_SLIDE_MS + PIPE_DROP_MS + PIPE_SLIDE_MS
     const FALLING = HEADS.wide.slice(1, 8)
     const world = createWorld(inputs([entry('n', { startedAt: NOW, currentTool: 'Edit' })]))
     const frames: { at: number; pipe: boolean; head: number; desk: boolean }[] = []
-    for (let ms = FRAME_MS; ms <= PIPE_ARRIVAL_MS + 500; ms += FRAME_MS) {
+    for (let ms = FRAME_MS; ms <= ARRIVAL_MS + 500; ms += FRAME_MS) {
       tick(world)
       const lines = frameLines(world)
       frames.push({ at: ms, pipe: lines.some(row => row.includes(LIP)), head: lines.findIndex(row => row.includes(FALLING)), desk: lines.some(row => row.includes(LAPTOP)) })
@@ -59,7 +60,7 @@ describe('motion', () => {
     const piped = frames.filter(one => one.pipe).map(one => one.at)
     // The pipe in sight for most of its 1.5 s, gone after.
     expect(Math.min(...piped)).toBeLessThanOrEqual(250)
-    expect(Math.max(...piped)).toBeLessThan(PIPE_ARRIVAL_MS)
+    expect(Math.max(...piped)).toBeLessThan(ARRIVAL_MS)
     expect(piped.length).toBeGreaterThan(20)
     // Out of the mouth in the fall look, under the pipe, never back up.
     const falling = frames.filter(one => one.head >= 0)

@@ -1,8 +1,8 @@
 import { describe, expect, test } from 'claude-code/testing'
 
 import { boxed, drawnAlone, figureIn, rowsOf, spriteOf, windowOf } from './mascot-glyphs.fixtures'
-import { spriteSheet } from './mascot-sheet'
-import type { SheetEntry } from './mascot-sheet'
+import { spriteSheet } from './mascot-sheet.fixtures'
+import type { SheetEntry } from './mascot-sheet.fixtures'
 import { ACCESSORIES, BLANKET, CROUCHED, CROWN, HAT_X, HEADS, LEANING, LEGS, OVERLAYS, SLOT, SQUASHED, THOUGHTS, TORSOS, WALK_LEGS, flipped, thoughtBubble } from './mascot-sprites'
 import { sceneOf } from './scene-model'
 import { DONE_HOLD, NOW, entry, family, idleHud, oneAgent, working } from './scene-model.fixtures'
@@ -10,7 +10,7 @@ import { BLANKET_AFTER_MS, CHEER_TICKS, IDLE_SLOT_MS, LONG_IDLE_MS, SCENE_FRAME_
 import { placedSprites } from './scene-placement'
 import { mascotPlan } from './scene-plan'
 import { T0, room, run } from './scene-plan.fixtures'
-import { mascotLines } from './scene-render'
+import { mascotLines } from './scene-render.fixtures'
 import type { MascotAgent, MascotLayout, MascotPlan, MascotScene } from './scene-types'
 import { displayWidth } from './text-width'
 

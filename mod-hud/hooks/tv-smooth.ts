@@ -169,18 +169,6 @@ const outlined = (shapes: readonly Shape[]): Shape[] => [
   ...shapes,
 ]
 
-/** A stroke along an arc about (`cx`, `cy`), `r` out, from angle `from` to `to` (radians, y down), `width` thick, in the line's colour. */
-const arc = (cx: number, cy: number, r: number, from: number, to: number, width: number): Shape => {
-  const steps = 12
-  const at = (index: number, out: number): readonly [number, number] => {
-    const a = from + ((to - from) * index) / steps
-
-    return [cx + (r + out) * Math.cos(a), cy + (r + out) * Math.sin(a)]
-  }
-
-  return { kind: 'poly', x: 0, y: 0, w: 0, h: 0, points: [...Array.from({ length: steps + 1 }, (_, index) => at(index, width / 2)), ...Array.from({ length: steps + 1 }, (_, index) => at(steps - index, -width / 2))], fill: USAGI.line }
-}
-
 /** A shape turned `a` radians about (`x`, `y`). */
 const turned = (a: number, x: number, y: number) => [Math.cos(a), Math.sin(a), -Math.sin(a), Math.cos(a), x - x * Math.cos(a) + y * Math.sin(a), y - x * Math.sin(a) - y * Math.cos(a)] as const
 

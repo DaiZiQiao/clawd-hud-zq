@@ -1,16 +1,16 @@
 import { describe, expect, test } from 'claude-code/testing'
 
 import { boxed, cellOf, drawnAlone, figureIn, placementOf, spriteOf, windowOf } from './mascot-glyphs.fixtures'
-import { spriteSheet } from './mascot-sheet'
-import type { SheetEntry } from './mascot-sheet'
+import { spriteSheet } from './mascot-sheet.fixtures'
+import type { SheetEntry } from './mascot-sheet.fixtures'
 import { ACCESSORIES, ACCESSORY_NAMES, BLANKET, CROWN, HAT_X, HEADS, LAPTOP_COLOUR, ROLE_LETTERS, SLOT, SQUASHED, THOUGHTS, TORSOS } from './mascot-sprites'
-import { CLASHES, KIT_COLOURS, PALETTE, SCENE_COLOURS, accessoryOf, energyOf, roleOf, sceneOf, sideOf } from './scene-model'
-import { NOW, crowd, entry, idleHud, oneAgent, working } from './scene-model.fixtures'
+import { CLASHES, PALETTE, accessoryOf, energyOf, roleOf, sceneOf, sideOf } from './scene-model'
+import { KIT_COLOURS, NOW, SCENE_COLOURS, crowd, entry, idleHud, oneAgent, working } from './scene-model.fixtures'
 import { SCENE_FRAME_MS } from './scene-phases'
 import { placedSprites } from './scene-placement'
 import { mascotPlan } from './scene-plan'
 import { T0, room, run } from './scene-plan.fixtures'
-import { mascotLines } from './scene-render'
+import { mascotLines } from './scene-render.fixtures'
 import type { Cell, MascotLayout, MascotScene } from './scene-types'
 
 // A mascot drawn into cells: the figure whole and in its colour, its air

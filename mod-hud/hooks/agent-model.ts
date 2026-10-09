@@ -4,7 +4,7 @@ import type { AgentBoardEntry, AgentBoardOutcome, ShadowAgentEntry } from '../ty
 import { shadowCounts, shownShadows } from './agent-shadows'
 import type { Shadows } from './agent-shadows'
 import { defined } from './state-json'
-import { printable } from './text-width'
+import { pad2, printable } from './text-width'
 
 // The board's agents and the workflow agents as the lists, the status line
 // and the inspect view read them: pure helpers with no `$`. What
@@ -20,8 +20,6 @@ export const HOT = 'error'
 const MAX_DEPTH = 3
 
 export type Agents = Record<string, AgentBoardEntry>
-
-const pad2 = (n: number): string => String(n).padStart(2, '0')
 
 export const humanize = (ms: number): string => {
   const seconds = Math.floor(Math.max(0, ms) / 1000)

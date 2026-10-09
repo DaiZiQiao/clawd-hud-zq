@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'claude-code/testing'
 
-import { PIPE_ARRIVAL_MS, PIPE_BATCH_MS, PIPE_COLOUR, PIPE_DROP_MAX, PIPE_DROP_MS, PIPE_FAREWELL_MS, PIPE_SHINE, PIPE_SLIDE_MS, PIPE_WIDTH, arrivalAt, batchPipeAt, droppedAt, farewellAt, pipeBatch, pipeCells, pipeHang } from './scene-pipe'
+import { PIPE_BATCH_MS, PIPE_COLOUR, PIPE_DROP_MAX, PIPE_DROP_MS, PIPE_FAREWELL_MS, PIPE_SHINE, PIPE_SLIDE_MS, PIPE_WIDTH, batchPipeAt, droppedAt, farewellAt, pipeBatch, pipeCells, pipeHang } from './scene-pipe'
 
 // The warp pipe: its art and its timeline, before the scene places them.
 
@@ -46,32 +46,9 @@ describe('the pipe', () => {
     ])
   })
 
-  test('arriving: the pipe comes down with the mascot inside, it drops out and falls to the floor, the pipe goes back up', () => {
-    for (const sky of [0, 2, 6, 12]) {
-      const { mouth, drop } = pipeHang(sky)
-      const frames = Array.from({ length: PIPE_ARRIVAL_MS / 50 + 2 }, (_, index) => arrivalAt(index * 50, sky))
-      // Out of sight at the start, at no time below where it hangs, gone at the end.
-      expect(frames[0]?.mouth).toBe(undefined)
-      for (const frame of frames) if (frame.mouth !== undefined) expect(frame.mouth, `${sky}`).toBeGreaterThanOrEqual(mouth - 1e-9)
-      for (const frame of frames) if (frame.mouth !== undefined) expect(frame.mouth, `${sky}`).toBeLessThanOrEqual(sky + 0.5)
-      expect(frames.at(-1)).toEqual({ lift: 0, inside: false })
-      // Inside while it comes down; then out, at its mouth, falling ever faster to the floor.
-      const inside = frames.filter(frame => frame.inside)
-      expect(inside).toHaveLength(PIPE_SLIDE_MS / 50)
-      expect(arrivalAt(PIPE_SLIDE_MS, sky)).toEqual({ mouth, lift: drop, inside: false })
-      const falling = frames.slice(PIPE_SLIDE_MS / 50, (PIPE_SLIDE_MS * 2) / 50).map(frame => frame.lift)
-      falling.forEach((lift, index) => index > 0 && expect(lift).toBeLessThanOrEqual(falling[index - 1]!))
-      if (drop > 0) expect(falling[1]! - falling[2]!).toBeGreaterThan(falling[0]! - falling[1]!)
-      expect(arrivalAt(PIPE_SLIDE_MS * 2, sky).lift).toBe(0)
-      // Going back up: higher every frame until out of sight.
-      const leaving = frames.slice((PIPE_SLIDE_MS * 2) / 50).map(frame => frame.mouth ?? Number.POSITIVE_INFINITY)
-      leaving.forEach((at, index) => index > 0 && expect(at).toBeGreaterThanOrEqual(leaving[index - 1]!))
-    }
-  })
-
   test('a batch shares one pipe: each drops at its turn, never before it spawned or the pipe is down; the pipe goes up once the last is on its floor', () => {
     expect(PIPE_BATCH_MS).toBe(2000)
-    // One alone: as `arrivalAt` plays it.
+    // One alone: it drops once the pipe is down, and the pipe goes up once it is on its floor.
     expect(pipeBatch([0])).toEqual({ drops: [PIPE_SLIDE_MS], up: PIPE_SLIDE_MS + PIPE_DROP_MS })
     // Three at once: a drop's length apart.
     expect(pipeBatch([0, 0, 0])).toEqual({ drops: [500, 1000, 1500], up: 2000 })
@@ -84,8 +61,13 @@ describe('the pipe', () => {
       expect(batchPipeAt(PIPE_SLIDE_MS, sky, 1500)).toBe(mouth)
       expect(batchPipeAt(1499, sky, 1500)).toBe(mouth)
       expect(batchPipeAt(1500 + PIPE_SLIDE_MS, sky, 1500)).toBe(undefined)
-      // The solo batch is `arrivalAt`'s pipe, frame for frame.
-      for (let ms = 0; ms <= PIPE_ARRIVAL_MS; ms += 50) expect(batchPipeAt(ms, sky, PIPE_SLIDE_MS + PIPE_DROP_MS), `${sky} ${ms}`).toBe(arrivalAt(ms, sky).mouth)
+      // Alone, frame by frame: out of sight at first and at last, never below where it hangs nor over the sky, higher every frame going back up.
+      const solo = Array.from({ length: 32 }, (_, index) => batchPipeAt(index * 50, sky, PIPE_SLIDE_MS + PIPE_DROP_MS))
+      expect([solo[0], solo.at(-1)]).toEqual([undefined, undefined])
+      for (const at of solo) if (at !== undefined) expect(at, `${sky}`).toBeGreaterThanOrEqual(mouth - 1e-9)
+      for (const at of solo) if (at !== undefined) expect(at, `${sky}`).toBeLessThanOrEqual(sky + 0.5)
+      const leaving = solo.slice((PIPE_SLIDE_MS + PIPE_DROP_MS) / 50).map(at => at ?? Number.POSITIVE_INFINITY)
+      leaving.forEach((at, index) => index > 0 && expect(at).toBeGreaterThanOrEqual(leaving[index - 1]!))
       // A member's fall: inside before its drop, then from the hang's drop down to the floor, ever faster.
       expect(droppedAt(-1, sky)).toMatchObject({ inside: true, u: 0 })
       const falls = [0, 100, 200, 300, 400, 500].map(ms => droppedAt(ms, sky))

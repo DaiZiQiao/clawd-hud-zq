@@ -13,14 +13,12 @@ import {
   TRAILS_TOTAL,
   TRAIL_MAX,
   WORKFLOW_NOTE,
+  assistantTexts,
   costRows,
   headerRows,
-  inspectLines,
-  lastAssistantText,
   mainArgOf,
   overviewRows,
   promptOf,
-  rowText,
   spanOf,
   tabOf,
   tabRow,
@@ -28,9 +26,8 @@ import {
   trailEnded,
   trailRows,
   wrapAll,
-  wrapText,
 } from './inspect'
-import { PROMPT, SURFACES, WIDTHS, arrange, listRows, mount, pixelTexts, press, shown } from './inspect.fixtures'
+import { PROMPT, SURFACES, WIDTHS, arrange, inspectLines, listRows, mount, pixelTexts, press, rowText, shown } from './inspect.fixtures'
 import type { Described, Drawing } from './inspect.fixtures'
 import { NOW, entry } from './scene-model.fixtures'
 import { SVG_MAX } from './scene-svg'
@@ -608,8 +605,7 @@ describe('the inspect view', () => {
     expect([0, 420, 9999, 12_000, 245_000, 3_720_000].map(spanOf)).toEqual(['0.0s', '0.4s', '10.0s', '12s', '4m05', '1h02'])
     expect(wrapAll('one two\n\n\nthree', 20)).toEqual(['one two', '', 'three'])
     expect(wrapAll(`a ${'x'.repeat(25)}`, 10)).toEqual(['a', 'xxxxxxxxxx', 'xxxxxxxxxx', 'xxxxx'])
-    expect(wrapText('a b c', 3, 6)).toEqual(['a b', 'c'])
-    expect(lastAssistantText([{ role: 'assistant', text: 'one' }, { role: 'assistant', text: '  ' }, { role: 'user', text: 'x' }])).toBe('one')
+    expect(assistantTexts([{ role: 'assistant', text: 'one' }, { role: 'assistant', text: '  ' }, { role: 'user', text: 'x' }])).toEqual(['one'])
     expect(promptOf([{ role: 'user', text: ' ' }, { role: 'user', text: 'go' }])).toBe('go')
     // An open call of an agent no longer running reads `?`; one never ended is never `now`.
     const trail = trailRows({ kind: 'agent', running: false, trail: [{ tool: 'Read', arg: 'a.ts', at: NOW }] }, 72, NOW + 5000)

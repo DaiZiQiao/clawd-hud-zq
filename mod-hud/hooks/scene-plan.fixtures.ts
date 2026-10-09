@@ -1,7 +1,7 @@
 import { NOW, working } from './scene-model.fixtures'
 import { SCENE_FRAME_MS } from './scene-phases'
 import { mascotPlan } from './scene-plan'
-import { mascotLines } from './scene-render'
+import { mascotLines } from './scene-render.fixtures'
 import type { MascotLayout, MascotPlan, MascotScene } from './scene-types'
 
 // The choreography for the tests: plans threaded frame to frame, and the scenes they move.

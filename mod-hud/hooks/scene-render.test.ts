@@ -1,9 +1,9 @@
 import { describe, expect, test } from 'claude-code/testing'
 
-import { SCENE_COLOURS, sceneOf } from './scene-model'
-import { NOW, hotHud, trio } from './scene-model.fixtures'
-import { mascotLines, renderMascots } from './scene-render'
-import { textsIn } from './scene-render.fixtures'
+import { sceneOf } from './scene-model'
+import { NOW, SCENE_COLOURS, hotHud, trio } from './scene-model.fixtures'
+import { renderMascots } from './scene-render'
+import { mascotLines, textsIn } from './scene-render.fixtures'
 
 // The scene's tree: one keyed row per scene row, each one Text cut to the pane.
 

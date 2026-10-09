@@ -3,10 +3,10 @@ import { describe, expect, test } from 'claude-code/testing'
 import type { AgentBoardEntry, HudData, HudMainFacts, ShadowAgentEntry } from '../types'
 import { rowsOf, spriteOf } from './mascot-glyphs.fixtures'
 import { LAPTOP_COLOUR, OVERLAYS } from './mascot-sprites'
-import { PALETTE, SCENE_COLOURS, activityOf, colourFor, sceneFromInputs, sceneInputsOf, sceneOf } from './scene-model'
-import { DONE_HOLD, FAIL_HOLD, NOW, entry, everyState, family, hotHud, idleHud, oneAgent, trio, working } from './scene-model.fixtures'
+import { PALETTE, activityOf, colourFor, sceneFromInputs, sceneInputsOf, sceneOf } from './scene-model'
+import { DONE_HOLD, FAIL_HOLD, NOW, SCENE_COLOURS, entry, everyState, family, hotHud, idleHud, oneAgent, trio, working } from './scene-model.fixtures'
 import { EXIT_TICKS, IDLE_AFTER_MS, LONG_IDLE_MS, PACK_TICKS, SCENE_FRAME_MS, phaseOf } from './scene-phases'
-import { mascotColours, mascotLines } from './scene-render'
+import { mascotColours, mascotLines } from './scene-render.fixtures'
 import type { MascotLayout } from './scene-types'
 
 // The scene from the board, the workflow agents and the HUD's facts

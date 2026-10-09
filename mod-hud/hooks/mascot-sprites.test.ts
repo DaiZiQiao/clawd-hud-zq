@@ -1,7 +1,8 @@
 import { describe, expect, test } from 'claude-code/testing'
 
-import { spriteSheet } from './mascot-sheet'
-import { BOX, FRAME_TABLES, HEADS, LEGS, MINI_HEADS, MINI_LEGS, MINI_OVERLAYS, OVERLAYS, SLOT, THOUGHTS, THOUGHT_FRAMES, TORSOS, flipped, thoughtBubble } from './mascot-sprites'
+import { spriteSheet } from './mascot-sheet.fixtures'
+import { BOX, HEADS, LEGS, MINI_HEADS, MINI_LEGS, MINI_OVERLAYS, OVERLAYS, SLOT, THOUGHTS, THOUGHT_FRAMES, TORSOS, flipped, thoughtBubble } from './mascot-sprites'
+import { FRAME_TABLES } from './mascot-sprites.fixtures'
 import { displayWidth } from './text-width'
 
 // The frame tables, as text: every frame of a table one size, every glyph one cell, every overlay's ink known.

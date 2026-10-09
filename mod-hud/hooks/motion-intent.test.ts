@@ -7,7 +7,7 @@ import { working } from './scene-model.fixtures'
 import { BLANKET_AFTER_MS, IDLE_SLOT_MS, SCENE_FRAME_MS, idleBitOf } from './scene-phases'
 import { mascotPlan } from './scene-plan'
 import { T0, room, run, slotted, wanderers } from './scene-plan.fixtures'
-import { mascotLines } from './scene-render'
+import { mascotLines } from './scene-render.fixtures'
 import type { MascotLayout, MascotPlan, MascotScene, Placement } from './scene-types'
 
 // Flights: what asks one of a mover in the smooth scene, how long it stays

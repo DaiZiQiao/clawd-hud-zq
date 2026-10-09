@@ -49,10 +49,6 @@ export const isTextButton = (cell: TextCell): cell is TextButton => 'button' in 
 /** A Button's cells as the terminal draws it: `[ label ]` primary, the label alone plain. */
 export const buttonText = (button: TextButton['button']): string => (button.primary === true ? `[ ${button.label} ]` : button.label)
 
-/** The cells a row takes, its Buttons included. */
-export const rowWidth = (cells: readonly TextCell[]): number =>
-  cells.reduce((sum, cell) => sum + displayWidth(isTextButton(cell) ? buttonText(cell.button) : cell.text), 0)
-
 /**
  * The spans cut to `width` cells (the cut one ending in `…`, as a `Text`
  * cut at its Box's edge) and padded with blanks to exactly `width`.

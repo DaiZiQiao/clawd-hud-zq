@@ -15,7 +15,7 @@ import type { Cell, MascotLayout, MascotPlan, MascotScene } from './scene-types'
 type Style = { color?: string; dimColor?: boolean; backgroundColor?: string }
 
 /** A cell's style: its ink's colour, and a two-colour cell's background under its glyph. */
-const styleOf = (cell: Cell): Style => (cell.bg === undefined ? inkOf(cell) : { ...inkOf(cell), backgroundColor: cell.bg })
+export const styleOf = (cell: Cell): Style => (cell.bg === undefined ? inkOf(cell) : { ...inkOf(cell), backgroundColor: cell.bg })
 
 const inkOf = (cell: Cell): Style => {
   switch (cell.ink) {
@@ -62,26 +62,6 @@ const spansOf = (row: readonly (Cell | undefined)[]): Span[] => {
 
   return spans
 }
-
-/** The scene as plain text, top row first, each row's trailing blanks dropped; undefined when it does not fit. */
-export const mascotLines = (scene: MascotScene, layout: MascotLayout, plan?: MascotPlan): string[] | undefined =>
-  paint(scene, layout, plan)?.grid.map(row => spansOf(row).map(span => span.text).join(''))
-
-/** Every colour the drawing uses at this tick (contract keys and raw colours, a two-colour cell's background too). */
-export const mascotColours = (scene: MascotScene, layout: MascotLayout, plan?: MascotPlan): Set<string> => {
-  const colours = new Set<string>()
-  for (const row of paint(scene, layout, plan)?.grid ?? []) {
-    for (const cell of row) {
-      const style = cell === undefined ? {} : styleOf(cell)
-      for (const colour of [style.color, style.backgroundColor]) if (colour !== undefined) colours.add(colour)
-    }
-  }
-
-  return colours
-}
-
-/** A canvas as plain text, a row per row, trailing blanks dropped. */
-export const canvasLines = (grid: readonly (readonly (Cell | undefined)[])[]): string[] => grid.map(row => spansOf(row).map(span => span.text).join(''))
 
 /** The glyph of an agent's pick Button, between its feet. */
 export const PICK_LABEL = '▾'

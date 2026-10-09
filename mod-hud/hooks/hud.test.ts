@@ -32,14 +32,10 @@ import {
   formatReset,
   formatSpan,
   formatTokens,
-  hudLines,
-  hudRowIds,
   levelColor,
   modelLabel,
-  renderHud,
   renderTodos,
   statusLineText,
-  todoLines,
   todoRows,
   whenOf,
 } from './hud'
@@ -55,7 +51,6 @@ import {
   RESET_7D,
   RESET_SPEND,
   TIGHT_5H,
-  TIGHT_7D,
   alarmed,
   allDone,
   calm,
@@ -64,10 +59,14 @@ import {
   empty,
   full,
   fullContext,
+  hudLines,
+  hudRowIds,
   longBranch,
   manyTools,
+  renderHud,
   sevenTodos,
   sparse,
+  todoLines,
 } from './hud.fixtures'
 import { SVG_MAX } from './scene-svg'
 import { CELL_HEIGHT, CELL_WIDTH, SCENE_THEMES } from './svg-style'

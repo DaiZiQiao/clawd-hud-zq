@@ -1,8 +1,8 @@
 // The mascot scene's frame tables: the figure, its poses, the accessories,
 // the crown, the beside items and the laptop as text, one terminal cell per
 // glyph. hooks/mascot-poses.ts and hooks/mascot-glyphs.ts compose them;
-// docs/mascots.md shows each look as `spriteSheet()` (hooks/mascot-sheet.ts)
-// prints it.
+// docs/mascots.md shows each look as `spriteSheet()`
+// (hooks/mascot-sheet.fixtures.ts) prints it.
 //
 // Every full mascot is drawn in a box 13 cells wide and 4 rows tall: row 0 the
 // air row (its role letter or crown centred, its hat at one end, its energy at
@@ -191,8 +191,6 @@ export const ROLE_LETTERS = {
   explorer: 'e',
 } as const
 
-export type RoleName = keyof typeof ROLE_LETTERS
-
 // --- beside the figure ---------------------------------------------------------------
 
 /** One overlay's art from cells: [box row, box column, glyphs], row −1 the sky row, every row a slot wide. */
@@ -305,8 +303,6 @@ export const OVERLAYS = {
   })))),
 } satisfies Record<string, readonly Overlay[]>
 
-export type OverlayName = keyof typeof OVERLAYS
-
 // --- the laptop ---------------------------------------------------------------------
 //
 // An open laptop, seen from the front and a little from its left: the lid's
@@ -366,27 +362,3 @@ export const MINI_OVERLAYS = {
   cross: each('r', [mini('  ✗  ')]),
   dizzy: each('y', [mini(B5, '    ✦'), mini(B5, '    ✧')].flatMap(twice)),
 } satisfies Record<string, readonly Overlay[]>
-
-export type MiniOverlayName = keyof typeof MINI_OVERLAYS
-
-/** Every table, by name, with the size each of its frames has: what the integrity test walks. */
-export const FRAME_TABLES: readonly { name: string; width: number; height: number; frames: readonly (readonly string[])[] }[] = [
-  { name: 'HEADS', width: BODY_WIDTH, height: 1, frames: Object.values(HEADS).map(row => [row]) },
-  { name: 'TORSOS', width: BODY_WIDTH, height: 1, frames: Object.values(TORSOS).map(row => [row]) },
-  { name: 'LEGS', width: BODY_WIDTH, height: 1, frames: Object.values(LEGS).map(row => [row]) },
-  { name: 'SQUASHED', width: BODY_WIDTH, height: 2, frames: [SQUASHED] },
-  { name: 'FLAT', width: BODY_WIDTH, height: 2, frames: [[FLAT.legs, FLAT.body]] },
-  { name: 'CROUCHED', width: BODY_WIDTH, height: 1, frames: [[CROUCHED]] },
-  { name: 'BLANKET', width: BODY_WIDTH, height: 2, frames: BLANKET.quilt.map(quilt => [quilt, BLANKET.hem]) },
-  { name: 'ACCESSORIES', width: 3, height: 1, frames: [...Object.values(ACCESSORIES).map(one => [one.art]), [CROWN.art], [FLYING_CAP.art]] },
-  { name: 'ACCESSORIES.mini', width: 2, height: 1, frames: Object.values(ACCESSORIES).map(one => [one.mini]) },
-  { name: 'ENERGY_MARKS', width: 2, height: 1, frames: [...ENERGY_MARKS.right, ...ENERGY_MARKS.left].map(mark => [mark]) },
-  { name: 'MINI_HEADS', width: MINI, height: 1, frames: Object.values(MINI_HEADS).map(row => [row]) },
-  { name: 'MINI_LEGS', width: MINI, height: 1, frames: Object.values(MINI_LEGS).map(row => [row]) },
-  { name: 'MINI_SAT', width: MINI, height: 1, frames: [[MINI_SAT]] },
-  { name: 'LEANING', width: BODY_WIDTH, height: 1, frames: Object.values(LEANING).map(row => [row]) },
-  ...Object.entries(OVERLAYS).map(([name, frames]) => ({ name: `OVERLAYS.${name}`, width: SLOT, height: GRID_ROWS, frames: frames.map(one => one.art) })),
-  { name: 'LAPTOP', width: SLOT, height: GRID_ROWS, frames: LAPTOP.map(one => one.art) },
-  { name: 'REACH', width: SLOT, height: GRID_ROWS, frames: [REACH] },
-  ...Object.entries(MINI_OVERLAYS).map(([name, frames]) => ({ name: `MINI_OVERLAYS.${name}`, width: MINI, height: BOX_ROWS, frames: frames.map(one => one.art) })),
-]

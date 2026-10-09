@@ -1,15 +1,31 @@
 import type { AgentBoardEntry, HudData } from '../types'
 import { NOW, full } from './hud.fixtures'
-import { PALETTE } from './scene-model'
-import { BLANKET_AFTER_MS, CHEER_TICKS, FAIL_PACK_TICKS, FAREWELL_TICKS, LONG_IDLE_MS, PACK_TICKS, SCENE_FRAME_MS, SIT_TICKS, holdTicks } from './scene-phases'
-import { PIPE_DROP_MS, PIPE_SLIDE_MS } from './scene-pipe'
+import { ACCESSORIES, BLANKET, CROWN, LAPTOP_COLOUR, OVERLAYS } from './mascot-sprites'
+import { ACCENT, ASK, DROP, GOOD, HOT, PALETTE, WARN } from './scene-model'
+import { BLANKET_AFTER_MS, CHEER_TICKS, FAIL_PACK_TICKS, FAREWELL_TICKS, LONG_IDLE_MS, PACK_TICKS, SCENE_FRAME_MS, SIT_TICKS, arriveTicksOf, holdTicks } from './scene-phases'
+import { PIPE_COLOUR, PIPE_DROP_MS, PIPE_SHINE, PIPE_SLIDE_MS } from './scene-pipe'
 import type { MascotActivity, MascotAgent, MascotScene } from './scene-types'
+import { USAGI_COLOURS } from './usagi-sprites'
 
-// The mascot scene's test fixtures: board entries as the hooks keep them, and
-// scenes built directly for the renderer. Times are relative to the HUD
-// fixtures' NOW.
+// The mascot scene's test fixtures: every colour it draws in, board entries
+// as the hooks keep them, and scenes built directly for the renderer. Times
+// are relative to the HUD fixtures' NOW.
 
 export { NOW }
+
+/** The raw colours of what is worn and used: the accessories, the crown, the laptop, the blanket, the cigarette. */
+export const KIT_COLOURS: readonly string[] = [
+  ...new Set([
+    ...Object.values(ACCESSORIES).map(one => one.colour),
+    CROWN.colour,
+    LAPTOP_COLOUR,
+    BLANKET.colour,
+    ...OVERLAYS.cigarette.map(one => one.colour ?? ''),
+  ]),
+].filter(colour => colour !== '')
+
+/** Every colour the scene draws in, the palette, the kit and the red pipe included. */
+export const SCENE_COLOURS: readonly string[] = [ACCENT, GOOD, WARN, HOT, ASK, DROP, ...PALETTE, ...KIT_COLOURS, PIPE_COLOUR, PIPE_SHINE, ...USAGI_COLOURS]
 
 const MINUTE = 60_000
 
@@ -89,6 +105,9 @@ export const everything: MascotScene = {
 /** Frames a finished agent stays before its farewell walk, without the scenes: its pack, then its cheer or sit. */
 export const DONE_HOLD = PACK_TICKS + CHEER_TICKS
 export const FAIL_HOLD = FAIL_PACK_TICKS + SIT_TICKS
+
+/** Frames a spawn takes from its spawn to its floor out of a pipe of its own. */
+export const ARRIVE_TICKS = arriveTicksOf({ id: 'alone' })
 
 /** A scene in every state at once: at work, thinking, asking, stalled, idle, asleep, arriving, packing, dancing, slumped, leaving. */
 export const everyState = (frame: number): MascotScene => ({

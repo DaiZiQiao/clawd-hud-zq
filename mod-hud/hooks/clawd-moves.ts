@@ -1,17 +1,12 @@
-import { about, chain, multiply, rotate, scale, translate } from './clawd-vector'
+import { chain, multiply, rotate, scale, translate } from './clawd-vector'
 import type { Shape } from './clawd-vector'
 
-// The smooth Clawd's motion: where its body, eyes, arms and legs are at a
-// moment of each thing it does (idle, thinking, watching, asleep, walking,
-// hopping, tidying up, stretching after a compaction), eased frame by frame
-// rather than stepped cell by cell; and the shapes of that pose
-// (hooks/clawd-vector.ts draws them).
-//
-// The figure keeps Claude Code's own proportions, its logo's 18 by 6
-// quadrants read in square units (a terminal quadrant is one unit wide and
-// two tall): a body 12 by 8, two eye slits 1 by 2 low in its head, stubby arms
-// 2 by 2 at its shoulders, four legs 1 by 2. World units, the origin between
-// its feet on the floor, y down.
+// The smooth Clawd's session moves: where its body, eyes and arms are at a
+// moment of tidying up and of its stretch after a compaction, eased frame by
+// frame rather than stepped cell by cell (hooks/smooth-pose.ts takes them
+// in); and the shapes of what is beside it then (hooks/clawd-vector.ts draws
+// them). World units, as the figure's (hooks/smooth-art.ts): its body 12 by
+// 8, the origin between its feet on the floor, y down.
 
 export type Prop =
   /** The stack of pages it squashes: how many, and how squashed (0 to 1). */
@@ -22,14 +17,9 @@ export type Prop =
   | { kind: 'bundle'; x: number; y: number; size: number; alpha: number }
   | { kind: 'puff'; x: number; y: number; size: number; alpha: number }
   | { kind: 'spark'; x: number; y: number; size: number; angle: number; alpha: number }
-  /** The thought cloud over its head: grown 0 to 1, its three dots lighting in turn. */
-  | { kind: 'thought'; grow: number; dot: number }
-  | { kind: 'z'; x: number; y: number; size: number; alpha: number }
 
 export type Pose = {
   x: number
-  /** Units above the floor. */
-  lift: number
   /** Squash and stretch, about its feet. */
   sx: number
   sy: number
@@ -39,21 +29,17 @@ export type Pose = {
   eyes: { dx: number; dy: number; open: number; happy?: boolean }
   /** Each arm raised (radians: 0 at rest, π/2 straight up, negative down). */
   arms: { left: number; right: number }
-  /** Each leg's lift, left to right. */
-  legs: readonly [number, number, number, number]
   props: readonly Prop[]
 }
 
 export const CLAWD = {
   body: '#D77757',
   deep: '#B95E40',
-  eye: '#2A1712',
   paper: '#F2ECE1',
   edge: '#C9BFAE',
   spark: '#FFD27A',
   dust: '#B9B2A6',
   cloud: '#E9E4DA',
-  shadow: '#000000',
 } as const
 
 // --- easing ------------------------------------------------------------------
@@ -77,95 +63,7 @@ const hash01 = (n: number, salt = 0): number => {
 
 // --- the things it does --------------------------------------------------------
 
-const REST: Pose = { x: 0, lift: 0, sx: 1, sy: 1, tilt: 0, eyes: { dx: 0, dy: 0, open: 1 }, arms: { left: 0, right: 0 }, legs: [0, 0, 0, 0], props: [] }
-
-/** A blink every three to five seconds: 70 ms closing, 50 ms shut, 110 ms opening. */
-export const blinkOf = (t: number, seed = 0): number => {
-  const cycle = 4000
-  const k = Math.floor(t / cycle)
-  const d = t - (k * cycle + 600 + hash01(k, seed) * 2600)
-  if (d < 0 || d > 230) return 1
-  if (d < 70) return mix(1, 0.08, easeIn(d / 70))
-  if (d < 120) return 0.08
-
-  return mix(0.08, 1, easeOut((d - 120) / 110))
-}
-
-const breathe = (t: number, period = 2800, depth = 1): Pick<Pose, 'sx' | 'sy'> => {
-  const b = wave(t, period) * depth
-
-  return { sx: 1 - 0.012 * b, sy: 1 + 0.022 * b }
-}
-
-/** Idle: breathing, blinking, now and then a look left and right. */
-export const idlePose = (t: number): Pose => {
-  const look = t % 7000
-  const left = span(look, 4000, 4220) - span(look, 5200, 5420)
-  const right = span(look, 5200, 5420) - span(look, 6400, 6620)
-
-  return { ...REST, ...breathe(t), eyes: { dx: 0.55 * (easeInOut(right) - easeInOut(left)), dy: 0, open: blinkOf(t) }, arms: { left: 0.05 * wave(t, 2800), right: 0.05 * wave(t, 2800) } }
-}
-
-/** Watching the agents: eyes on them, leaning in a little. */
-export const watchPose = (t: number): Pose => ({ ...REST, ...breathe(t, 2200), tilt: 0.03, eyes: { dx: 0.55, dy: 0.1, open: blinkOf(t, 3) } })
-
-/** Thinking: eyes up, swaying, a thought cloud over its head with its dots lighting in turn. */
-export const thinkPose = (t: number): Pose => ({
-  ...REST,
-  ...breathe(t, 3000),
-  tilt: 0.035 * wave(t, 3400),
-  eyes: { dx: 0.35, dy: -0.55, open: blinkOf(t, 5) },
-  arms: { left: 0.08, right: -0.1 },
-  props: [{ kind: 'thought', grow: easeOut(span(t, 0, 500)), dot: t }],
-})
-
-/** Asleep: sunk a little, eyes shut, breathing slow, z z Z rising. */
-export const sleepPose = (t: number): Pose => ({
-  ...REST,
-  ...breathe(t, 3600, 1.4),
-  sy: 0.93 + 0.02 * wave(t, 3600),
-  eyes: { dx: 0, dy: 0.2, open: 0.08 },
-  arms: { left: -0.12, right: -0.12 },
-  props: [0, 1, 2].map((one): Prop => {
-    const phase = ((t / 2600) + one / 3) % 1
-
-    return { kind: 'z', x: 5 + 2.4 * phase + 0.5 * wave(t + one * 500, 1300), y: -11 - 7 * phase, size: 1 + 1.4 * phase, alpha: Math.sin(Math.PI * phase) }
-  }),
-})
-
-/** Walking: two steps every 520 ms, legs in turn, a bob and a lean the way it goes. */
-export const walkPose = (t: number, dir: 1 | -1, from = 0, speed = 0.0075): Pose => {
-  const step = wave(t, 520)
-
-  return {
-    ...REST,
-    x: from + dir * speed * t,
-    lift: 0.35 * Math.abs(step),
-    tilt: 0.06 * dir,
-    sy: 1 + 0.02 * Math.abs(step),
-    eyes: { dx: 0.5 * dir, dy: 0, open: blinkOf(t, 7) },
-    arms: { left: 0.3 * step, right: -0.3 * step },
-    legs: [0.75 * Math.max(0, step), 0.75 * Math.max(0, -step), 0.75 * Math.max(0, step), 0.75 * Math.max(0, -step)],
-  }
-}
-
-/** A hop: crouch, spring up stretched, tuck in the air, land squashed and settle. */
-export const HOP_MS = 760
-export const hopPose = (t: number, height = 5, x = 0): Pose => {
-  const crouch = span(t, 0, 140)
-  const air = span(t, 140, 560)
-  const land = span(t, 560, HOP_MS)
-  if (t < 140) return { ...REST, x, sx: 1 + 0.1 * easeOut(crouch), sy: 1 - 0.17 * easeOut(crouch), eyes: { dx: 0, dy: 0.2, open: 0.85 }, arms: { left: -0.35 * crouch, right: -0.35 * crouch } }
-  if (t < 560) {
-    const up = 4 * air * (1 - air)
-    const stretch = 0.14 * (1 - easeOut(Math.min(1, air * 2)))
-
-    return { ...REST, x, lift: height * up, sx: 1 - 0.6 * stretch, sy: 1 + stretch, eyes: { dx: 0, dy: -0.2, open: 1 }, arms: { left: 0.9 * up, right: 0.9 * up }, legs: [0.5 * up, 0.5 * up, 0.5 * up, 0.5 * up] }
-  }
-  const squash = 1 - easeBack(land)
-
-  return { ...REST, x, sx: 1 + 0.1 * squash, sy: 1 - 0.15 * squash, eyes: { dx: 0, dy: 0.1, open: mix(0.6, 1, land) }, arms: { left: -0.3 * squash, right: -0.3 * squash } }
-}
+const REST: Pose = { x: 0, sx: 1, sy: 1, tilt: 0, eyes: { dx: 0, dy: 0, open: 1 }, arms: { left: 0, right: 0 }, props: [] }
 
 /** Tidying up: one squash of the pages every TIDY_LOOP_MS, while a compaction runs. */
 export const TIDY_LOOP_MS = 1800
@@ -218,12 +116,10 @@ export const tidyPose = (t: number): Pose => {
   // Its body: crouch to wind up, rise and lean into the slam, squashed by it, bouncing back.
   let sy = 1 - 0.1 * windUp
   let sx = 1 + 0.06 * windUp
-  let lift = 0
   let lean = 0.04 * windUp
   if (p >= 350 && p < 470) {
     sy = mix(0.9, 1.12, slam)
     sx = mix(1.06, 0.95, slam)
-    lift = 1.1 * Math.sin(Math.PI * slam)
     lean = mix(0.04, 0.16, slam)
   } else if (p >= 470) {
     sy = mix(0.84, 1, recover)
@@ -235,7 +131,6 @@ export const tidyPose = (t: number): Pose => {
   return {
     ...REST,
     x: 0.8 * Math.sin(Math.PI * Math.min(1, p / 760)),
-    lift,
     sx,
     sy,
     tilt: lean,
@@ -269,8 +164,6 @@ export const stretchPose = (t: number): Pose => {
 }
 
 // --- the shapes ------------------------------------------------------------------
-
-const LEG_X = [-5, -3, 2, 4] as const
 
 /** A spark: two thin ellipses across each other, turning. */
 const sparkShapes = (one: Extract<Prop, { kind: 'spark' }>): Shape[] => {
@@ -311,66 +204,5 @@ export const propShapes = (prop: Prop): Shape[] => {
       return [{ kind: 'ellipse', x: prop.x - prop.size / 2, y: prop.y - prop.size / 2, w: prop.size, h: prop.size * 0.8, fill: CLAWD.dust, alpha: prop.alpha }]
     case 'spark':
       return sparkShapes(prop)
-    case 'thought': {
-      const g = prop.grow
-      const bubbles: Shape[] = [
-        { kind: 'ellipse', x: 3.6, y: -11.6, w: 0.8 * g, h: 0.8 * g, fill: CLAWD.cloud },
-        { kind: 'ellipse', x: 4.9, y: -13.5, w: 1.2 * g, h: 1.2 * g, fill: CLAWD.cloud },
-      ]
-      if (g < 0.6) return bubbles
-      const cloud = easeBack(span(g, 0.6, 1))
-      const m = chain(translate(8.5, -17), scale(cloud))
-      const puffs: Shape[] = [[-3.4, -1.3, 3.4, 2.6], [-1.6, -2.2, 3.6, 3], [0.6, -1.6, 3.2, 2.6], [-2.6, -0.6, 5.6, 2]].map(([x, y, w, h]): Shape => ({ kind: 'ellipse', x: x ?? 0, y: y ?? 0, w: w ?? 1, h: h ?? 1, fill: CLAWD.cloud, m }))
-      const dots = [0, 1, 2].map((one): Shape => {
-        const lit = Math.max(0, Math.sin(Math.PI * (((prop.dot / 900) - one * 0.22) % 1)))
-
-        return { kind: 'ellipse', x: -1.1 + one * 1.3 - 0.35, y: -0.6 - 0.5 * lit, w: 0.7, h: 0.7, fill: CLAWD.eye, alpha: 0.35 + 0.65 * lit, m }
-      })
-
-      return [...bubbles, ...puffs, ...dots]
-    }
-    case 'z': {
-      const m = chain(translate(prop.x, prop.y), scale(prop.size))
-      const bar = 0.22
-
-      return [
-        { kind: 'rect', x: -0.5, y: -0.5, w: 1, h: bar, fill: CLAWD.cloud, alpha: prop.alpha, m },
-        { kind: 'rect', x: -0.5, y: 0.5 - bar, w: 1, h: bar, fill: CLAWD.cloud, alpha: prop.alpha, m },
-        { kind: 'rect', x: -0.62, y: -bar / 2, w: 1.24, h: bar, fill: CLAWD.cloud, alpha: prop.alpha, m: multiply(m, rotate(-0.86)) },
-      ]
-    }
   }
-}
-
-/**
- * The pose's shapes, back to front: its shadow, its legs, its arms, its body
- * (a deeper band along its bottom, a glint along its top), its eyes; then what
- * is beside it. `colour` is its body's.
- */
-export const clawdShapes = (pose: Pose, colour: string = CLAWD.body): Shape[] => {
-  const body = chain(translate(pose.x, -pose.lift), rotate(pose.tilt), scale(pose.sx, pose.sy))
-  const near = 1 / (1 + pose.lift * 0.18)
-  const shapes: Shape[] = [
-    { kind: 'ellipse', x: pose.x - 6.5 * near, y: -0.35, w: 13 * near, h: 0.7, fill: CLAWD.shadow, alpha: 0.2 * near },
-    ...LEG_X.map((x, one): Shape => ({ kind: 'rect', x, y: -2.2 - (pose.legs[one] ?? 0), w: 1, h: 2.2, r: 0.28, fill: CLAWD.deep, m: body })),
-    { kind: 'rect', x: -8, y: -6, w: 2.6, h: 2, r: 0.4, fill: colour, m: multiply(body, about(-6, -5, rotate(pose.arms.left))) },
-    { kind: 'rect', x: 5.4, y: -6, w: 2.6, h: 2, r: 0.4, fill: colour, m: multiply(body, about(6, -5, rotate(-pose.arms.right))) },
-    { kind: 'rect', x: -6, y: -10, w: 12, h: 8, r: 0.65, fill: colour, m: body },
-    { kind: 'rect', x: -6, y: -3.5, w: 12, h: 1.5, r: 0.65, fill: CLAWD.deep, alpha: 0.3, m: body },
-    { kind: 'rect', x: -5.1, y: -9.55, w: 10.2, h: 0.5, r: 0.25, fill: '#FFFFFF', alpha: 0.16, m: body },
-  ]
-  const { dx, dy, open, happy } = pose.eyes
-  for (const x of [-4, 3]) {
-    if (happy === true) {
-      // Squeezed shut with joy: `^`.
-      for (const side of [-1, 1]) {
-        shapes.push({ kind: 'rect', x: -0.42, y: -0.15, w: 0.84, h: 0.3, r: 0.15, fill: CLAWD.eye, m: multiply(body, chain(translate(x + 0.5 + dx + side * 0.3, -7 + dy), rotate(side * 0.65))) })
-      }
-      continue
-    }
-    const h = 2 * Math.max(0.08, Math.min(1, open))
-    shapes.push({ kind: 'rect', x: x + dx, y: -6.1 + dy - h, w: 1, h, r: Math.min(0.3, h / 2), fill: CLAWD.eye, m: body })
-  }
-
-  return [...shapes, ...pose.props.flatMap(propShapes)]
 }

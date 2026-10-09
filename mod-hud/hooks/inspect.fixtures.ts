@@ -2,6 +2,7 @@ import type { On, UiPane } from 'claude-code'
 import { mock } from 'claude-code/testing'
 import type { Engine } from 'claude-code/testing'
 
+import type { Cell, InspectRow } from './inspect'
 import { NOW } from './scene-model.fixtures'
 import { stateCells } from './test-state'
 import type { Held } from './test-state'
@@ -16,6 +17,15 @@ export const VIEWPORT = { columns: 160, rows: 40, isFullscreen: true }
 export const PANE_PROPS = { title: 'HUD', isFocused: false, bodyColumns: 100, placement: 'dock', scroll: { offset: 0, bodyRows: 40 }, view: {} } as const
 
 export const PROMPT = 'Find why the parser drops the last token.\n\nFix it, then run the tests and report what changed.'
+
+/** A cell as the terminal draws it: `[ label ]` for a primary Button, the label for a plain one. */
+const cellText = (cell: Cell): string => ('button' in cell ? (cell.button.primary === true ? `[ ${cell.button.label} ]` : cell.button.label) : cell.text)
+
+/** A row as plain text: what docs/pane-sketch.md shows. */
+export const rowText = (row: InspectRow): string => row.cells.map(cellText).join('').trimEnd()
+
+/** The rows as plain text. */
+export const inspectLines = (rows: readonly InspectRow[]): string[] => rows.map(rowText)
 
 // The engine beneath the plugin, as a session answers it, counting reads of an agent's conversation.
 export const arrange = (on: On) => {

@@ -12,9 +12,9 @@ export type Other = { id: string; x: number; d: number; width: number; body: num
 export const gapBetween = (a: { x: number; width: number }, b: { x: number; width: number }): number =>
   a.x <= b.x ? b.x - (a.x + a.width) : a.x - (b.x + b.width)
 
-/** Whether a span at (`x`, `d`) keeps at least `need` cells from everyone on the ground within a row of depth but `except`. */
-export const clearOnGround = (others: readonly Other[], x: number, d: number, width: number, need: number, except?: string): boolean =>
-  others.every(one => one.id === except || one.lift >= AIRBORNE || !nearDepth(one.d, d) || gapBetween({ x, width }, one) >= need)
+/** Whether a span at (`x`, `d`) keeps at least `need` cells from everyone on the ground within a row of depth. */
+export const clearOnGround = (others: readonly Other[], x: number, d: number, width: number, need: number): boolean =>
+  others.every(one => one.lift >= AIRBORNE || !nearDepth(one.d, d) || gapBetween({ x, width }, one) >= need)
 
 /** The columns in [lo, hi] where a span of `width` at depth `d` keeps `need` cells from everyone on the ground within `reach` rows of depth: free runs, left to right. */
 const freeRuns = (others: readonly Other[], d: number, width: number, need: number, lo: number, hi: number, reach = DEPTH_REACH): [number, number][] => {

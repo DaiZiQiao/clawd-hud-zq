@@ -5,7 +5,7 @@ import { SHAKE_MS, SHAKE_STEP_MS, STARTLED_MS, startledLook } from './mascot-pos
 import { ACCESSORIES, ACCESSORY_NAMES, CROWN, OVERLAYS } from './mascot-sprites'
 import { arrange, mount } from './scene-client.fixtures'
 import { idleHud } from './scene-model.fixtures'
-import { mascotLines } from './scene-render'
+import { mascotLines } from './scene-render.fixtures'
 import { sceneOf } from './scene-model'
 import type { SceneInputs } from './scene-types'
 import { TYPIST, inputs as sceneInputs, press as pressOn, ticks } from './scene-world.fixtures'

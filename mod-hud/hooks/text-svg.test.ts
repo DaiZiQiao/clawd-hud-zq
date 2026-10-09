@@ -1,9 +1,9 @@
 import { describe, expect, test } from 'claude-code/testing'
 
 import { CELL_HEIGHT, CELL_WIDTH, SCENE_THEMES } from './svg-style'
-import { buttonText, clipped, fitted, rowWidth, textRowSvg } from './text-svg'
+import { buttonText, clipped, fitted, textRowSvg } from './text-svg'
 import type { TextRow } from './text-svg'
-import { textLine, textPieces, textRuns, textSvgSize } from './text-svg.fixtures'
+import { rowWidth, textLine, textPieces, textRuns, textSvgSize } from './text-svg.fixtures'
 
 // One row of coloured spans as one SVG document on the scene's grid, its
 // Buttons' cells left blank and handed back with their places.

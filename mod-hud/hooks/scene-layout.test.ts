@@ -8,7 +8,8 @@ import { NOW, crowd, everything, idleHud, working } from './scene-model.fixtures
 import { SCENE_FRAME_MS } from './scene-phases'
 import { placedSprites } from './scene-placement'
 import { mascotPlan } from './scene-plan'
-import { mascotLines, renderMascots } from './scene-render'
+import { renderMascots } from './scene-render'
+import { mascotLines } from './scene-render.fixtures'
 import type { MascotLayout, MascotPlan, MascotScene } from './scene-types'
 import { displayWidth } from './text-width'
 

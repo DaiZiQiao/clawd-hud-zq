@@ -38,8 +38,7 @@ export const pipeCells = (kind: keyof typeof PIPE_WIDTH, rows: number): (Cell | 
 export const PIPE_SLIDE_MS = 500
 export const PIPE_DROP_MS = 500
 export const PIPE_SUCK_MS = 1000
-/** An arrival is over (the pipe gone) after this long; so is a farewell. */
-export const PIPE_ARRIVAL_MS = PIPE_SLIDE_MS + PIPE_DROP_MS + PIPE_SLIDE_MS
+/** A farewell is over (the pipe gone) after this long. */
 export const PIPE_FAREWELL_MS = PIPE_SLIDE_MS + PIPE_SUCK_MS + PIPE_SLIDE_MS
 /** The most rows a mascot falls out of the pipe. */
 export const PIPE_DROP_MAX = 3
@@ -77,33 +76,6 @@ const slid = (sky: number, hang: number, t: number): number | undefined => {
   return mouth > sky + 0.5 ? undefined : mouth
 }
 
-/**
- * An arrival `ms` after the spawn: the pipe comes down (the mascot inside),
- * the mascot drops out of its mouth and falls to the floor, the pipe goes
- * back up; from PIPE_ARRIVAL_MS, no pipe and the mascot on its floor.
- */
-export const arrivalAt = (ms: number, sky: number): PipeFrame => {
-  const { mouth, drop } = pipeHang(sky)
-  const free = Math.max(0, Math.floor(sky))
-  if (ms < PIPE_SLIDE_MS) {
-    const at = slid(free, mouth, ms / PIPE_SLIDE_MS)
-
-    return { ...(at === undefined ? {} : { mouth: at }), lift: drop, inside: true }
-  }
-  if (ms < PIPE_SLIDE_MS + PIPE_DROP_MS) {
-    const u = (ms - PIPE_SLIDE_MS) / PIPE_DROP_MS
-
-    return { mouth, lift: drop * (1 - u * u), inside: false }
-  }
-  if (ms < PIPE_ARRIVAL_MS) {
-    const at = slid(free, mouth, 1 - (ms - PIPE_SLIDE_MS - PIPE_DROP_MS) / PIPE_SLIDE_MS)
-
-    return { ...(at === undefined ? {} : { mouth: at }), lift: 0, inside: false }
-  }
-
-  return { lift: 0, inside: false }
-}
-
 /** Spawns this close after a batch's first share its pipe, popping out one after another. */
 export const PIPE_BATCH_MS = 2000
 
@@ -112,8 +84,7 @@ export const PIPE_BATCH_MS = 2000
  * the earliest): when each drops out of the mouth (never before it spawned,
  * never before the pipe is down, a drop's length after the one before), and
  * when the pipe goes back up (the last one on the floor). One alone drops at
- * PIPE_SLIDE_MS and the pipe goes up at PIPE_SLIDE_MS + PIPE_DROP_MS, as
- * `arrivalAt` plays it.
+ * PIPE_SLIDE_MS and the pipe goes up at PIPE_SLIDE_MS + PIPE_DROP_MS.
  */
 export const pipeBatch = (spawns: readonly number[]): { drops: number[]; up: number } => {
   const start = spawns[0] ?? 0

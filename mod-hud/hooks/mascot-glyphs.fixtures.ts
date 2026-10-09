@@ -1,7 +1,7 @@
 import { BLANKET, CROUCHED, FLAT, HEADS, LEANING, LEGS, SLOT, SQUASHED, TORSOS, flipped } from './mascot-sprites'
 import { placedSprites } from './scene-placement'
 import { mascotPlan } from './scene-plan'
-import { mascotLines } from './scene-render'
+import { mascotLines } from './scene-render.fixtures'
 import type { MascotLayout, MascotScene, PlacedSprite, Placement } from './scene-types'
 
 // Mascots drawn for the tests: one alone, its cells, and the figure found in a frame.

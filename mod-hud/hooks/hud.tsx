@@ -2,9 +2,10 @@ import type { BoxProps, ButtonProps, ElementConstructor, RenderElement, SvgProps
 
 import type { HudData, HudGit, HudLayout, HudRateLimit, HudTodo, HudUsage } from '../types'
 import { CACHE_TTL_MS, contextGrowth, limitEta, turnsUntil } from './facts'
+import { isNumber } from './state-json'
 import { renderTextRow } from './text-svg'
 import type { TextCell, TextSpan } from './text-svg'
-import { displayWidth, padEnd, padStart, truncate, truncateStart } from './text-width'
+import { displayWidth, pad2, padEnd, padStart, truncate, truncateStart } from './text-width'
 
 // The HUD drawn at the top of the mod-hud pane: pure functions from one
 // `HudData` to a tree, plus the plain-text status line. Layout and rationale:
@@ -96,11 +97,7 @@ const clean = (text: unknown): string =>
     ? text.replace(/[\u0000-\u001f\u007f-\u009f\u2028\u2029]+/g, ' ').replace(/ {2,}/g, ' ').trim()
     : ''
 
-const isNumber = (value: unknown): value is number => typeof value === 'number' && Number.isFinite(value)
-
 const countOf = (value: unknown): number => (isNumber(value) && value > 0 ? Math.floor(value) : 0)
-
-const pad2 = (n: number): string => String(n).padStart(2, '0')
 
 // --- formats -----------------------------------------------------------------
 
@@ -365,8 +362,6 @@ const tint = (text: string, color: string): Span => ({ text, style: { color } })
 const SEPARATOR = (): Span => dim(' · ')
 
 const widthOf = (spans: readonly Span[]): number => spans.reduce((sum, span) => sum + displayWidth(span.text), 0)
-
-const textOf = (spans: readonly Span[]): string => spans.map(span => span.text).join('')
 
 /** The spans cut to `limit` cells, the cut span ending in `…`: the HUD's rows and the TODO section's alike. */
 const clip = <T extends { text: string }>(spans: readonly T[], limit: number): T[] => {
@@ -850,7 +845,8 @@ export const RANKS = {
   gap: 5,
 } as const
 
-const rowsOf = (data: HudData, layout: HudLayout): Row[] => {
+/** The HUD's rows, top to bottom (`header`, `alerts`, `gap`, `session.repo`, ..., `motto`): what `renderHudBlock` draws. */
+export const rowsOf = (data: HudData, layout: HudLayout): Row[] => {
   const columns = isNumber(layout.columns) ? Math.max(0, Math.floor(layout.columns)) : 0
   const card = Math.min(columns, CARD_MAX)
   const edge = Math.min(card, Math.max(0, columns - CLOSE_RESERVE))
@@ -934,23 +930,13 @@ const merged = (spans: readonly Span[]): Span[] =>
     return out
   }, [])
 
-/** Each HUD row as plain text, top to bottom: what `renderHud` draws, uncoloured (the blank row between header and sections `''`). */
-export const hudLines = (data: HudData, layout: HudLayout): string[] => rowsOf(data, layout).map(row => textOf(row.spans))
-
-/** The ids of the HUD's rows, top to bottom (`header`, `alerts`, `gap`, `session.repo`, ..., `motto`). */
-export const hudRowIds = (data: HudData, layout: HudLayout): string[] => rowsOf(data, layout).map(row => row.id)
-
 /**
- * The HUD block, drawn above the agent list: one keyed Box per row
- * (`hud:header`, `hud:alerts`, `hud:gap`, `hud:session.repo`,
- * `hud:context.used`, `hud:limits.5h`, ...), each holding one Text cut to
- * `layout.columns`, or with `ui.Svg` the row in pixels; the blank `hud:gap`
- * an empty Box a row high. Its root never shrinks.
+ * The HUD block, drawn above the agent list, and its row count from a single
+ * layout pass: one keyed Box per row (`hud:header`, `hud:alerts`, `hud:gap`,
+ * `hud:session.repo`, `hud:context.used`, `hud:limits.5h`, ...), each holding
+ * one Text cut to `layout.columns`, or with `ui.Svg` the row in pixels; the
+ * blank `hud:gap` an empty Box a row high. Its root never shrinks.
  */
-export const renderHud = (ui: HudElements, data: HudData, layout: HudLayout): RenderElement | undefined =>
-  renderHudBlock(ui, data, layout).element
-
-/** The drawing and its row count from a single layout pass. */
 export const renderHudBlock = (ui: HudElements, data: HudData, layout: HudLayout): { element?: RenderElement; rowCount: number } => {
   const rows = rowsOf(data, layout)
   if (rows.length === 0) return { rowCount: 0 }
@@ -1124,10 +1110,6 @@ export const todoRows = (todos: HudData['todos'], columns: number, max = TODO_RO
     ...(rest > 0 ? [{ key: 'todo:more', text: truncate(`${indent}+${rest} more`, width), more: rest }] : []),
   ]
 }
-
-/** The section as plain text, the label row first: what `renderTodos` draws, uncoloured. */
-export const todoLines = (todos: HudData['todos'], columns: number, max = TODO_ROWS, expanded = false): string[] =>
-  todoRows(todos, columns, max, expanded).map(row => row.text)
 
 /** Where an item row's glyph starts: after its indent. */
 const glyphAt = (row: TodoRow): number => row.text.length - row.text.trimStart().length
