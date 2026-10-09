@@ -165,30 +165,27 @@ const distanceTo = (shape: Shape): ((x: number, y: number) => number) => {
         : (x, y) => Math.abs((Math.hypot((x - cx) / rx, (y - cy) / ry) - 1) * small) - ring / 2
     }
     case 'poly': {
+      // Any simple polygon, convex or not (a stroke along an arc): the distance to its nearest edge, inside by its crossings.
       const points = shape.points ?? []
-      let area = 0
-      for (let i = 0; i < points.length; i += 1) {
-        const [ax, ay] = points[i] ?? [0, 0]
-        const [bx, by] = points[(i + 1) % points.length] ?? [0, 0]
-        area += ax * by - bx * ay
-      }
-      const turn = area >= 0 ? 1 : -1
-      // Each edge's outward normal, by the winding, and its offset.
       const edges = points.map((point, i) => {
         const [ax, ay] = point
         const [bx, by] = points[(i + 1) % points.length] ?? [0, 0]
-        const length = Math.hypot(bx - ax, by - ay) || 1
-        const nx = (turn * (by - ay)) / length
-        const ny = (turn * -(bx - ax)) / length
 
-        return [nx, ny, ax * nx + ay * ny] as const
+        return [ax, ay, bx - ax, by - ay, (bx - ax) * (bx - ax) + (by - ay) * (by - ay)] as const
       })
 
       return (x, y) => {
-        let d = -Infinity
-        for (const [nx, ny, offset] of edges) d = Math.max(d, x * nx + y * ny - offset)
+        let nearest = Infinity
+        let inside = false
+        for (const [ax, ay, dx, dy, length] of edges) {
+          const t = length > 0 ? Math.max(0, Math.min(1, ((x - ax) * dx + (y - ay) * dy) / length)) : 0
+          const ex = x - ax - t * dx
+          const ey = y - ay - t * dy
+          nearest = Math.min(nearest, ex * ex + ey * ey)
+          if (ay > y !== ay + dy > y && x < ax + ((y - ay) * dx) / dy) inside = !inside
+        }
 
-        return d
+        return inside ? -Math.sqrt(nearest) : Math.sqrt(nearest)
       }
     }
     case 'rect': {

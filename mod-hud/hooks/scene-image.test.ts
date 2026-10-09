@@ -2,6 +2,7 @@ import type { JsonValue } from 'claude-code'
 import { describe, expect, mock, test } from 'claude-code/testing'
 
 import type { HudSelection } from '../types'
+import { rasterOf, scale } from './clawd-vector'
 import { CROWN } from './mascot-sprites'
 import { base64Of, deflate, pngOf } from './png'
 import { bytesOf, countColour, inflate, pngPixels } from './png.fixtures'
@@ -49,6 +50,16 @@ describe('the PNG writer', () => {
     expect(base64Of(new Uint8Array([77, 97, 110]))).toBe('TWFu')
     const bytes = new Uint8Array(3000).map((_, index) => (index * 31) % 256)
     expect([...bytesOf(base64Of(bytes))]).toEqual([...bytes])
+  })
+})
+
+describe('the rasterizer', () => {
+  test('a polygon convex or not (an L, a stroke along an arc) is filled where it is and clear in its hollow', () => {
+    const pixels = rasterOf([{ kind: 'poly', x: 0, y: 0, w: 0, h: 0, points: [[0, 0], [3, 0], [3, 1], [1, 1], [1, 3], [0, 3]], fill: '#FF0000' }], 24, 24, scale(8))
+    const alphaAt = (x: number, y: number): number => pixels[(Math.floor(y * 8) * 24 + Math.floor(x * 8)) * 4 + 3] ?? 0
+    expect(alphaAt(0.5, 2.5)).toBe(255)
+    expect(alphaAt(2.5, 0.5)).toBe(255)
+    expect(alphaAt(2, 2)).toBe(0)
   })
 })
 

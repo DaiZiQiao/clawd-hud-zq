@@ -83,7 +83,7 @@
     "inspectView": {
       "type": "string",
       "title": "Inspect view",
-      "description": "tv (default): pressing a mascot (or an agent's row) sends it to the pane's centre, where it grows into a TV of itself: the screen on its forehead shows the agent's tabs (Task, Trail, Said, Agents; the session's Overview, Cost, Agents), its left panel's knob and ◀ ▶ change channel (tab), its right panel's knob and ▲ ▼ scroll, as do the arrow keys and the wheel; its ✕ or a press anywhere else switches it off and sends it home, shaken for three seconds. Where the surface cannot (mobile, VS Code) or the pane is too small, the inspect view under the HUD. pane: always the inspect view under the HUD.",
+      "description": "tv (default): pressing a mascot (or an agent's row) sends it to the pane's centre, where it grows into a TV of itself: the screen on its forehead shows the agent's tabs (Task, Trail, Said, Agents; the session's Overview, Cost, Agents), on the panel right of the screen the dial and ◀ ▶ change channel (tab) and the knob and ▲ ▼ scroll, as do the arrow keys and the wheel; its ✕ or a press anywhere else switches it off and sends it home, shaken for three seconds. Where the surface cannot (mobile, VS Code) or the pane is too small, the inspect view under the HUD. pane: always the inspect view under the HUD.",
       "default": "tv"
     },
     "wander": {
