@@ -2609,7 +2609,7 @@ export const register: Register = (on, options) => {
     const lines = shown === undefined ? [] : bandLinesOf(shown, now)
     // The mascot walks the band's width above the prompt, what tidying up says beside it.
     const yardColumns = lines.length > 0 ? Math.max(Math.min(columns, YARD_COLUMNS), columns - TIDY_COLUMNS) : columns
-    const yardRows = settings.scenery && settings.mascotArt === 'vector' && e.props.maxRows >= BAND_ROWS ? BAND_ROWS : GRID_ROWS
+    const yardRows = settings.scenery && settings.mascotArt === 'vector' && settings.motion === 'smooth' && e.props.maxRows >= BAND_ROWS ? BAND_ROWS : GRID_ROWS
     let yard: RenderElement | undefined
     if (settings.mascots && settings.sessionMascot === 'band' && yardColumns >= SLOT) {
       try {
