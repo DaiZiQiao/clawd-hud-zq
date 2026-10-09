@@ -7,6 +7,7 @@ import {
   joinPath,
   listingOf,
   projectKeyOf,
+  storeDoubtOf,
   storeOffReasonOf,
   tempBasesOf,
 } from './store-path'
@@ -109,12 +110,13 @@ describe('sessions with no image folder', () => {
     for (const value of ['0', 'false', '', 'no', 'off', 'maybe']) expect(storeOffReasonOf({ skipPromptHistory: value }), value).toBeUndefined()
   })
 
-  test('a nested session, unless CLAUDE_CODE_FORCE_SESSION_PERSISTENCE keeps it', () => {
-    const nested = 'CLAUDE_CODE_CHILD_SESSION is set without CLAUDE_CODE_FORCE_SESSION_PERSISTENCE'
-    expect(storeOffReasonOf({ childSession: '1' })).toBe(nested)
-    expect(storeOffReasonOf({ childSession: 'true', forcePersistence: '0' })).toBe(nested)
-    expect(storeOffReasonOf({ childSession: '1', forcePersistence: 'true' })).toBeUndefined()
-    expect(storeOffReasonOf({ childSession: '0' })).toBeUndefined()
+  test('a nested session may keep none: a doubt, since tmux and teammates inherit the marker and keep one', () => {
+    const nested = 'CLAUDE_CODE_CHILD_SESSION is set: a nested session may keep none'
+    expect(storeOffReasonOf({ childSession: '1' })).toBeUndefined()
+    expect(storeDoubtOf({ childSession: '1' })).toBe(nested)
+    expect(storeDoubtOf({ childSession: 'true', forcePersistence: '0' })).toBe(nested)
+    expect(storeDoubtOf({ childSession: '1', forcePersistence: 'true' })).toBeUndefined()
+    expect(storeDoubtOf({ childSession: '0' })).toBeUndefined()
     expect(storeOffReasonOf({ childSession: '1', skipPromptHistory: '1' })).toBe('CLAUDE_CODE_SKIP_PROMPT_HISTORY is set')
   })
 })

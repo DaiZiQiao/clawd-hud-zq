@@ -186,23 +186,28 @@ export const halfBlockCellsOf = (master: Master, columns: number, rows: number):
 }
 
 /**
- * RGBA for an Image of `columns` x `rows` cells: the picture in its own
+ * The size of the RGBA `kittyRgbaOf` makes for a tile: the picture in its own
  * aspect, about CELL_PIXELS a cell (the terminal fits it to the box, keeping
  * that aspect), never larger than the master, 1 to 2048 pixels a side, and no
  * more than `maxBytes` (the tile's share of the tree's budget; 1 x 1 at
- * least).
+ * least). Cheap: the hooks key their cache on it.
  */
-export const kittyRgbaOf = (master: Master, columns: number, rows: number, maxBytes: number): { rgba: string; width: number; height: number } => {
+export const kittySizeOf = (master: Master, columns: number, rows: number, maxBytes: number): { width: number; height: number } => {
   const sourceWidth = max(1, master.width)
   const sourceHeight = max(1, master.height)
   const boxScale = min((columns * CELL_PIXELS.width) / sourceWidth, (rows * CELL_PIXELS.height) / sourceHeight, 1)
   const boxWidth = clamp(round(sourceWidth * boxScale), 1, IMAGE_SIDE_MAX)
   const boxHeight = clamp(round(sourceHeight * boxScale), 1, IMAGE_SIDE_MAX)
-  const isWithin = boxWidth * boxHeight * 4 <= maxBytes
+  if (boxWidth * boxHeight * 4 <= maxBytes) return { width: boxWidth, height: boxHeight }
   // Over the allowance: the largest of the same shape under it.
   const byteScale = sqrt(max(0, maxBytes) / (4 * sourceWidth * sourceHeight))
-  const width = isWithin ? boxWidth : clamp(floor(sourceWidth * byteScale), 1, boxWidth)
-  const height = isWithin ? boxHeight : clamp(floor(sourceHeight * byteScale), 1, boxHeight)
+
+  return { width: clamp(floor(sourceWidth * byteScale), 1, boxWidth), height: clamp(floor(sourceHeight * byteScale), 1, boxHeight) }
+}
+
+/** RGBA for an Image of `columns` x `rows` cells, at `kittySizeOf`'s size. */
+export const kittyRgbaOf = (master: Master, columns: number, rows: number, maxBytes: number): { rgba: string; width: number; height: number } => {
+  const { width, height } = kittySizeOf(master, columns, rows, maxBytes)
 
   return { rgba: base64Of(resampleOf(master, width, height)), width, height }
 }

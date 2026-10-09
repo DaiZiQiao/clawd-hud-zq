@@ -19,7 +19,7 @@
     "pictures": {
       "type": "string",
       "title": "Pictures",
-      "description": "auto (default): real pixels where the terminal draws them (kitty 0.28 or newer, Ghostty, outside tmux), coloured half-block cells elsewhere, and one line of text for a screen reader or NO_COLOR. blocks: always half-block cells. text: one line naming the images.",
+      "description": "auto (default): real pixels where the terminal draws them (kitty 0.28 or newer, Ghostty, outside tmux and screen), coloured half-block cells elsewhere, and one line of text when NO_COLOR or CLAUDE_AX_SCREEN_READER is set. blocks: always half-block cells. text: one line naming the images; choose it for screen-reader mode turned on in settings or with --ax-screen-reader.",
       "default": "auto",
       "options": ["auto", "blocks", "text"]
     }

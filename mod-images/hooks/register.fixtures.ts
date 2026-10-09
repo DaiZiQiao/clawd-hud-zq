@@ -52,6 +52,8 @@ export const arrange = (on: On, { kitState = false }: { kitState?: boolean } = {
     blit: (_args: UiBlitArgs): UiBlitResult => ({}),
     writes: [] as string[],
     logs: [] as string[],
+    /** Every folder listed, in order. */
+    listed: [] as string[],
   }
   const held = new Map<string, { value: unknown; version: number }>()
 
@@ -87,6 +89,7 @@ export const arrange = (on: On, { kitState = false }: { kitState?: boolean } = {
   on('prompt.read', () => ({ value: { text: world.draft, cursor: world.draft.length } }))
   on('fs.exists', (_$, e) => ({ value: world.dirs.has(e.path) || world.files.has(e.path) }))
   on('fs.list', (_$, e) => {
+    world.listed.push(e.path)
     if (!world.dirs.has(e.path)) return { deny: `${e.path}: no such directory` }
     const entries: FsEntry[] = []
     for (const dir of world.dirs) if (dir !== e.path && parentOf(dir) === e.path) entries.push({ name: dir.slice(e.path.length + 1), kind: 'dir', size: 0, mtimeMs: 0, isLink: false })

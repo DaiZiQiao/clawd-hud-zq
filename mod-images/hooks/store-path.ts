@@ -27,7 +27,7 @@ export type StoreEnv = {
   os?: string
   /** CLAUDE_CODE_SKIP_PROMPT_HISTORY: Claude Code keeps no transcript, and no image folder. */
   skipPromptHistory?: string
-  /** CLAUDE_CODE_CHILD_SESSION: a nested session, which keeps neither. */
+  /** CLAUDE_CODE_CHILD_SESSION: a nested session, which may keep neither. */
   childSession?: string
   /** CLAUDE_CODE_FORCE_SESSION_PERSISTENCE: a nested session keeps them after all. */
   forcePersistence?: string
@@ -54,16 +54,21 @@ const isOn = (value: string | undefined): boolean =>
 
 /**
  * Why Claude Code keeps no image folder in this session, or undefined when it
- * does: the pictures are still attached and sent, but never written where
- * the strip can read them. (A nested session whose marker is only inherited
- * from tmux, or a teammate, keeps one all the same: the env cannot tell.)
+ * does or may: the pictures are still attached and sent, but never written
+ * where the strip can read them.
  */
-export const storeOffReasonOf = (env: StoreEnv): string | undefined => {
-  if (isOn(env.skipPromptHistory)) return 'CLAUDE_CODE_SKIP_PROMPT_HISTORY is set'
-  if (isOn(env.childSession) && !isOn(env.forcePersistence)) return 'CLAUDE_CODE_CHILD_SESSION is set without CLAUDE_CODE_FORCE_SESSION_PERSISTENCE'
+export const storeOffReasonOf = (env: StoreEnv): string | undefined =>
+  isOn(env.skipPromptHistory) ? 'CLAUDE_CODE_SKIP_PROMPT_HISTORY is set' : undefined
 
-  return undefined
-}
+/**
+ * Why Claude Code may keep no image folder here, or undefined: a nested
+ * session keeps none, but its marker is also inherited through tmux and set
+ * for a teammate, which keep one, and the env cannot tell them apart. So the
+ * folder is looked for all the same; only when none turns up does a chip read
+ * `no preview` rather than `not found` or `not attached`.
+ */
+export const storeDoubtOf = (env: StoreEnv): string | undefined =>
+  isOn(env.childSession) && !isOn(env.forcePersistence) ? 'CLAUDE_CODE_CHILD_SESSION is set: a nested session may keep none' : undefined
 
 // The Java string hash Claude Code takes of the whole root, over UTF-16 code
 // units, wrapping at 32 bits.
@@ -161,6 +166,9 @@ export const tempBasesOf = (env: StoreEnv, root: string): readonly string[] => {
 
 /** A folder name Claude Code's own temp folder may have in a temp base: `claude-0`, `claude-1000`, whatever the uid reads as. */
 export const isUserDirName = (name: string): boolean => /^claude-./.test(name)
+
+/** A project's folder under Claude Code's own temp folder (`/tmp/claude-1000`). */
+export const projectDirOf = (userDir: string, root: string): string => joinPath(userDir, projectKeyOf(root))
 
 /** A session's image folder under Claude Code's own temp folder (`/tmp/claude-1000`). */
 export const imagesDirOf = (userDir: string, root: string, sessionId: string): string =>

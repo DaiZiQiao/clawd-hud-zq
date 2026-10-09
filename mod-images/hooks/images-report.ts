@@ -13,18 +13,21 @@ import type { ImagesSettings } from './images-options'
 export type ReportStore =
   | { kind: 'off'; reason: string }
   | { kind: 'found'; dir: string; files: number }
-  | { kind: 'not-found'; tried: readonly string[] }
+  | { kind: 'not-found'; tried: readonly string[]; doubt?: string }
   | { kind: 'unknown' }
 
 /** The band's room and the thumbnails' height when the strip was last drawn. */
 export type ReportBand = {
+  /** The rows the strip could take: the band's, at most half the screen less the prompt. */
   maxRows: number
   bodyColumns: number
   viewportRows?: number
   viewportColumns?: number
   isFullscreen?: boolean
-  /** Thumbnail rows in that drawing; absent when it was one line. */
+  /** Thumbnail rows in that drawing; absent when it was one line, or none. */
   rows?: number
+  /** What it was drawn as: thumbnails, one compact row, a line of text, or nothing for want of room. */
+  shape?: 'strip' | 'compact' | 'text' | 'none'
 }
 
 export type ReportFacts = {
@@ -94,7 +97,9 @@ const storeLines = (store: ReportStore): string[] => {
   if (store.kind === 'found') return [`Image folder: ${store.dir} (found, ${store.files} ${store.files === 1 ? 'image' : 'images'} this session).`]
   if (store.kind === 'not-found') {
     return [
-      'Image folder: not found yet. It appears with the first image pasted in this session.',
+      store.doubt === undefined
+        ? 'Image folder: not found yet. It appears with the first image pasted in this session.'
+        : `Image folder: not found (${store.doubt}): tiles read no preview.`,
       ...(store.tried.length === 0 ? [] : [`  Looked in: ${store.tried.join(', ')}`]),
     ]
   }
@@ -104,7 +109,9 @@ const storeLines = (store: ReportStore): string[] => {
 
 const roomLine = (band: ReportBand): string => {
   const size = band.viewportColumns === undefined || band.viewportRows === undefined ? '' : ` (${band.viewportColumns}x${band.viewportRows}${band.isFullscreen === true ? ', fullscreen' : ''})`
-  const rows = band.rows === undefined ? 'the strip was one line' : `thumbnails were ${band.rows} rows`
+  const rows = band.rows !== undefined
+    ? `thumbnails were ${band.rows} rows`
+    : band.shape === 'none' ? 'no room for the strip' : band.shape === 'text' ? 'the strip was one line of text' : 'the strip was one line'
 
   return `Room: ${band.maxRows} rows above the prompt, ${band.bodyColumns} columns${size}; ${rows}.`
 }

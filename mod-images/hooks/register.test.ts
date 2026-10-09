@@ -2,6 +2,7 @@ import { describe, expect, mock, test } from 'claude-code/testing'
 
 import type { ImagesStrip } from '../types'
 import {
+  BAND_PROPS,
   NEXT_SID,
   NOW,
   PNG_GRADIENT,
@@ -10,6 +11,7 @@ import {
   SAMPLE,
   SID,
   START,
+  USER_DIR,
   arrange,
   autocomplete,
   hintLine,
@@ -107,8 +109,77 @@ describe('the strip', () => {
     const lines = ((await $.command.run(REPORT)).text ?? '').split('\n')
     expect(lines.slice(1, 3)).toEqual([
       'Pictures: half-block cells in full colour (kitty: TERM=xterm-kitty).',
-      '  Claude Code checked and this terminal draws no pictures (no reply to the graphics query).',
+      '  Claude Code draws no pictures here (no reply to the graphics query).',
     ])
+  })
+
+  test('a guess the engine settled with no answer switches at once; one it still asks about switches when the tries run out', async ($, on) => {
+    mock.env(on, { TERM: 'xterm-kitty' })
+    const { clock, paste, world } = arrange(on)
+    const settled = 'the Image draws its alt here: the terminal draws no placeholder images (env: terminal=xterm-kitty, not asked yet, no answer)'
+    world.blit = () => ({ deny: settled })
+    await $.session.start(START)
+    paste(1)
+    await autocomplete($, '[Image #1]')
+    await runFor(clock, 600)
+    const ui = await mountBand($)
+    await runFor(clock, 1000)
+    expect(world.blits).toHaveLength(1)
+    await ui.redraw()
+    expect((await ui.find({ type: 'Raster', key: 'img:1' }))?.props).toMatchObject({ columns: 26, rows: 8 })
+    await ui.unmount()
+    expect(((await $.command.run(REPORT)).text ?? '').split('\n')[2]).toBe('  Claude Code draws no pictures here (env: terminal=xterm-kitty, not asked yet, no answer).')
+  })
+
+  test('an engine that never settles is asked five times, and the alt it still draws then switches the strip', async ($, on) => {
+    mock.env(on, { TERM: 'xterm-kitty' })
+    const { clock, paste, world } = arrange(on)
+    world.blit = () => ({ deny: 'the Image draws its alt here: the terminal draws no placeholder images (env: terminal=xterm-kitty, not asked yet)' })
+    await $.session.start(START)
+    paste(1)
+    await autocomplete($, '[Image #1]')
+    await runFor(clock, 600)
+    const ui = await mountBand($)
+    await runFor(clock, 3000)
+    expect(await ui.find({ type: 'Image', key: 'img:1' })).toBeDefined()
+    await runFor(clock, 3000)
+    expect(world.blits).toHaveLength(5)
+    await ui.redraw()
+    expect(await ui.find({ type: 'Image' })).toBeUndefined()
+    expect(await ui.find({ type: 'Raster', key: 'img:1' })).toBeDefined()
+    await ui.unmount()
+  })
+
+  test('image ids used up for a moment are asked about again, and the pixels stay once drawn', async ($, on) => {
+    mock.env(on, { TERM: 'xterm-kitty' })
+    const { clock, paste, world } = arrange(on)
+    const answers: { deny?: string }[] = [{ deny: 'the Image draws its alt here: every 8-bit image id is in use' }, {}]
+    world.blit = () => answers.shift() ?? {}
+    await $.session.start(START)
+    paste(1)
+    await autocomplete($, '[Image #1]')
+    await runFor(clock, 600)
+    const ui = await mountBand($)
+    await runFor(clock, 3000)
+    expect(world.blits).toHaveLength(2)
+    await ui.redraw()
+    expect(await ui.find({ type: 'Image', key: 'img:1' })).toBeDefined()
+    await ui.unmount()
+    expect(((await $.command.run(REPORT)).text ?? '').split('\n')[1]).toBe('Pictures: real pixels (kitty: TERM=xterm-kitty, confirmed by the terminal).')
+  })
+
+  test("an old kitty's answer keeps its version in the report", async ($, on) => {
+    mock.env(on, { TERM: 'xterm-kitty' })
+    const { clock, paste, world } = arrange(on)
+    world.blit = () => ({ deny: 'the Image draws its alt here: the terminal draws no placeholder images (probe: graphics reply OK, terminal kitty(0.26.5))' })
+    await $.session.start(START)
+    paste(1)
+    await autocomplete($, '[Image #1]')
+    await runFor(clock, 600)
+    const ui = await mountBand($)
+    await runFor(clock, 1000)
+    await ui.unmount()
+    expect(((await $.command.run(REPORT)).text ?? '').split('\n')[2]).toBe('  Claude Code draws no pictures here (graphics reply OK, terminal kitty(0.26.5)).')
   })
 
   test('a placeholder waits 150 ms before it shows, so a quick decode never flashes one', async ($, on) => {
@@ -197,6 +268,41 @@ describe('the strip', () => {
   })
 })
 
+describe('framed tiles', () => {
+  test('in a strip three rows tall each frame still says why: the reason first, cut to fit', async ($, on) => {
+    mock.env(on, { TERM: 'xterm-256color' })
+    const { clock, world, paste } = arrange(on)
+    await $.session.start(START)
+    paste(1)
+    const path = `${imagesDirOf()}/1.png`
+    const file = world.files.get(path)
+    if (file !== undefined) world.files.set(path, { ...file, size: 5_000_000 })
+    paste(4, PNG_GRADIENT, { mtimeMs: NOW - 60_000 })
+    await autocomplete($, '[Image #1] [Image #4]')
+    await runFor(clock, 600)
+    // Four rows above the prompt: thumbnails three rows tall, one line inside each frame.
+    const ui = await mountBand($, 'terminal', { maxRows: 4 })
+    expect((await ui.find({ key: 'images:note:1' }))?.text).toBe('too big')
+    expect((await ui.find({ key: 'images:note:4' }))?.text).toBe('not attac…')
+    await ui.unmount()
+  })
+
+  test('with room, a frame gives the reason and then the format', async ($, on) => {
+    mock.env(on, { TERM: 'xterm-256color' })
+    const { clock, world, paste } = arrange(on)
+    await $.session.start(START)
+    paste(1)
+    const path = `${imagesDirOf()}/1.png`
+    const file = world.files.get(path)
+    if (file !== undefined) world.files.set(path, { ...file, size: 5_000_000 })
+    await autocomplete($, '[Image #1]')
+    await runFor(clock, 600)
+    const ui = await mountBand($)
+    expect((await ui.find({ key: 'images:note:1' }))?.text).toMatch(/too big.*PNG/s)
+    await ui.unmount()
+  })
+})
+
 describe('what is attached', () => {
   test('a chip whose file was written long before the chip appeared is drawn as not attached', async ($, on) => {
     mock.env(on, { TERM: 'xterm-256color' })
@@ -244,6 +350,61 @@ describe('what is attached', () => {
     expect(stripOf(stateOf).tiles).toMatchObject([{ id: 1, state: 'not-attached' }])
   })
 
+  test('a prompt a cancelled turn put back keeps its pictures; a recall after a finished turn does not', async ($, on) => {
+    mock.env(on, { TERM: 'xterm-256color' })
+    mock.session(on)
+    on('turn.complete', (_$, e) => ({ text: e.answer }))
+    const { clock, paste, world, stateOf } = arrange(on)
+    await $.session.start(START)
+    paste(1)
+    world.draft = '[Image #1] what is this?'
+    await autocomplete($, world.draft)
+    await runFor(clock, 600)
+    const send = async (uuid: string): Promise<void> => {
+      await $.session.append({
+        message: { type: 'user', role: 'user', content: [{ type: 'text', text: '[Image #1] what is this?' }, { type: 'image', source: { type: 'base64', media_type: 'image/png', data: PNG_GRADIENT } }] },
+        door: 'prompt',
+        origin: { kind: 'composer' },
+        uuid,
+      } as never)
+      world.draft = ''
+      await hintLine($, false)
+      await runFor(clock, 300)
+    }
+    await send('row-1')
+    // Esc before any answer: the turn ends aborted with nothing said, and the prompt is back in the box.
+    await $.turn.complete({ answer: '', durationMs: 900, isAborted: true, turnId: 'turn-1', reason: 'aborted' } as never)
+    world.draft = '[Image #1] what is this?'
+    await hintLine($, true)
+    await runFor(clock, 300)
+    expect(stripOf(stateOf).tiles).toMatchObject([{ id: 1, state: 'ready' }])
+    // Sent again and answered: Up brings back the text alone.
+    await send('row-2')
+    await $.turn.complete({ answer: 'A gradient.', durationMs: 900, isAborted: false, turnId: 'turn-2', reason: 'answer' } as never)
+    world.draft = '[Image #1] what is this?'
+    await hintLine($, true)
+    await runFor(clock, 300)
+    expect(stripOf(stateOf).tiles).toMatchObject([{ id: 1, state: 'not-attached' }])
+  })
+
+  test('a chip recalled in a session that has pasted nothing yet is not attached, and the temp folder is not listed again and again', { options: { pictures: 'text' } }, async ($, on) => {
+    mock.env(on, { TERM: 'xterm-256color' })
+    const { clock, world, stateOf } = arrange(on)
+    // An earlier session of this project left its folder: this user's claude-* folder is known by it.
+    world.dirs.add(`${USER_DIR}/-work`)
+    await $.session.start(START)
+    world.draft = '[Image #3] what is this?'
+    await hintLine($, true)
+    await runFor(clock, 3200, 100)
+    expect(stripOf(stateOf).tiles).toMatchObject([{ id: 3, state: 'not-attached' }])
+    const ui = await mountBand($)
+    expect((await ui.find({ key: 'images:text' }))?.text).toBe('Not attached: #3.')
+    await ui.unmount()
+    world.listed.length = 0
+    await runFor(clock, 10_000, 100)
+    expect(world.listed.filter(path => path === '/tmp')).toEqual([])
+  })
+
   test('with Claude Code keeping no image folder, a chip reads no preview once its wait is over', async ($, on) => {
     mock.env(on, { TERM: 'xterm-256color', CLAUDE_CODE_SKIP_PROMPT_HISTORY: '1' })
     const { clock, world, stateOf } = arrange(on)
@@ -284,6 +445,43 @@ describe('what is attached', () => {
   })
 })
 
+describe('memory and reloads', () => {
+  test('more pictures than it keeps decoded: one dropped from memory is decoded again when it shows', async ($, on) => {
+    mock.env(on, { TERM: 'xterm-256color' })
+    const { clock, world, paste } = arrange(on)
+    await $.session.start(START)
+    for (let id = 1; id <= 34; id += 1) paste(id, PNG_HALF)
+    await autocomplete($, world.draft)
+    await runFor(clock, 3000)
+    world.draft = '[Image #1] [Image #2] [Image #3]'
+    await runFor(clock, 600)
+    const ui = await mountBand($)
+    await runFor(clock, 1000)
+    await ui.redraw()
+    expect(await ui.find({ type: 'Raster', key: 'img:1' })).toBeDefined()
+    await ui.unmount()
+  })
+
+  test('a band drawn by a reload before its session started is drawn again once it has', async ($, on) => {
+    mock.env(on, { TERM: 'xterm-256color' })
+    const { clock, world, paste } = arrange(on, { kitState: true })
+    await $.session.start(START)
+    paste(4, PNG_GRADIENT, { mtimeMs: NOW - 60_000 })
+    await autocomplete($, world.draft)
+    await runFor(clock, 600)
+    // As a reload: the module is not active yet when the band is drawn.
+    world.surfaces = []
+    await $.session.start({ cwd: START.cwd, surface: null, isInteractive: true } as never)
+    const ui = await mountBand($)
+    expect(await ui.find({ key: 'images:note:4' })).toBeUndefined()
+    world.surfaces = ['terminal']
+    await $.session.start(START)
+    await runFor(clock, 600)
+    expect((await ui.find({ key: 'images:note:4' }))?.text).toContain('attached')
+    await ui.unmount()
+  })
+})
+
 describe('/mod-images', () => {
   test('it reports the terminal, the image folder and the last strip', async ($, on) => {
     mock.env(on, { TERM: 'xterm-256color', TERM_PROGRAM: 'Apple_Terminal' })
@@ -302,6 +500,20 @@ describe('/mod-images', () => {
     expect(ran.text).toContain('Last strip, 0 s ago: #1 PNG 16x10 shown.')
     expect(ran.text).toContain('Room: 10 rows above the prompt, 115 columns (120x30, fullscreen); thumbnails were 8 rows.')
     expect(ran.text).toContain('Paste: Ctrl+V or Cmd+V, or drag a file in.')
+  })
+
+  test('on the main screen the room is what the strip could take, not the whole height', async ($, on) => {
+    mock.env(on, { TERM: 'xterm-256color' })
+    const { clock, paste, world } = arrange(on)
+    await $.session.start(START)
+    paste(1)
+    await autocomplete($, world.draft)
+    await runFor(clock, 600)
+    const ui = await $.ui.mount({ plugin: 'mod-images', surface: 'terminal', component: 'AbovePrompt', props: { ...BAND_PROPS, maxRows: 24, bodyColumns: 75 }, viewport: { columns: 80, rows: 24, isFullscreen: false } })
+    expect((await ui.find({ type: 'Raster', key: 'img:1' }))?.props).toMatchObject({ rows: 6 })
+    await ui.unmount()
+    const ran = await $.command.run(REPORT)
+    expect(ran.text).toContain('Room: 7 rows above the prompt, 75 columns (80x24); thumbnails were 6 rows.')
   })
 
   test('test draws a sample strip for ten seconds', async ($, on) => {

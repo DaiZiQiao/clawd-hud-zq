@@ -14,6 +14,7 @@ import {
   pollDelayOf,
   reconcile,
   sameTilesOf,
+  unmarkSentOf,
 } from './draft-reconcile'
 import { NOW, READY_SHOT, factsOf, folderOf, inputOf, isJson, sessionOf } from './draft-reconcile.fixtures'
 
@@ -109,13 +110,13 @@ describe('chips that carry no picture', () => {
     expect([output.toDecode, output.prov.pasted, output.waiting]).toEqual([[], {}, false])
   })
 
-  test('recalled from another session with no such file here: pending for PENDING_MS, then not found, never a picture', () => {
+  test('recalled from another session with no such file here: pending for PENDING_MS, then not attached, never a picture', () => {
     const session = sessionOf()
     const listing = folderOf('1.png')
     expect(session.refresh(0, { draftText: '[Image #9]', listing }).tiles).toEqual([{ id: 9, state: 'pending', seenAt: NOW }])
     expect(session.refresh(PENDING_MS, { draftText: '[Image #9]', listing }).tiles[0]?.state).toBe('pending')
     const over = session.refresh(PENDING_MS + 1, { draftText: '[Image #9]', listing })
-    expect([over.tiles, over.waiting, over.toDecode]).toEqual([[{ id: 9, state: 'failed', reason: 'not found', seenAt: NOW }], false, []])
+    expect([over.tiles, over.waiting, over.toDecode]).toEqual([[{ id: 9, state: 'not-attached', seenAt: NOW }], false, []])
   })
 
   test('a chip typed by hand beside an old file: not attached', () => {
@@ -125,11 +126,11 @@ describe('chips that carry no picture', () => {
 })
 
 describe('a file that is slow, late or gone for a moment', () => {
-  test('late: not found after PENDING_MS, then attached when the file lands fresh', () => {
+  test('late: not attached after PENDING_MS, then attached when the file lands fresh', () => {
     const session = sessionOf()
     const empty = folderOf('2.png')
     session.refresh(0, { draftText: '[Image #3]', listing: empty })
-    expect(session.refresh(PENDING_MS + 1, { draftText: '[Image #3]', listing: empty }).tiles).toEqual([{ id: 3, state: 'failed', reason: 'not found', seenAt: NOW }])
+    expect(session.refresh(PENDING_MS + 1, { draftText: '[Image #3]', listing: empty }).tiles).toEqual([{ id: 3, state: 'not-attached', seenAt: NOW }])
     const late = session.refresh(5000, { draftText: '[Image #3]', listing: folderOf('2.png', { name: '3.png', mtimeMs: NOW + 4900 }) })
     expect([late.tiles, late.toDecode.map(file => file.name), late.prov.pasted]).toEqual([[{ id: 3, state: 'reading', format: 'png', seenAt: NOW }], ['3.png'], { 3: true }])
   })
@@ -141,12 +142,12 @@ describe('a file that is slow, late or gone for a moment', () => {
     expect([later.tiles, later.waiting]).toEqual([[{ id: 7, state: 'pending', seenAt: NOW }], true])
   })
 
-  test('no image folder: pending, then the reason the hooks give for it; a folder without the file is not found', () => {
+  test('no image folder: pending, then the reason the hooks give for it; in a folder without its file the chip is not attached', () => {
     const session = sessionOf()
     session.refresh(0, { draftText: '[Image #1]' })
     expect(session.refresh(PENDING_MS + 1, { draftText: '[Image #1]', missingReason: 'no preview' }).tiles).toEqual([{ id: 1, state: 'failed', reason: 'no preview', seenAt: NOW }])
     expect(session.refresh(PENDING_MS + 2, { draftText: '[Image #1]' }).tiles[0]?.reason).toBe('not found')
-    expect(session.refresh(PENDING_MS + 3, { draftText: '[Image #1]', missingReason: 'no preview', listing: folderOf() }).tiles[0]?.reason).toBe('not found')
+    expect(session.refresh(PENDING_MS + 3, { draftText: '[Image #1]', missingReason: 'no preview', listing: folderOf() }).tiles[0]?.state).toBe('not-attached')
   })
 
   test('a passing ENOENT after the decode never drops the picture, nor a known failure', () => {
@@ -261,6 +262,15 @@ describe('sent marks', () => {
 
   test('markSentOf ignores what no chip can be', () => {
     expect(markSentOf(EMPTY_PROVENANCE, [0, -1, 1.5, Number.NaN, 2 ** 60])).toBe(EMPTY_PROVENANCE)
+  })
+
+  test('unmarkSentOf takes the marks back, the chip still pasted, so it is attached again', () => {
+    const prov: ImagesProvenance = { seen: { 1: NOW, 7: NOW }, pasted: { 1: true }, sent: { 1: true, 7: true } }
+    const taken = unmarkSentOf(prov, [1])
+    expect(taken).toEqual({ seen: { 1: NOW, 7: NOW }, pasted: { 1: true }, sent: { 7: true } })
+    expect(unmarkSentOf(taken, [1, 3])).toBe(taken)
+    const output = reconcile(inputOf({ now: NOW + 100, draftText: '[Image #1]', prov: taken, listing: folderOf({ name: '1.png', mtimeMs: NOW }), decoded: factsOf({ 1: READY_SHOT }) }))
+    expect(output.tiles).toEqual([{ id: 1, state: 'ready', ...SHOT_TILE, seenAt: NOW }])
   })
 })
 

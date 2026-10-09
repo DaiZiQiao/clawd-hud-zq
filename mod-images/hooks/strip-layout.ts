@@ -76,8 +76,8 @@ export const SWATCH_COLUMNS = 2
 const PROMPT_ROWS = 5
 /** A picture tile is never narrower than this (nor than it is tall): room for `#N`. */
 const PICTURE_COLUMNS_MIN = 6
-/** A tile with no picture to size it (no size yet, failed, not attached) is never narrower than this. */
-const PLAIN_COLUMNS_MIN = 10
+/** A tile with no picture to size it (no size yet, failed, not attached) is never narrower than this: its frame holds `no preview`. */
+const PLAIN_COLUMNS_MIN = 12
 
 const READING = 'reading'
 const NOT_ATTACHED = 'not attached'
@@ -232,7 +232,7 @@ const compactOf = (tiles: readonly ImagesTile[], mode: LayoutMode, columns: numb
  * A tile's width at `rows` rows: a picture as wide as its aspect asks (cells
  * are about twice as tall as wide), within max(rows, 6) and 4 x rows, a
  * Raster within BLOCK_CELLS_CAP cells; a tile with no picture to size it 2 x
- * rows, within 10 and 4 x rows.
+ * rows, within 12 and 4 x rows.
  */
 const tileColumnsOf = (tile: ImagesTile, rows: number, mode: LayoutMode): number => {
   const size = pictureSizeOf(tile)

@@ -67,6 +67,16 @@ describe('the report', () => {
     const missing = reportOf({ ...BASE, store: { kind: 'not-found', tried: ['/tmp'] }, lastStrip: undefined })
     expect(missing).toContain('Image folder: not found yet. It appears with the first image pasted in this session.\n  Looked in: /tmp')
     expect(missing).toContain('Last strip: none drawn yet.')
+    const doubted = reportOf({ ...BASE, store: { kind: 'not-found', tried: ['/tmp'], doubt: 'CLAUDE_CODE_CHILD_SESSION is set: a nested session may keep none' } })
+    expect(doubted).toContain('Image folder: not found (CLAUDE_CODE_CHILD_SESSION is set: a nested session may keep none): tiles read no preview.')
+  })
+
+  test('the room says what the strip was drawn as when it had no thumbnails', () => {
+    const roomOf = (band: ReportFacts['band']): string | undefined => reportOf({ ...BASE, band }).split('\n').find(line => line.startsWith('Room:'))
+    const band = { maxRows: 3, bodyColumns: 75, viewportRows: 24, viewportColumns: 80, isFullscreen: false }
+    expect(roomOf({ ...band, shape: 'compact' })).toBe('Room: 3 rows above the prompt, 75 columns (80x24); the strip was one line.')
+    expect(roomOf({ ...band, shape: 'text' })).toBe('Room: 3 rows above the prompt, 75 columns (80x24); the strip was one line of text.')
+    expect(roomOf({ ...band, maxRows: 0, shape: 'none' })).toBe('Room: 0 rows above the prompt, 75 columns (80x24); no room for the strip.')
   })
 
   test('outside a terminal it says so and stops', () => {

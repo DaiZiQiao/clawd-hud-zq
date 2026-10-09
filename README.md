@@ -135,7 +135,7 @@ A card at the top of the pane, at most 72 cells wide, then the TODO section, the
 
 ## mod-images
 
-Thumbnails of the images in the prompt you are writing, in the strip Claude Code keeps directly above the prompt. Paste an image or drag an image file in: Claude Code puts `[Image #1]` in the prompt, and a moment later the strip shows the picture labelled `#1` with its size. Delete the chip and its thumbnail goes; send the prompt and the strip clears. It only shows: it never changes the prompt or what is sent.
+Thumbnails of the images in the prompt you are writing, in the strip Claude Code keeps directly above the prompt. Paste an image or drag an image file in: Claude Code puts `[Image #1]` in the prompt, and a moment later the strip shows the picture labelled `#1` with the size Claude Code stored, which is what it sends (it shrinks a large paste: a 3000x1875 screenshot is stored as 2000x1250). Delete the chip and its thumbnail goes; send the prompt and the strip clears. It only shows: it never changes the prompt or what is sent. It needs Claude Code 2.1.295 or newer.
 
 ```
 ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀ ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀                                      [-]
@@ -159,16 +159,20 @@ Thumbnails of the images in the prompt you are writing, in the strip Claude Code
 | Windows Terminal with PowerShell | Coloured half-block cells, full colour. |
 | WSL in Windows Terminal | Half-block cells in 256 colours; full colour after `export COLORTERM=truecolor` in the WSL shell profile. |
 | macOS Terminal | Half-block cells in 256 colours. |
-| Desktop app, VS Code, mobile app | Nothing: mod-images draws in a terminal only. |
+| Desktop app, the VS Code extension's panel, mobile app | Nothing: mod-images draws in a terminal only. In VS Code's integrated terminal it draws half-block cells. |
 
-A half-block cell is the character `▀` coloured as two pixels, one above the other, so a thumbnail 8 rows tall is 16 pixels tall: enough to tell images apart, not to read text in them. In kitty the pixels are checked with the terminal before they are trusted; where they do not draw (tmux in between, an older kitty), the strip switches to half-block cells.
+Seen on screen so far only on Linux, in 256 colours and in full colour. kitty's and Ghostty's pixels, Windows Terminal, WSL and macOS Terminal follow from the same code but were not seen yet: `/mod-images test` shows what yours draws.
+
+A half-block cell is the character `▀` coloured as two pixels, one above the other, so a thumbnail 8 rows tall is 16 pixels tall: enough to tell images apart, not to read text in them. In kitty and Ghostty the strip draws pixels, then asks Claude Code whether they reached the screen; where they did not (tmux in between, an older kitty, no answer from the terminal), it switches to half-block cells.
 
 ### Usage
 
 - Paste with Ctrl+V (Cmd+V also works in macOS Terminal; Alt+V on Windows and WSL), or drag an image file onto the terminal.
-- Remove an image by deleting its `[Image #N]` chip: Backspace right after it, or Left, which jumps over the whole chip.
-- The strip shows only the images that will be sent: a chip typed by hand or recalled from history with ↑ is a dashed `not attached` tile, since Claude Code does not re-attach images from history.
+- Remove an image by deleting its `[Image #N]` chip: Backspace right after the chip deletes all of it, and its tile goes.
+- The strip shows only the images that will be sent: a chip typed by hand or recalled from history with ↑ is a dashed `not attached` tile, since Claude Code does not re-attach images from history. A prompt Claude Code puts back after Esc stops a turn before any answer keeps its images, and the strip shows them.
 - In a short terminal, under a survey, or when another plugin also draws above the prompt, the strip is one line. Claude Code's `[-]` (or ctrl+x ctrl+a) folds and unfolds the whole space above the prompt.
+- To check it is installed, run `/mod-images`: it answers `mod-images: version 1.0.0 on Claude Code …`, then says how it draws in this terminal.
+- Nothing above the prompt? `▸ plugin panel hidden` means the space is folded: press ctrl+x ctrl+a. Otherwise `/mod-images` says how it draws, where it looked for the image folder and what the last strip held.
 
 | Command | What it does |
 | --- | --- |
@@ -182,16 +186,15 @@ Change either option from `/plugin` (select mod-images, then its settings).
 | Option | Default | What it does |
 | --- | --- | --- |
 | `height` | `8` | The tallest the thumbnails get, from 3 to 20 rows. The strip always shrinks to fit the room above the prompt: about 6 rows in an 80x24 terminal, 8 in 120x30. |
-| `pictures` | `auto` | `auto`: real pixels where the terminal draws them, half-block cells elsewhere, one line of text for a screen reader or `NO_COLOR`. `blocks`: always half-block cells. `text`: one line naming the images. |
+| `pictures` | `auto` | `auto`: real pixels where the terminal draws them, half-block cells elsewhere, and one line of text when `NO_COLOR` or `CLAUDE_AX_SCREEN_READER` is set. `blocks`: always half-block cells. `text`: one line naming the images; choose it when screen-reader mode is on through its setting or `--ax-screen-reader`, which a plugin cannot see. |
 
 ### How it works, and its limits
 
-Claude Code saves each pasted image the moment it is pasted, in a temporary folder of the session's own; mod-images finds that folder and decodes the picture itself (PNG, JPEG, GIF and lossless WebP), in small slices so Claude Code never waits on it. That folder is not a documented interface: this was built and checked against Claude Code 2.1.295 on Linux, with the Windows and macOS locations read from the same code. If a later version moves it, the tiles read `not found` and `/mod-images` shows where it looked. See [the strip](mod-images/docs/strip.md) for the details.
+Claude Code saves each pasted image the moment it is pasted, in a temporary folder of the session's own; mod-images finds that folder and decodes the picture itself (PNG, JPEG, GIF and lossless WebP), in slices of about 8 ms, so Claude Code never waits on it long (a lossless WebP decodes in one go: about 0.1 s for a plain 1280x854 screenshot, up to half a second for a photo). That folder is not a documented interface: this was built and checked against Claude Code 2.1.295 on Linux, with the Windows and macOS locations read from the same code. If a later version moves it, the tiles read `not found` and `/mod-images` shows where it looked. See [the strip](mod-images/docs/strip.md) for the details.
 
-- Requires Claude Code 2.1.295 or newer.
-- Lossy and animated WebP files get a `no preview` tile; files over 4 MB, and lossless WebP files over about a megapixel (larger than 1280x854), a `too big` one.
+- Lossy and animated WebP files, and CMYK, 12-bit, arithmetic-coded or lossless JPEGs, get a `no preview` tile; files over 4 MiB, and lossless WebP files over about a megapixel (larger than 1280x854), a `too big` one.
 - After Esc Esc and then ↑, Claude Code drops the images of the recalled prompt, but the strip still shows them.
-- No thumbnails when Claude Code keeps no image folder: with `CLAUDE_CODE_SKIP_PROMPT_HISTORY` set, or in a nested session.
+- No thumbnails when Claude Code keeps no image folder: with `CLAUDE_CODE_SKIP_PROMPT_HISTORY` set, or in a nested session. Each tile then reads `no preview`.
 
 ## Development
 

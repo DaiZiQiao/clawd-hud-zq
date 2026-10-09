@@ -22,7 +22,7 @@ import type { StoreFile, StoreListing } from './store-path'
 
 /** A file written this long before its chip was first seen still counts as pasted with it. */
 export const FRESH_MS = 10_000
-/** A chip waits this long for its file before its tile reads `not found`. */
+/** A chip waits this long for its file before its tile reads `not attached` (`not found` when it was pasted, or with no folder). */
 export const PENDING_MS = 3_000
 /** Entries each provenance record keeps, the oldest dropped first; never those of chips in the draft. */
 export const PROVENANCE_CAP = 256
@@ -73,7 +73,7 @@ export type ReconcileOutput = {
 
 /** A failed picture with no reason given reads as this. */
 const UNREADABLE = "can't read"
-/** A listing in hand without the chip's file, once the wait is over. */
+/** A pasted chip whose file the listing in hand lacks, once the wait is over. */
 const NOT_FOUND = 'not found'
 
 const FORMAT_OF_EXT: Record<StoreFile['ext'], ImagesFormat> = { png: 'png', jpg: 'jpeg', gif: 'gif', webp: 'webp' }
@@ -113,8 +113,11 @@ const cappedOf = <T>(record: Readonly<Record<string, T>>, seen: Readonly<Record<
  * - attached: the decoder's facts when it has them, even with the file
  *   missing from this listing; else, with a file, `reading` and decoded;
  * - no file yet: `pending` while its `.tmp.` file is being written or for
- *   PENDING_MS after `seenAt`, then `failed`: `not found`, or `missingReason`
- *   with no listing. A file that turns up later is judged as above.
+ *   PENDING_MS after `seenAt`. Then, with the folder listed, `not-attached`:
+ *   Claude Code writes an image's file the moment it attaches it, so a chip
+ *   whose file never came carries none; but a pasted chip whose file has
+ *   gone is `failed`, `not found`. With no listing, `failed`: `missingReason`.
+ *   A file that turns up later is judged as above.
  * A tile's `format` is its file's until the decoder says otherwise.
  */
 export const reconcile = (input: ReconcileInput): ReconcileOutput => {
@@ -158,9 +161,9 @@ export const reconcile = (input: ReconcileInput): ReconcileOutput => {
       continue
     }
     const isWriting = listing?.tmpIds.has(id) === true
-    tiles.push(isWriting || now - seenAt <= PENDING_MS
-      ? tileOf(id, 'pending', seenAt)
-      : tileOf(id, 'failed', seenAt, { reason: listing === undefined ? input.missingReason : NOT_FOUND }))
+    if (isWriting || now - seenAt <= PENDING_MS) tiles.push(tileOf(id, 'pending', seenAt))
+    else if (listing === undefined) tiles.push(tileOf(id, 'failed', seenAt, { reason: input.missingReason }))
+    else tiles.push(pasted[key] === true ? tileOf(id, 'failed', seenAt, { reason: NOT_FOUND }) : tileOf(id, 'not-attached', seenAt))
   }
   const kept = new Set(ids.map(String))
   const capped = {
@@ -188,6 +191,20 @@ export const markSentOf = (prov: ImagesProvenance, ids: readonly number[]): Imag
   if (fresh.length === 0) return prov
   const sent: Record<string, true> = { ...prov.sent }
   for (const id of fresh) sent[String(id)] = true
+
+  return { ...prov, sent }
+}
+
+/**
+ * Provenance with `ids` no longer recorded as sent: Claude Code put the
+ * prompt that carried them back in the box, pictures and all (a turn
+ * cancelled before any answer). The same object when none was.
+ */
+export const unmarkSentOf = (prov: ImagesProvenance, ids: readonly number[]): ImagesProvenance => {
+  const marked = ids.filter(id => prov.sent[String(id)] === true)
+  if (marked.length === 0) return prov
+  const sent: Record<string, true> = { ...prov.sent }
+  for (const id of marked) delete sent[String(id)]
 
   return { ...prov, sent }
 }

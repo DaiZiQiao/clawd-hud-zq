@@ -139,11 +139,12 @@ describe('shrinking and overflow', () => {
   })
 
   test('a note that cannot name everyone names what fits, then …; with no room for a name, the count alone', () => {
-    const named = stripOf(layoutOf(inputOf(Array.from({ length: 30 }, (_, at) => bare(at + 1, 'pending')), { bodyColumns: 32 })))
+    const named = stripOf(layoutOf(inputOf(Array.from({ length: 30 }, (_, at) => bare(at + 1, 'pending')), { bodyColumns: 36 })))
     expect([named.tiles.length, named.overflow]).toEqual([2, '+28: #3 …'])
-    const counted = stripOf(layoutOf(inputOf(Array.from({ length: 9 }, (_, at) => bare(at + 101, 'not-attached')), { bodyColumns: 40 })))
+    const counted = stripOf(layoutOf(inputOf(Array.from({ length: 9 }, (_, at) => bare(at + 101, 'not-attached')), { bodyColumns: 41 })))
     expect([counted.tiles.length, counted.overflow]).toEqual([3, '+6'])
-    for (const line of [...linesOf(named), ...linesOf(counted)]) expect(line.length).toBeLessThanOrEqual(40)
+    for (const line of linesOf(named)) expect(line.length).toBeLessThanOrEqual(36)
+    for (const line of linesOf(counted)) expect(line.length).toBeLessThanOrEqual(41)
   })
 
   test('not one tile fits beside its note: the compact row instead', () => {
@@ -182,10 +183,10 @@ describe('hysteresis', () => {
 })
 
 describe('tiles and labels', () => {
-  test('a tile with no picture is 2 x rows wide, within 10 and 4 x rows: 10 at 3 rows, 12 at 6, 16 at 8', () => {
+  test('a tile with no picture is 2 x rows wide, within 12 and 4 x rows: 12 at 3 rows, 12 at 6, 16 at 8', () => {
     const at = (rows: number, more: Partial<LayoutInput>): number | undefined =>
       stripOf(layoutOf(inputOf([bare(1, 'pending')], { height: rows, ...more }))).tiles[0]?.columns
-    expect(at(3, {})).toBe(10)
+    expect(at(3, {})).toBe(12)
     expect(at(6, {})).toBe(12)
     expect(at(8, ROOM_120X30)).toBe(16)
   })
@@ -313,7 +314,7 @@ describe('never too tall, never too wide', () => {
   const columnsOf = (tile: ImagesTile, rows: number, mode: LayoutMode): number => {
     const known = tile.width !== undefined && tile.height !== undefined && tile.width > 0 && tile.height > 0
     const isPicture = known && tile.state !== 'failed' && tile.state !== 'not-attached'
-    if (!isPicture) return Math.min(Math.max(2 * rows, 10), 4 * rows)
+    if (!isPicture) return Math.min(Math.max(2 * rows, 12), 4 * rows)
     const most = mode === 'blocks' ? Math.min(4 * rows, Math.floor(BLOCK_CELLS_CAP / rows)) : 4 * rows
 
     return Math.min(Math.max(Math.round((2 * rows * (tile.width ?? 1)) / (tile.height ?? 1)), Math.max(rows, 6)), most)

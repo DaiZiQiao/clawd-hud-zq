@@ -34,12 +34,41 @@ export type TileDrawable =
 export const pictureKeyOf = (id: number): string => `img:${id}`
 export const swatchKeyOf = (id: number): string => `swatch:${id}`
 
-// A note's lines, cut to the frame's inside; the frame needs two columns and two rows.
+const cutTo = (text: string, width: number): string => (text.length <= width ? text : width <= 1 ? text.slice(0, width) : `${text.slice(0, width - 1)}…`)
+
+// A line wrapped at its spaces to `width`; a word longer than that is a line of its own.
+const wrapOf = (line: string, width: number): string[] => {
+  const out: string[] = []
+  for (const word of line.split(' ')) {
+    const last = out.at(-1)
+    if (last !== undefined && last.length + 1 + word.length <= width) out[out.length - 1] = `${last} ${word}`
+    else out.push(word)
+  }
+
+  return out
+}
+
+// A note's lines inside its frame (which takes two columns and two rows):
+// each wrapped to the width, in order, as many as fit; the last row shown
+// holds the rest of its line, cut with `…`. The first line is the one that
+// matters (the reason), so it always shows.
 const noteLinesOf = (lines: readonly string[], columns: number, rows: number): string[] => {
   const width = Math.max(0, columns - 2)
   const room = Math.max(0, rows - 2)
+  const out: string[] = []
+  for (const line of lines) {
+    const free = room - out.length
+    if (free <= 0) break
+    const wrapped = line.length <= width ? [line] : wrapOf(line, width)
+    if (wrapped.length <= free) {
+      out.push(...wrapped)
+    } else {
+      out.push(...wrapped.slice(0, free - 1), wrapped.slice(free - 1).join(' '))
+      break
+    }
+  }
 
-  return lines.slice(0, room).map(line => (line.length <= width ? line : width <= 1 ? line.slice(0, width) : `${line.slice(0, width - 1)}…`))
+  return out.map(line => cutTo(line, width))
 }
 
 const tileOf = (ui: StripElements, tile: PlacedTile, drawable: TileDrawable): RenderElement => {

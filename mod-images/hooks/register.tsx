@@ -4,7 +4,7 @@ import type { EngineInterface, ImageSource, Register, RenderElement, Timer } fro
 import type { ImagesFormat, ImagesStrip, ImagesTile } from '../types'
 import { MASTER_SIDE, READ_CAP, imageHeaderOf, runSliced, startMaster } from './decode-drive'
 import { chipIdsOf, chipKeyOf, sentIdsOf } from './draft-chips'
-import { EMPTY_PROVENANCE, markSentOf, pollDelayOf, reconcile, sameTilesOf } from './draft-reconcile'
+import { EMPTY_PROVENANCE, markSentOf, pollDelayOf, reconcile, sameTilesOf, unmarkSentOf } from './draft-reconcile'
 import type { DecodeFacts } from './draft-reconcile'
 import type { Master } from './image-types'
 import { bytesOf } from './images-bytes'
@@ -14,13 +14,13 @@ import type { ModeChoice, TermEnv } from './images-mode'
 import { settingsOf } from './images-options'
 import { reportOf } from './images-report'
 import type { ReportBand, ReportStore } from './images-report'
-import { imagesDirOf, isUserDirName, joinPath, listingOf, storeOffReasonOf, tempBasesOf } from './store-path'
+import { imagesDirOf, isUserDirName, joinPath, listingOf, projectDirOf, storeDoubtOf, storeOffReasonOf, tempBasesOf } from './store-path'
 import type { StoreEnv, StoreFile, StoreListing } from './store-path'
 import { pictureKeyOf, renderStrip } from './strip'
 import type { TileDrawable } from './strip'
-import { layoutOf } from './strip-layout'
+import { layoutOf, rowsCapOf } from './strip-layout'
 import type { PlacedTile } from './strip-layout'
-import { halfBlockCellsOf, kittyRgbaOf, swatchCellsOf } from './thumb-cells'
+import { halfBlockCellsOf, kittyRgbaOf, kittySizeOf, swatchCellsOf } from './thumb-cells'
 
 // mod-images: thumbnails of the images pasted into the prompt, drawn in the
 // band above it before the prompt is sent (docs/strip.md).
@@ -56,8 +56,14 @@ const PROBE_DELAY_MS = 400
 const PROBE_RETRY_MS = 1000
 const PROBE_TRIES = 5
 const DEMO_MS = 10_000
+// A turn cancelled before any answer puts its prompt back in the box at once:
+// its chips, seen there within this long, are the same pictures.
+const RESTORE_MS = 2000
 const MASTERS_CAP = 32
+// Drawn thumbnails kept, the least recently drawn dropped first: at most this
+// many, holding at most this many characters of base64 in all.
 const DRAWABLES_CAP = 96
+const DRAWABLES_CHARS_CAP = 8 * 1024 * 1024
 
 const STRIP = { plugin: 'mod-images', key: 'strip' } as const
 const EMPTY_STRIP: ImagesStrip = { sessionId: '', tiles: [] }
@@ -75,6 +81,10 @@ const FORMAT_NAMES: Record<ImagesFormat, string> = { png: 'PNG', jpeg: 'JPEG', g
 const EXT_FORMATS: Record<StoreFile['ext'], ImagesFormat> = { png: 'png', jpg: 'jpeg', gif: 'gif', webp: 'webp' }
 
 type DecodeJob = { sid: string; dir: string; file: StoreFile }
+
+// A listing of a folder Claude Code has not made yet: it makes the session's
+// folder with its first picture, so no chip is attached until then.
+const NO_FILES: StoreListing = { files: new Map(), tmpIds: new Set() }
 
 // Module memory: timers, caches and facts about this process. A reload starts
 // it afresh (`register` resets it) and `session.start` builds it again.
@@ -101,11 +111,19 @@ let draftIds: ReadonlySet<number> = new Set()
 let userDir: string | undefined
 let scannedAt = -Infinity
 let triedBases: readonly string[] = []
+// The chips the folder was last looked for under every project for.
+let deepScanKey = ''
+// The chips of the last prompt sent with pictures, and those a cancelled turn
+// may be about to put back, until when.
+let lastSentIds: readonly number[] = []
+let restoreIds: readonly number[] = []
+let restoreUntil = 0
 // This session's image folder, once found.
 let sessionDir: { sid: string; root: string; dir?: string } | undefined
 const decodeFacts = new Map<string, DecodeFacts>()
 const masters = new Map<string, Master>()
 const drawables = new Map<string, TileDrawable>()
+let drawableChars = 0
 const queue: DecodeJob[] = []
 let draining = false
 let previousLayout: { rows: number; count: number } | undefined
@@ -134,10 +152,14 @@ const resetModule = (): void => {
   userDir = undefined
   scannedAt = -Infinity
   triedBases = []
+  deepScanKey = ''
+  lastSentIds = []
+  restoreIds = []
+  restoreUntil = 0
   sessionDir = undefined
   decodeFacts.clear()
   masters.clear()
-  drawables.clear()
+  clearDrawables()
   queue.length = 0
   draining = false
   previousLayout = undefined
@@ -163,11 +185,13 @@ const forgetSession = (sid: string): void => {
   sessionDir = undefined
   decodeFacts.clear()
   masters.clear()
-  drawables.clear()
+  clearDrawables()
   queue.length = 0
   previousLayout = undefined
   lastChipKey = ''
   draftIds = new Set()
+  lastSentIds = []
+  restoreIds = []
 }
 
 // Bookkeeping never gets to break the session: a failure is a debug line.
@@ -184,6 +208,34 @@ const quietly = async ($: EngineInterface, work: () => Promise<unknown>): Promis
 }
 
 const keyOf = (sid: string, id: number): string => `${sid}:${id}`
+
+const charsOf = (drawable: TileDrawable): number =>
+  drawable.kind === 'cells' ? drawable.cells.length : drawable.kind === 'image' ? drawable.source.rgba.length : 0
+
+const clearDrawables = (): void => {
+  drawables.clear()
+  drawableChars = 0
+}
+
+// A drawable kept as the most recently drawn, within both caps.
+const keepDrawable = (key: string, drawable: TileDrawable): TileDrawable => {
+  const held = drawables.get(key)
+  if (held !== undefined) {
+    drawables.delete(key)
+    drawableChars -= charsOf(held)
+  }
+  drawables.set(key, drawable)
+  drawableChars += charsOf(drawable)
+  while (drawables.size > DRAWABLES_CAP || (drawableChars > DRAWABLES_CHARS_CAP && drawables.size > 1)) {
+    const oldest = drawables.keys().next()
+    if (oldest.done === true) break
+    const gone = drawables.get(oldest.value)
+    drawables.delete(oldest.value)
+    if (gone !== undefined) drawableChars -= charsOf(gone)
+  }
+
+  return drawable
+}
 
 const remember = <T,>(cache: Map<string, T>, key: string, value: T, cap: number): T => {
   cache.delete(key)
@@ -239,15 +291,17 @@ const existsAt = async ($: EngineInterface, path: string): Promise<boolean> => {
 }
 
 // The session's image folder: `<temp>/claude-<uid>/<project>/<session>/images`.
-// The uid is not known to a plugin, so the temporary folders are listed for
-// `claude-*` folders; the one found is kept for the process (it never changes),
-// and only the session's own folder is checked after that.
+// The uid is not known to a plugin, so the temporary folders are listed for a
+// `claude-*` folder holding this project's folder: that one is kept for the
+// process (it never changes), and only the session's own folder is checked
+// after that.
 const imagesDirFor = async ($: EngineInterface, sid: string, root: string, now: number, force = false): Promise<string | undefined> => {
   if (sessionDir !== undefined && sessionDir.sid === sid && sessionDir.root === root && sessionDir.dir !== undefined) return sessionDir.dir
   sessionDir = { sid, root }
   if (userDir !== undefined) {
     const dir = imagesDirOf(userDir, root, sid)
     if (await existsAt($, dir)) return (sessionDir.dir = dir)
+    if (!force) return undefined
   }
   if (!force && now - scannedAt < SCAN_EVERY_MS) return undefined
   scannedAt = now
@@ -259,16 +313,17 @@ const imagesDirFor = async ($: EngineInterface, sid: string, root: string, now: 
       if (!isUserDirName(entry.name) || (entry.kind !== 'dir' && !entry.isLink)) continue
       const candidate = joinPath(base, entry.name)
       owners.push(candidate)
+      if (!(await existsAt($, projectDirOf(candidate, root)))) continue
+      userDir = candidate
       const dir = imagesDirOf(candidate, root, sid)
-      if (await existsAt($, dir)) {
-        userDir = candidate
 
-        return (sessionDir.dir = dir)
-      }
+      return (await existsAt($, dir)) ? (sessionDir.dir = dir) : undefined
     }
   }
-  // The project folder is named after where the session was started; when that
-  // is not the root it reports, the session's folder is looked for under each project.
+  // No project folder by the root's name: the session's folder is looked for
+  // under each project, once for each new set of chips.
+  if (!force && lastChipKey === deepScanKey) return undefined
+  deepScanKey = lastChipKey
   for (const owner of owners) {
     const projects = await $.fs.list(owner).catch(() => [])
     if (projects.length > SCAN_ENTRIES_CAP) continue
@@ -316,8 +371,19 @@ const refreshOnce = async ($: EngineInterface): Promise<void> => {
       if (dir !== undefined) {
         const entries = await $.fs.list(dir).catch(() => undefined)
         listing = entries === undefined ? undefined : listingOf(entries)
+      } else if (storeDoubtOf(storeEnv) !== undefined) {
+        // A nested session may keep no folder: its pictures are sent all the same.
+        missingReason = 'no preview'
+      } else if (userDir !== undefined) {
+        listing = NO_FILES
       }
     }
+  }
+  // The prompt a cancelled turn put back: its chips are the pictures it carried.
+  if (restoreIds.length > 0 && (now > restoreUntil || chipKeyOf(ids) === chipKeyOf(restoreIds))) {
+    const taken = now > restoreUntil ? [] : restoreIds
+    restoreIds = []
+    if (taken.length > 0) await update($, provenance, prov => unmarkSentOf(prov ?? EMPTY_PROVENANCE, taken))
   }
   const decoded = (id: number): DecodeFacts | undefined => decodeFacts.get(keyOf(sid, id))
   const held = await read($, provenance)
@@ -468,17 +534,21 @@ const altOf = (tile: ImagesTile): string => {
   return `Image #${tile.id}${name}${size}`
 }
 
+// The reason first: a tile three rows tall has room for one line.
 const noteOf = (tile: ImagesTile): TileDrawable => {
-  if (tile.state === 'not-attached') return { kind: 'note', lines: ['not', 'attached'], dashed: true }
+  if (tile.state === 'not-attached') return { kind: 'note', lines: ['not attached'], dashed: true }
   const name = tile.format === undefined ? [] : [FORMAT_NAMES[tile.format]]
 
-  return { kind: 'note', lines: [...name, tile.reason ?? 'no preview'], dashed: false }
+  return { kind: 'note', lines: [tile.reason ?? 'no preview', ...name], dashed: false }
 }
 
 const pictureOf = (tile: ImagesTile, placed: PlacedTile, master: Master, prefix: string, kittyBytes: number): TileDrawable => {
-  const cacheKey = `${prefix}:${mode.mode}:${placed.columns}x${placed.rows}:${kittyBytes}`
+  // Pixels are keyed by the size they come out at, not the byte allowance,
+  // which changes with every paste while the picture mostly does not.
+  const size = mode.mode === 'pixels' ? kittySizeOf(master, placed.columns, placed.rows, kittyBytes) : undefined
+  const cacheKey = `${prefix}:${mode.mode}:${placed.columns}x${placed.rows}${size === undefined ? '' : `:${size.width}x${size.height}`}`
   const held = drawables.get(cacheKey)
-  if (held !== undefined) return remember(drawables, cacheKey, held, DRAWABLES_CAP)
+  if (held !== undefined) return keepDrawable(cacheKey, held)
   let drawable: TileDrawable
   if (mode.mode === 'pixels') {
     const source = kittyRgbaOf(master, placed.columns, placed.rows, kittyBytes)
@@ -490,16 +560,36 @@ const pictureOf = (tile: ImagesTile, placed: PlacedTile, master: Master, prefix:
     drawable = cells.length === base64Length(placed.columns * placed.rows * 12) ? { kind: 'cells', cells } : { kind: 'note', lines: ["can't draw"], dashed: false }
   }
 
-  return remember(drawables, cacheKey, drawable, DRAWABLES_CAP)
+  return keepDrawable(cacheKey, drawable)
 }
 
 const isBareEngine = (element: unknown): boolean =>
   typeof element === 'object' && element !== null && (element as { type?: unknown }).type === 'engine'
 
-// The pixels guess is checked once a picture is drawn: the engine answers a
-// blit on it with `{}` where the terminal draws pixels, and with the reason
-// where it draws the alt instead. Only a settled answer switches to blocks: a
-// terminal still being asked is asked again.
+// The engine's answers to a blit on a drawn Image (2.1.295): `{}` where the
+// terminal draws it; `the Image draws its alt here: the terminal draws no
+// placeholder images (<why>)`, a guess still being checked while <why> ends
+// `not asked yet` (its deadline settles it `..., not asked yet, no answer`);
+// `... every 8-bit image id is in use`, for now; `the terminal has not yet
+// said whether it reads files ...; asked now, blit again`; `the Image is not
+// drawn under a terminal root` when the strip went meanwhile.
+const STILL_ASKING = /not asked yet\)\s*$|asked now|not yet said/
+const FOR_NOW = /every 8-bit image id is in use|not drawn under a terminal root/
+const DRAWS_ALT = /draws its alt here/
+
+// An answer's reason: inside its outer bracket (`probe: graphics reply OK,
+// terminal kitty(0.26.5)`, less the `probe:`), else after its colon.
+const denyDetailOf = (deny: string): string => {
+  const open = deny.indexOf('(')
+  const close = deny.lastIndexOf(')')
+
+  return open >= 0 && close > open ? deny.slice(open + 1, close).replace(/^probe:\s*/, '') : deny.replace(/^[^:]*:\s*/, '')
+}
+
+// The pixels guess is checked once a picture is drawn. A settled answer that
+// the terminal draws the alt switches to blocks for the session; one still
+// being found out, or a passing one, is asked again, and an alt still drawn
+// when the tries are spent switches too.
 const probePixels = async ($: EngineInterface): Promise<void> => {
   probeTimer = undefined
   if (probe === undefined || pixelsConfirmed || mode.mode !== 'pixels') return
@@ -511,17 +601,17 @@ const probePixels = async ($: EngineInterface): Promise<void> => {
 
     return
   }
-  if (/draws its alt here/.test(deny) && !/not asked yet|asked now|not yet said/.test(deny)) {
-    // `... draws its alt here: ... (probe: no reply to the graphics query)`: the reason is the last bracket.
-    const detail = /\(([^()]*)\)\s*$/.exec(deny)?.[1]?.replace(/^probe:\s*/, '')
-    mode = { mode: 'blocks', why: `Claude Code checked and this terminal draws no pictures${detail === undefined ? '' : ` (${detail})`}` }
-    drawables.clear()
-    previousLayout = undefined
-    await bumpPictures($)
+  const isSettled = DRAWS_ALT.test(deny) && !STILL_ASKING.test(deny) && !FOR_NOW.test(deny)
+  if (!isSettled && probe.tries < PROBE_TRIES) {
+    probeTimer = $.clock.after(PROBE_RETRY_MS, () => void probePixels($))
 
     return
   }
-  if (probe.tries < PROBE_TRIES) probeTimer = $.clock.after(PROBE_RETRY_MS, () => void probePixels($))
+  if (!DRAWS_ALT.test(deny)) return
+  mode = { mode: 'blocks', why: `Claude Code draws no pictures here (${denyDetailOf(deny)})` }
+  clearDrawables()
+  previousLayout = undefined
+  await bumpPictures($)
 }
 
 const armProbe = ($: EngineInterface, key: string, source: ImageSource): void => {
@@ -535,6 +625,7 @@ const armProbe = ($: EngineInterface, key: string, source: ImageSource): void =>
 const noteSent = async ($: EngineInterface, content: readonly { type: string; text?: unknown }[]): Promise<void> => {
   const ids = sentIdsOf(content)
   if (ids.length === 0) return
+  lastSentIds = ids
   await quietly($, () => update($, provenance, prov => markSentOf(prov ?? EMPTY_PROVENANCE, ids)))
   soon($)
 }
@@ -567,7 +658,8 @@ const reportFor = async ($: EngineInterface): Promise<string> => {
       const entries = await $.fs.list(dir).catch(() => [])
       store = { kind: 'found', dir, files: listingOf(entries).files.size }
     } else {
-      store = { kind: 'not-found', tried: triedBases }
+      const doubt = storeDoubtOf(storeEnv)
+      store = { kind: 'not-found', tried: triedBases, ...(doubt === undefined ? {} : { doubt }) }
     }
   }
 
@@ -614,6 +706,8 @@ export const register: Register = (on, options) => {
       if (!active) return
       await schedule($)
       armPoll($, nextDelay)
+      // A reload draws the band before this ran, with nothing: draw it again.
+      await bumpPictures($)
     })
 
     return next(e)
@@ -664,6 +758,19 @@ export const register: Register = (on, options) => {
     return stored
   })
 
+  // Esc before any answer: Claude Code puts the prompt back in the box with
+  // its pictures, so its chips seen there at once are attached again.
+  on('turn.complete', async ($, e, next) => {
+    const done = await next(e)
+    if (active && e.agentId === undefined && e.isAborted && e.answer === '' && lastSentIds.length > 0) {
+      restoreIds = lastSentIds
+      restoreUntil = (await $.clock.now()) + RESTORE_MS
+      soon($)
+    }
+
+    return done
+  })
+
   // A prompt typed while a turn runs reaches the conversation by this door.
   on('session.append', { door: 'delivery' }, async ($, e, next) => {
     const stored = await next(e)
@@ -704,12 +811,13 @@ export const register: Register = (on, options) => {
     if (!sampling) {
       lastStrip = { at: now, tiles: shown.tiles }
       lastBand = {
-        maxRows: e.props.maxRows,
+        maxRows: rowsCapOf(e.props.maxRows, e.viewport?.rows),
         bodyColumns: e.props.bodyColumns,
         viewportRows: e.viewport?.rows,
         viewportColumns: e.viewport?.columns,
         isFullscreen: e.viewport?.isFullscreen,
         rows: layout.kind === 'strip' ? layout.rows : undefined,
+        shape: layout.kind,
       }
     }
     if (layout.kind === 'none') return below
@@ -722,7 +830,12 @@ export const register: Register = (on, options) => {
       if (tile === undefined) return { kind: 'wait' }
       if (tile.state === 'not-attached' || tile.state === 'failed') return noteOf(tile)
       const master = tile.state === 'ready' ? masterFor(tile.id) : undefined
-      if (master === undefined) return { kind: 'wait' }
+      if (master === undefined) {
+        // Dropped from memory with more pictures in play than it keeps: decoded again.
+        if (tile.state === 'ready' && !sampling && decodeFacts.delete(keyOf(shown.sessionId, tile.id))) soon($)
+
+        return { kind: 'wait' }
+      }
       const drawable = pictureOf(tile, placed, master, sampling ? `demo:${tile.id}` : keyOf(shown.sessionId, tile.id), layout.kind === 'strip' ? layout.kittyBytes : 0)
       if (drawable.kind === 'image' && !probed) {
         probed = true
@@ -736,10 +849,14 @@ export const register: Register = (on, options) => {
       if (master === undefined) return undefined
       const cacheKey = `swatch:${sampling ? `demo:${id}` : keyOf(shown.sessionId, id)}`
       const held = drawables.get(cacheKey)
-      if (held?.kind === 'cells') return held.cells
+      if (held?.kind === 'cells') {
+        keepDrawable(cacheKey, held)
+
+        return held.cells
+      }
       const cells = swatchCellsOf(master)
       if (cells.length !== base64Length(2 * 12)) return undefined
-      remember(drawables, cacheKey, { kind: 'cells', cells }, DRAWABLES_CAP)
+      keepDrawable(cacheKey, { kind: 'cells', cells })
 
       return cells
     }
