@@ -135,7 +135,7 @@ Every request re-reads the whole conversation, mostly from the prompt cache, whi
 ## The mascots
 
 - One mascot for your session, wearing a crown, walking the band above the prompt (or in the pane, with `sessionMascot: pane`), and one per subagent and workflow agent in the pane, each in its own colour.
-- With the vector art they stand in a world on tour (`scenery`): 17 stops over one day's travel, from first light at Machu Picchu to the northern lights over Tromsø, 45 seconds each, a pan between them; a wide band shows the stops either side too. In a terminal's picture the band is drawn its whole width, about 5 ms a frame more and a picture of about 45 KiB; `scenery: false` turns it off.
+- With the vector art they stand in a world on tour (`scenery`): 33 stops round the world eastward, from Hawaii to Sydney, 45 seconds each with a pan between them, each at its own time of day (`daylight`), its sky, sun, moon, stars and lights changing with the hour; a wide band shows the stops either side too. In a terminal's picture the scenery is drawn only when it changes, and only the tiles of the picture that changed are sent; `scenery: false` turns it off.
 - While a compaction runs, the session's mascot tidies up: it squashes a stack of pages beside it into a cube, over and over, and the next stack lands.
 - A role letter above the head: `r` reviewer, `d` debugger, `p` Plan, `w` worker, `f` frontend, `e` Explore or researcher.
 - Eight accessories (beanie, cap, top hat, flower, bow, halo, note, propeller) tell agents apart.
