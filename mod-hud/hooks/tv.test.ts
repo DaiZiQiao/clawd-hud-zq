@@ -387,7 +387,7 @@ describe('its life', () => {
     expect(createTv(inputsOf()).phase).toBe('grow')
   })
 
-  test('closing: a press outside switches the glass off, a line then a dot; it shrinks and flies home; then the close is posted, once; presses while it closes do nothing; gone, a press posts it again', () => {
+  test('closing: a press outside switches the glass off, a line then a dot; it shrinks and flies home; then the close is posted, once; presses while it closes do nothing; gone, a press posts it again; the hooks hear it grown into the giant and out of it', () => {
     const tv = createTv(inputsOf(CLAWD, { from: { x: 20, y: 30 } }))
     const posts: TvPost[] = []
     switchedOn(tv, posts)
@@ -405,9 +405,9 @@ describe('its life', () => {
     expect(glasses).toContain('line')
     expect(glasses).toContain('dot')
     expect(frames).toBe(TV_FRAMES['power-off'] + TV_FRAMES.shrink + TV_FRAMES.return)
-    expect(posts).toEqual([{ kind: 'tv', close: true }])
+    expect(posts).toEqual([{ kind: 'tv', giant: true }, { kind: 'tv', giant: false }, { kind: 'tv', close: true }])
     pointerTv(tv, { type: 'down', x: 3, y: 3, button: 'left' }, post => posts.push(post))
-    expect(posts).toHaveLength(2)
+    expect(posts).toHaveLength(4)
   })
 
   test('the ✕, and q or x, close it as a press outside does; closing as it opens turns it home from where it got to', () => {

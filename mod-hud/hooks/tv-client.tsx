@@ -68,7 +68,7 @@ export const drawTv = (tv: TvWorld, elements: TvElements): RenderElement => {
   const look = lookOf(tv)
   if (inputs.svg === true || elements.Svg !== undefined) {
     const Svg = svgOf(elements)
-    const drawn = paintSvg(inputs, look, tv.scroll, tv.sprite, osdOf(tv))
+    const drawn = paintSvg(inputs, look, tv.scroll, tv.sprite, osdOf(tv), tv.ms)
 
     return (
       <Box key="tv" width={inputs.columns} height={inputs.rows} flexShrink={0}>

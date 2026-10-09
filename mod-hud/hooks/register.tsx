@@ -107,10 +107,12 @@ import { defined } from './state-json'
 import { printable } from './text-width'
 import { TIDY_COUNTDOWN_MS, TIDY_INSTRUCTIONS, bandLinesOf, bandTidyOf, isTidyDue } from './tidy'
 import type { BandTidy, TidyInputs } from './tidy'
+import type { Who } from './tv-figure'
 import { tvLayoutOf, tvRowsOf } from './tv-model'
-import type { TvInputs, TvRow } from './tv-model'
+import type { TvInputs, TvLayout, TvRow } from './tv-model'
 import { budgeted, tvHeadOf, tvRowOfInspect, tvWhoOf } from './tv-rows'
-import { tvPostOf } from './tv-world'
+import { giantPicture } from './tv-smooth'
+import { BLINK_EVERY_MS, BLINK_MS, tvPostOf } from './tv-world'
 
 const PANE = 'hud'
 const TWIN = 'mod-hud'
@@ -1043,6 +1045,8 @@ const TV_KEY = 'tv'
 let tvFrom: { id: string; x: number; y: number; cap?: true } | undefined
 const tvPresses = new Map<string, Map<string, () => void>>()
 const tvUp = new Set<string>()
+/** Surfaces whose TV's module said its mascot grew into the giant (as it switches on), till it shrinks back: where pictures are drawn, the giant one under its glass. */
+const tvGiants = new Set<string>()
 let tvWheel: { seq: number; by: number; page?: true } = { seq: 0, by: 0 }
 const tvFaulted = new Set<string>()
 let startled: { id: string; at: number } | undefined
@@ -1244,6 +1248,9 @@ const pictureless = new Set<string>()
 const PICTURE_FRESH = 10
 /** Refusals in a row, the alt's aside, that give up on pictures there: three seconds' worth. */
 const PICTURE_GIVE_UP = Math.ceil(3000 / IMAGE_FRAME_MS)
+/** The TV's giant as a picture under its glass, by site: its Image's key, who and where it was drawn for, its frames (eyes open; shut, drawn at its first blink), the one shown, and its own clock for the blinks. */
+type GiantPicture = { requestId: string; surface: string; key: string; drawn: string; open: string; shut?: string; shown: 'open' | 'shut'; ms: number; draw: (eyes: 'open' | 'shut') => string }
+const giantPictures = new Map<string, GiantPicture>()
 let pictureTimer: Timer | undefined
 let pictureBusy = false
 /** The person's theme as the picture's scheme (a light theme's colours on a light one), read again after ten seconds. */
@@ -1262,13 +1269,15 @@ const noPictures = ($: EngineInterface, surface: string, why: string): void => {
   if (pictureless.has(surface)) return
   pictureless.add(surface)
   for (const [site, picture] of pictures) if (picture.surface === surface) pictures.delete(site)
-  if (pictures.size === 0) stopPictures()
+  for (const [site, giant] of giantPictures) if (giant.surface === surface) giantPictures.delete(site)
+  if (pictures.size === 0 && giantPictures.size === 0) stopPictures()
   $.ui.log(`the scene's picture on ${surface} is refused (${printable(why).slice(0, 160)}): its blocks there`, { to: 'debug' })
   $.clock.after(0, () => $.ui.invalidate('ui.render'))
 }
 
 // Every IMAGE_FRAME_MS each picture's world steps on and, when its frame is due
 // and new, is swapped in; one no longer mounted is let go, the timer with the last.
+// The TV's giant blinks as the module's would: its eyes shut a moment every few seconds.
 const startPictures = ($: EngineInterface): void => {
   if (pictureTimer !== undefined) return
   const mine = $.clock.every(IMAGE_FRAME_MS, () => {
@@ -1293,7 +1302,23 @@ const startPictures = ($: EngineInterface): void => {
           else if (/mount/i.test(deny) && picture.fresh === 0) pictures.delete(site)
           else if (++picture.refused >= PICTURE_GIVE_UP) noPictures($, picture.surface, deny)
         }
-        if (pictures.size === 0 && pictureTimer === mine) stopPictures()
+        for (const [site, giant] of giantPictures) {
+          giant.ms += IMAGE_FRAME_MS
+          const eyes = giant.ms % BLINK_EVERY_MS < BLINK_MS ? 'shut' : 'open'
+          if (eyes === giant.shown) continue
+          giant.shown = eyes
+          const png = eyes === 'shut' ? (giant.shut ??= giant.draw('shut')) : giant.open
+          let deny: string | undefined
+          try {
+            deny = (await $.ui.blit({ requestId: giant.requestId, key: giant.key, source: { png } })).deny
+          } catch (error) {
+            deny = String(error)
+          }
+          if (deny === undefined) continue
+          if (drawsAlt(deny)) noPictures($, giant.surface, deny)
+          else giantPictures.delete(site)
+        }
+        if (pictures.size === 0 && giantPictures.size === 0 && pictureTimer === mine) stopPictures()
       } finally {
         pictureBusy = false
       }
@@ -1382,6 +1407,33 @@ const pictureOf = async (
       <Box position="absolute" top={0} left={0} width={columns} height={rows}>
         <Client key={key} module="./scene-hit.tsx" props={{ columns, rows }} width={columns} height={rows} />
       </Box>
+    </Box>
+  )
+}
+
+/**
+ * The TV's giant as a picture at `requestId`, over its box in the TV's
+ * region, under the module's glass: drawn afresh for another who, place or
+ * scheme, eyes open (shut a moment as it blinks); the timer swapping the
+ * blinks in.
+ */
+const giantPictureOf = async ($: EngineInterface, table: object, surface: string, requestId: string, layout: TvLayout, who: Who, now: number): Promise<RenderElement> => {
+  const scheme = await schemeFor($, now)
+  const site = `${requestId}:${surface}`
+  const drawn = JSON.stringify([who, layout, scheme])
+  let giant = giantPictures.get(site)
+  if (giant === undefined || giant.drawn !== drawn) {
+    const draw = (eyes: 'open' | 'shut'): string => giantPicture(who, layout, eyes, scheme)
+    // Its clock starts past a blink: the first comes a few seconds on.
+    giant = { requestId, surface, key: `${TV_KEY}:giant`, drawn, open: draw('open'), shown: 'open', ms: BLINK_MS, draw }
+    giantPictures.set(site, giant)
+  }
+  startPictures($)
+  const { Box, Image } = table as { Box: (props: Record<string, unknown>) => RenderElement; Image: (props: ImageProps) => RenderElement }
+
+  return (
+    <Box key="tv-giant" position="absolute" top={layout.top} left={layout.left} width={layout.width} height={layout.height}>
+      <Image key={giant.key} source={{ png: giant.shown === 'shut' ? giant.shut ?? giant.open : giant.open }} columns={layout.width} rows={layout.height} alt=" " />
     </Box>
   )
 }
@@ -1725,6 +1777,8 @@ export const register: Register = (on, options) => {
   stopSceneClock()
   stopPictures()
   pictures.clear()
+  giantPictures.clear()
+  tvGiants.clear()
   picturesHere = undefined
   stopStatusTimer()
   stopBandClock()
@@ -2046,6 +2100,8 @@ export const register: Register = (on, options) => {
     // The pictures' worlds end with their session; the next drawing starts them afresh.
     stopPictures()
     pictures.clear()
+    giantPictures.clear()
+    tvGiants.clear()
     await quietly($, () => tidyTimersGone($))
     sceneEvents = []
     // Nothing selected, read or trailed outlives its session.
@@ -2112,7 +2168,8 @@ export const register: Register = (on, options) => {
       return next(e)
     }
     await askedOf($, settings, e.component, e.element, e.data)
-    // The TV: closed (its mascot home, shaken), a channel, or a press on its glass.
+    // The TV: closed (its mascot home, shaken), a channel, a press on its glass, or its mascot grown
+    // into the giant or shrinking out of it (where pictures are drawn, the giant one under its glass).
     const tv = e.element === TV_KEY ? tvPostOf(e.data) : undefined
     if (tv !== undefined) {
       await quietly($, async () => {
@@ -2120,7 +2177,12 @@ export const register: Register = (on, options) => {
           const choice = await read($, selected)
           if (choice !== null) startled = { id: choice.id, at: await $.clock.now() }
           tvFrom = undefined
+          tvGiants.delete(e.surface)
           await selectAgent($, null)
+        } else if ('giant' in tv) {
+          if (tv.giant) tvGiants.add(e.surface)
+          else tvGiants.delete(e.surface)
+          if (e.surface === 'terminal' && picturesHere === true && !pictureless.has(e.surface)) $.ui.invalidate('ui.render')
         } else if ('tab' in tv) {
           const tab = HUD_TABS.find(one => one === tv.tab)
           if (tab !== undefined) await selectTab($, tab)
@@ -2409,11 +2471,16 @@ export const register: Register = (on, options) => {
       // Pressed in flight, it wears its propeller cap in the TV too.
       const flying = tvFrom?.id === choice.id && tvFrom.cap === true
       const mascots = settings.mascots ? sceneOf(list, hudData, now, { stalledMs: settings.stalledMs, main, shadows: workflow, scenes: settings.scenes, character: settings.character }) : undefined
+      const who: Who = { ...tvWhoOf(choice, mascots, settings.character), ...(flying ? { cap: true as const } : {}) }
+      // Grown into the giant in a terminal that shows pictures: the giant one, smooth, under the module's glass.
+      const pictured = tvGiants.has(e.surface) && (await picturedOn($, settings, e.surface, table))
+      const giant = pictured ? await giantPictureOf($, table, e.surface, e.requestId, tvRoom, who, now) : undefined
+      if (!pictured) giantPictures.delete(`${e.requestId}:${e.surface}`)
       const inputs: TvInputs = {
         columns,
         rows: bodyRows,
         layout: tvRoom,
-        who: { ...tvWhoOf(choice, mascots, settings.character), ...(flying ? { cap: true as const } : {}) },
+        who,
         head,
         body: budgeted(head, body),
         tabs: [...tabs],
@@ -2422,16 +2489,22 @@ export const register: Register = (on, options) => {
         ...(from === undefined ? {} : { from }),
         ...(tvWheel.seq === 0 ? {} : { wheel: tvWheel }),
         ...(svg === undefined ? {} : { svg: true as const }),
+        ...(settings.mascotArt === 'vector' ? { art: 'vector' as const } : {}),
+        ...(pictured ? { pictured: true as const } : {}),
       }
       const { Client } = table as { Client: (props: { key: string; module: string; props?: unknown; width?: number; height?: number }) => RenderElement }
       tv = (
         <Box key="tv-layer" position="absolute" top={offset} left={0} width={columns} height={bodyRows}>
+          {giant}
           <Client key={TV_KEY} module="./tv-client.tsx" props={inputs} width={columns} height={bodyRows} />
         </Box>
       )
     } else {
       tvUp.delete(e.surface)
       tvPresses.delete(e.surface)
+      // Gone without playing its closing out (the selection gone elsewhere): no giant left up.
+      tvGiants.delete(e.surface)
+      giantPictures.delete(`${e.requestId}:${e.surface}`)
     }
     if (sceneTop !== undefined) sceneTops.set(e.surface, sceneTop)
 

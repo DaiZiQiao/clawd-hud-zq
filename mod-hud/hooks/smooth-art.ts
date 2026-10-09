@@ -13,8 +13,9 @@ import type { HatName } from './usagi-sprites'
 // (hooks/smooth-pose.ts), full size or as a child's mini, with what they wear
 // and what is beside them. Local units, the origin between the feet on the
 // floor, y down; a cell is 2 units across and 4 down. Clawd keeps Claude
-// Code's own proportions (its logo's 18 by 6 quadrants); Usagi its sprite's
-// (hooks/usagi-sprites.ts), its 18 by 8 quadrants, its ears through its hat.
+// Code's own proportions (its logo's 18 by 6 quadrants); Usagi Chiikawa's:
+// a big round head on a smaller round body, long ears close together, a thin
+// dark line round it all.
 
 /** Who a mascot is and what it wears. */
 export type FigureInfo = {
@@ -30,7 +31,7 @@ export type FigureInfo = {
   energy: Energy
 }
 
-const EYE = '#2A1712'
+export const EYE = '#2A1712'
 const PAPER = CLAWD.paper
 const EDGE = CLAWD.edge
 const SPARK = 'warning'
@@ -38,7 +39,7 @@ const SPARK = 'warning'
 const wave = (t: number, period: number, phase = 0): number => Math.sin((2 * Math.PI * t) / period + phase)
 
 /** A colour `k` of the way to black: a leg's shade of its body. */
-const shade = (hex: string, k: number): string => {
+export const shade = (hex: string, k: number): string => {
   const n = Number.parseInt(hex.slice(1, 7), 16)
   if (!hex.startsWith('#') || !Number.isFinite(n)) return hex
   const part = (shift: number): string => Math.round(((n >> shift) & 255) * (1 - k)).toString(16).padStart(2, '0')
@@ -69,7 +70,7 @@ export const crossShapes = (m: Matrix, fill: string, size = 2.4): Shape[] =>
 const HAT_AT = { left: -4, centre: 0, right: 4 } as const
 
 /** The session's crown, three points on a band, about `x`, its band on the head's top `y`. */
-const crownShapes = (m: Matrix, x: number, y: number, size = 1): Shape[] => {
+export const crownShapes = (m: Matrix, x: number, y: number, size = 1): Shape[] => {
   const k = chain(m, translate(x, y), scale(size))
   const gold = CROWN.colour
 
@@ -83,7 +84,7 @@ const crownShapes = (m: Matrix, x: number, y: number, size = 1): Shape[] => {
 }
 
 /** Clawd's accessory on its head's top at `x`. */
-const accessoryShapes = (m: Matrix, name: Accessory, x: number, t: number): Shape[] => {
+export const accessoryShapes = (m: Matrix, name: Accessory, x: number, t: number): Shape[] => {
   const colour = ACCESSORIES[name].colour
   const k = chain(m, translate(x, -10))
   switch (name) {
@@ -134,7 +135,7 @@ const accessoryShapes = (m: Matrix, name: Accessory, x: number, t: number): Shap
 }
 
 /** A propeller cap: the cap, its stalk and two blades turning (`turn`, radians). */
-const propellerShapes = (k: Matrix, colour: string, turn: number): Shape[] => {
+export const propellerShapes = (k: Matrix, colour: string, turn: number): Shape[] => {
   const spread = Math.abs(Math.cos(turn))
 
   return [
@@ -154,7 +155,7 @@ const energyShapes = (m: Matrix, energy: Energy, at: 'left' | 'right', y: number
 }
 
 /** Usagi's hat on its head's top (its ears through the brim), by name. */
-const usagiHatShapes = (m: Matrix, name: HatName): Shape[] => {
+export const usagiHatShapes = (m: Matrix, name: HatName): Shape[] => {
   const hat = HATS[name]
   const main = hat.colour
   const palette = hat.palette as Readonly<Record<string, string>>
@@ -294,10 +295,10 @@ const clawdShapes = (pose: FigurePose, info: FigureInfo, t: number): Shape[] => 
 const wheelShapes = (body: Matrix, run: number, t: number): Shape[] => {
   const turn = (t / 1000) * 2 * Math.PI * 5
   const hip = chain(body, translate(0, -2.2))
-  const tip = shade(USAGI.body, 0.16)
+  const tip = shade(USAGI.cream, 0.2)
 
   return [
-    { kind: 'ellipse', x: -3.3, y: -5.3, w: 6.6, h: 6.4, fill: '#FFF3C4', alpha: 0.55 * run, m: body },
+    { kind: 'ellipse', x: -3.3, y: -5.3, w: 6.6, h: 6.4, fill: '#FFF7DC', alpha: 0.55 * run, m: body },
     // Dashes round the rim, turning with it.
     ...[0, 1, 2, 3, 4, 5].map((one): Shape => ({ kind: 'rect', x: -0.6, y: -3.45, w: 1.2, h: 0.3, r: 0.15, fill: tip, alpha: 0.6 * run, m: multiply(hip, rotate(turn * 0.8 + (one * Math.PI) / 3)) })),
     ...[0, 1, 2, 3].flatMap((leg): Shape[] => {
@@ -305,7 +306,8 @@ const wheelShapes = (body: Matrix, run: number, t: number): Shape[] => {
       const alpha = run * (leg % 2 === 0 ? 1 : 0.6)
 
       return [
-        { kind: 'rect', x: -0.85, y: 0, w: 1.7, h: 2.9, r: 0.85, fill: USAGI.body, alpha, m },
+        { kind: 'rect', x: -1.1, y: -0.25, w: 2.2, h: 3.4, r: 1.1, fill: USAGI.line, alpha, m },
+        { kind: 'rect', x: -0.85, y: 0, w: 1.7, h: 2.9, r: 0.85, fill: USAGI.cream, alpha, m },
         { kind: 'ellipse', x: -0.8, y: 2.2, w: 1.6, h: 1, fill: tip, alpha, m },
       ]
     }),
@@ -362,54 +364,106 @@ const noseBubbleShapes = (body: Matrix, t: number): Shape[] => {
   ]
 }
 
+/** Usagi's outline's width, units: Chiikawa's thin dark line. */
+const LINE = 0.32
+
+/** A shape grown `g` all round, in `fill`: its outline, laid under it. */
+const grownBy = (shape: Shape, g: number, fill: string): Shape =>
+  shape.kind === 'rect' || shape.kind === 'ellipse'
+    ? { ...shape, x: shape.x - g, y: shape.y - g, w: shape.w + 2 * g, h: shape.h + 2 * g, ...(shape.kind === 'rect' ? { r: (shape.r ?? 0) + g } : {}), fill }
+    : { ...shape, fill }
+
+/** A thin stroke along an arc about (`cx`, `cy`), `r` out, from angle `from` to `to` (radians, y down), `width` thick. */
+const arcShapes = (m: Matrix, cx: number, cy: number, r: number, from: number, to: number, width: number, fill: string): Shape[] => {
+  const steps = 8
+  const at = (index: number, out: number): readonly [number, number] => {
+    const a = from + ((to - from) * index) / steps
+
+    return [cx + (r + out) * Math.cos(a), cy + (r + out) * Math.sin(a)]
+  }
+  const outer = Array.from({ length: steps + 1 }, (_, index) => at(index, width / 2))
+  const inner = Array.from({ length: steps + 1 }, (_, index) => at(steps - index, -width / 2))
+
+  return [{ kind: 'poly', x: 0, y: 0, w: 0, h: 0, points: [...outer, ...inner], fill, m }]
+}
+
+/** A cheek's blush: a pink oval, three strokes of hatching across it. */
+const blushShapes = (m: Matrix, cx: number, cy: number): Shape[] => [
+  { kind: 'ellipse', x: cx - 1.1, y: cy - 0.6, w: 2.2, h: 1.2, fill: USAGI.blush, alpha: 0.9, m },
+  ...[-0.6, 0, 0.6].map((dx): Shape => ({ kind: 'rect', x: -0.12, y: -0.42, w: 0.24, h: 0.84, r: 0.12, fill: USAGI.hatch, alpha: 0.85, m: chain(m, translate(cx + dx, cy), rotate(0.55)) })),
+]
+
 /**
- * Usagi: its ears (through its hat's brim, lowered squatting, trailing a
- * walk, drooping slumped), its round body, feet, hands, its dot eyes, pink
- * cheeks and mouth (wide open shouting); its hat, side crown, energy.
+ * Usagi as Chiikawa draws it: a big round head on a smaller round body, its
+ * long ears close together (pink inside; lowered squatting, trailing a walk,
+ * drooping slumped), its little feet, its hands nubs at its sides (raised
+ * beside its face, out to its laptop), a thin dark line round it all; its dot
+ * eyes with a glint under fine brows, its hatched pink cheeks, its small
+ * mouth (wide open shouting); its hat (its ears through it), side crown,
+ * energy.
  */
 const usagiShapes = (pose: FigurePose, info: FigureInfo, t: number): Shape[] => {
   const hat = info.role === undefined || pose.hatOff || pose.cap !== undefined ? undefined : ROLE_HATS[info.role]
   const flat = pose.flat
-  const body = chain(translate(pose.dx, pose.drop), rotate(pose.tilt), about(0, -6.1, rotate(pose.spin)), scale(pose.sx, pose.sy * (1 - 0.45 * flat)))
-  // Through a hat's brim its ears stand; only bare (no hat, no crown) do they droop.
+  const body = chain(translate(pose.dx, pose.drop), rotate(pose.tilt), about(0, -6.2, rotate(pose.spin)), scale(pose.sx, pose.sy * (1 - 0.45 * flat)))
+  // Its ears stand through a hat; only bare (no hat, no crown) do they droop.
   const earsDown = hat === undefined ? Math.max(pose.earsDown, 0) : 0
   const droop = hat === undefined && info.crown !== true ? pose.droop : 0
-  const earLength = 7.4 - 2.8 * earsDown
-  const shapes: Shape[] = []
-  for (const side of [-1, 1]) {
-    const turn = 0.3 * pose.trail + side * (1.9 * droop + 1.45 * flat + (side < 0 ? pose.earL : pose.earR))
-    shapes.push({ kind: 'rect', x: side * 4 - 1.05, y: -9 - earLength, w: 2.1, h: earLength + 1.2, r: 1.05, fill: USAGI.body, m: multiply(body, about(side * 4, -9.4, rotate(turn))) })
-    shapes.push({ kind: 'rect', x: side * 4 - 0.45, y: -8.6 - earLength, w: 0.9, h: earLength - 1, r: 0.45, fill: USAGI.blush, alpha: 0.55, m: multiply(body, about(side * 4, -9.4, rotate(turn))) })
+  const earLength = 7.8 - 3 * earsDown
+  // Its silhouette, outlined as one: the outlines first, then the parts over them.
+  const lines: Shape[] = []
+  const parts: Shape[] = []
+  const part = (shape: Shape): void => {
+    lines.push(grownBy(shape, LINE, USAGI.line))
+    parts.push(shape)
   }
-  const footHeight = Math.max(0, 2.2 * (1 - 0.45 * pose.tuck) * (1 - pose.hideLegs) * (1 - pose.run))
-  for (const [index, x] of [[0, -5.2], [1, 3.6]] as const) shapes.push({ kind: 'rect', x, y: -footHeight - (pose.legs[index] ?? 0), w: 1.6, h: footHeight, r: 0.75, fill: USAGI.body, m: body })
+  const inside: Shape[] = []
+  for (const side of [-1, 1]) {
+    const turn = side * 0.05 + 0.3 * pose.trail + side * (1.9 * droop + 1.45 * flat + (side < 0 ? pose.earL : pose.earR))
+    const ear = multiply(body, about(side * 1.25, -11.2, rotate(turn)))
+    part({ kind: 'rect', x: side * 1.25 - 0.78, y: -11 - earLength, w: 1.56, h: earLength + 0.4, r: 0.78, fill: USAGI.cream, m: ear })
+    inside.push({ kind: 'rect', x: side * 1.25 - 0.3, y: -10.5 - earLength, w: 0.6, h: Math.max(0.6, earLength - 2.1), r: 0.3, fill: USAGI.ear, m: ear })
+  }
+  const footHeight = Math.max(0, 1.3 * (1 - 0.45 * pose.tuck) * (1 - pose.hideLegs) * (1 - pose.run))
+  for (const [index, x] of [[0, -1.75], [1, 1.75]] as const) {
+    if (footHeight > 0.05) part({ kind: 'rect', x: x - 0.95, y: -footHeight - (pose.legs[index] ?? 0), w: 1.9, h: footHeight, r: Math.min(0.75, footHeight / 2), fill: USAGI.cream, m: body })
+  }
+  part({ kind: 'ellipse', x: -4.4, y: -7.4, w: 8.8, h: 7.2, fill: USAGI.cream, m: body })
+  part({ kind: 'ellipse', x: -5.3, y: -12.3, w: 10.6, h: 8.2, fill: USAGI.cream, m: body })
+  const shapes: Shape[] = [...lines, ...parts.slice(0, 2), ...inside, ...parts.slice(2)]
   // Sprinting: its legs a spinning wheel under it, a blur and four legs turning five times a second.
-  if (pose.run > 0.05) shapes.push(...wheelShapes(body, pose.run, t))
-  // Its hands: nubs at its sides, raised beside its face, out to point.
+  if (pose.run > 0.05) shapes.unshift(...wheelShapes(body, pose.run, t))
+  // Its hands: nubs out of its sides under its cheeks, each outlined over it; raised beside its face, out to its laptop.
   for (const side of [-1, 1]) {
     const raise = side === -1 ? pose.armL : pose.armR
     const reach = side === 1 ? pose.reach : 0
-    shapes.push({ kind: 'rect', x: side === -1 ? -8.6 - reach : 6.2, y: -5.2, w: 2.4 + 1.6 * reach, h: 1.7, r: 0.85, fill: USAGI.body, m: multiply(body, about(side * 6.4, -4.4, rotate(side * -raise))) })
+    const hand = multiply(body, chain(translate(side * 3.9, -5.3), scale(side, 1), rotate(0.35 * (1 - reach) - raise)))
+    const nub: Shape = { kind: 'rect', x: -0.6, y: -0.68, w: 2.5 + 1.8 * reach, h: 1.36, r: 0.68, fill: USAGI.cream, m: hand }
+    shapes.push(grownBy(nub, LINE, USAGI.line), nub)
   }
+  // Its face: dot eyes with a glint, fine brows over them (raised wide-eyed), hatched cheeks, its mouth.
+  const brow = pose.eyes === 'wide' ? -0.45 : 0
   shapes.push(
-    { kind: 'rect', x: -7.1, y: -10.4, w: 14.2, h: 8.6, r: 3.6, fill: USAGI.body, m: body },
-    { kind: 'rect', x: -6.4, y: -4.4, w: 12.8, h: 2.6, r: 1.3, fill: '#000000', alpha: 0.07, m: body },
-    { kind: 'ellipse', x: -6.4, y: -5.4, w: 1.9, h: 1.05, fill: USAGI.blush, alpha: 0.9, m: body },
-    { kind: 'ellipse', x: 4.5, y: -5.4, w: 1.9, h: 1.05, fill: USAGI.blush, alpha: 0.9, m: body },
-    ...eyeShapes(body, pose, [-3.4, 3.4], -7.3, 1.05, 1.4, USAGI.eye, true),
+    ...blushShapes(body, -3.75, -7.05),
+    ...blushShapes(body, 3.75, -7.05),
+    ...eyeShapes(body, pose, [-2.3, 2.3], -8.3, 1.1, 1.35, USAGI.eye, true),
+    ...arcShapes(body, -2.3 + pose.eyeX, -8.3 + brow, 1.75, Math.PI * 1.1, Math.PI * 1.42, 0.24, USAGI.line),
+    ...arcShapes(body, 2.3 + pose.eyeX, -8.3 + brow, 1.75, Math.PI * 1.58, Math.PI * 1.9, 0.24, USAGI.line),
   )
   // Its mouth, turned with its eyes: small and open, wide open screaming, a round `o`, a smirk.
-  if (pose.blanket < 0.5 && pose.eyes !== 'down') shapes.push(...mouthShapes(chain(body, translate(0.5 * pose.eyeX, 0)), pose))
+  if (pose.blanket < 0.5 && pose.eyes !== 'down') shapes.push(...mouthShapes(chain(body, translate(0.5 * pose.eyeX, -1.55), about(0, -6.3, scale(0.8))), pose))
   // Asleep: a bubble from its nose, swelling and shrinking with each breath.
-  if (pose.blanket > 0.5) shapes.push(...noseBubbleShapes(body, t))
-  if (hat !== undefined) shapes.push(...usagiHatShapes(body, hat))
+  if (pose.blanket > 0.5) shapes.push(...noseBubbleShapes(chain(body, translate(-0.5, -1.4)), t))
+  // What it wears on its head's top (two units over the sprite's), cut to its narrower head.
+  const crown = chain(body, translate(0, -2), about(0, -10, scale(0.78, 0.9)))
+  if (hat !== undefined) shapes.push(...usagiHatShapes(crown, hat))
   // The propeller cap in flight: its hat's colour, the crown's gold, or its own on a bare head.
   const capTone = info.role !== undefined ? HATS[ROLE_HATS[info.role]].colour : info.crown === true ? CROWN.colour : CAP.colour
-  if (pose.cap !== undefined) shapes.push(...propellerShapes(chain(body, translate(0, -10)), capTone, pose.cap))
-  if (info.crown === true && !pose.hatOff && flat < 0.5) shapes.push(...crownShapes(chain(body, translate(-6.6, -9.6), rotate(-0.35)), 0, 0, 0.62))
-  if (!pose.hatOff) shapes.push(...energyShapes(body, info.energy, 'right', -11.8, t))
+  if (pose.cap !== undefined) shapes.push(...propellerShapes(chain(body, translate(0, -12)), capTone, pose.cap))
+  if (info.crown === true && !pose.hatOff && flat < 0.5) shapes.push(...crownShapes(chain(body, translate(-3.5, -11.2), rotate(-0.35)), 0, 0, 0.62))
+  if (!pose.hatOff) shapes.push(...energyShapes(body, info.energy, 'right', -13.2, t))
   // Knocked flat: its hat (or crown) on the floor beside it.
-  const floor = chain(translate(pose.dx + 11, 0), rotate(0.35))
+  const floor = chain(translate(pose.dx + 9, 0), rotate(0.35))
   if (pose.hatOff && info.role !== undefined) shapes.push(...usagiHatShapes(chain(floor, translate(0, 9.2), scale(0.75)), ROLE_HATS[info.role]))
   else if (pose.hatOff && info.crown === true) shapes.push(...crownShapes(floor, 0, 0, 0.8))
 
@@ -690,7 +744,8 @@ export const figureShapes = (pose: FigurePose, info: FigureInfo, m: Matrix, t: n
   return [
     ...figure,
     ...blanketShapes(chain(upright), pose.blanket, t, usagi),
-    ...laptopShapes(ground, pose.laptop, t),
+    // Usagi narrower than Clawd, its laptop nearer.
+    ...laptopShapes(usagi ? chain(ground, translate(-2.6, 0)) : ground, pose.laptop, t),
     ...pose.beside.flatMap(one => besideShapes(one, upright, info, t, usagi)),
   ]
 }

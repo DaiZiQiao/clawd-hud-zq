@@ -19,7 +19,17 @@ import type { Cell, Grid, MascotRole } from './scene-types'
 // the side of its head; no letter, no accessory.
 
 /** Usagi's colours: its body, eyes, mouth and cheeks. */
-export const USAGI = { body: '#F3DC8C', eye: '#2B211C', mouth: '#6B2D2A', blush: '#F2A0AE' } as const
+export const USAGI = {
+  body: '#F3DC8C',
+  eye: '#2B211C',
+  mouth: '#6B2D2A',
+  blush: '#F2A0AE',
+  // The smooth art's, as Chiikawa draws it: its cream, its thin dark outline, inside its ears, its cheeks' hatching.
+  cream: '#F8EAC0',
+  line: '#4B3A2F',
+  ear: '#F2B3BE',
+  hatch: '#DE7790',
+} as const
 
 /** A bitmap's quarter: `.` none, `#` the body, `K` an eye, `M` the mouth, `P` a cheek, else a hat's own keys. */
 export type Palette = Readonly<Record<string, string>>

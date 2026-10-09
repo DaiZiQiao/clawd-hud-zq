@@ -13,7 +13,9 @@ import { shapeOf } from './tv-paint'
 // repeating, the pane's scrolls passed on to it, and the presses and keys
 // that change channel, press what the glass shows, or close it. Closing
 // plays out (the glass switches off, the mascot shrinks and flies home)
-// before the hooks hear `{ kind: 'tv', close: true }`.
+// before the hooks hear `{ kind: 'tv', close: true }`. The hooks hear too
+// when it becomes the giant and stops being it (`giant`): where pictures are
+// drawn, they draw it under the glass (`TvInputs.pictured`).
 
 /** Frames of static after a channel change. */
 export const FLICKER_FRAMES = 3
@@ -29,7 +31,7 @@ export const BLINK_MS = 120
 export const BLADE_MS = 100
 
 /** What the module posts to the hooks. */
-export type TvPost = { kind: 'tv'; close: true } | { kind: 'tv'; tab: string } | { kind: 'tv'; press: string }
+export type TvPost = { kind: 'tv'; close: true } | { kind: 'tv'; tab: string } | { kind: 'tv'; press: string } | { kind: 'tv'; giant: boolean }
 
 export type TvWorld = {
   inputs: TvInputs
@@ -124,8 +126,9 @@ const NEXT: Readonly<Partial<Record<TvPhase, TvPhase>>> = { travel: 'grow', grow
 /**
  * A tick of the module's clock: the animations step, a held ▲ or ▼ repeats,
  * the static runs out, the channel's number goes, the giant blinks, a
- * propeller's blade turns. Gone, the hooks are told it closed. Whether the
- * drawing changes.
+ * propeller's blade turns. Grown into the giant (switching on), and shrinking
+ * out of it, the hooks are told; gone, that it closed. Whether the drawing
+ * changes.
  */
 export const tickTv = (tv: TvWorld, post: (data: TvPost) => void): boolean => {
   const before = { blink: blinking(tv), osd: osdOf(tv), spin: spinOf(tv) }
@@ -138,6 +141,8 @@ export const tickTv = (tv: TvWorld, post: (data: TvPost) => void): boolean => {
     if (tv.frame >= frames) {
       // Home with no place to fly to: gone where it shrank.
       const next = tv.phase === 'shrink' && tv.inputs.from === undefined ? 'gone' : NEXT[tv.phase] ?? 'gone'
+      if (next === 'power-on') post({ kind: 'tv', giant: true })
+      if (tv.phase === 'power-off') post({ kind: 'tv', giant: false })
       tv.phase = next
       tv.frame = 0
       if (next === 'gone' && !tv.closed) {
@@ -254,7 +259,9 @@ export const pointerTv = (tv: TvWorld, event: ClientPointerEvent, post: (data: T
   }
   if (tv.phase === 'power-off' || tv.phase === 'shrink' || tv.phase === 'return') return false
   const { layout } = tv.inputs
-  const hit = tvHitAt(tv.inputs, tv.scroll, event.x, event.y, (fx, fy) => drawnOf(tv).has(fy * layout.width + fx))
+  // Drawn smooth (on the desktop, or the hooks' picture), its whole box is the mascot's: its quarters are not what shows.
+  const smooth = tv.inputs.art === 'vector' && (tv.inputs.svg === true || tv.inputs.pictured === true)
+  const hit = tvHitAt(tv.inputs, tv.scroll, event.x, event.y, smooth ? () => true : (fx, fy) => drawnOf(tv).has(fy * layout.width + fx))
   if (event.type === 'down') {
     tv.down = hit
     if (hit.kind === 'scroll' && tv.phase === 'on') {
@@ -280,12 +287,13 @@ export const keyTv = (tv: TvWorld, event: ClientKeyEvent, post: (data: TvPost) =
   return hit === undefined ? false : act(tv, hit, post)
 }
 
-/** Whether a post from the module is one the hooks act on: a close, a channel, or a press, each plain and short. */
+/** Whether a post from the module is one the hooks act on: a close, a channel, a press, or the giant up or down, each plain and short. */
 export const tvPostOf = (data: JsonValue | unknown): TvPost | undefined => {
   if (typeof data !== 'object' || data === null) return undefined
-  const { kind, close, tab, press } = data as { kind?: unknown; close?: unknown; tab?: unknown; press?: unknown }
+  const { kind, close, tab, press, giant } = data as { kind?: unknown; close?: unknown; tab?: unknown; press?: unknown; giant?: unknown }
   if (kind !== 'tv') return undefined
   if (close === true) return { kind: 'tv', close: true }
+  if (typeof giant === 'boolean') return { kind: 'tv', giant }
   if (typeof tab === 'string' && tab !== '' && tab.length <= 40) return { kind: 'tv', tab }
   if (typeof press === 'string' && press !== '' && press.length <= 300) return { kind: 'tv', press }
 

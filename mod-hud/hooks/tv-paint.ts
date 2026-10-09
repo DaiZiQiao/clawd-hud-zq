@@ -1,4 +1,7 @@
-import { CELL_HEIGHT, CELL_WIDTH, escapeText, num } from './svg-style'
+import { IDENTITY, shapesMarkup } from './clawd-vector'
+import type { Shape as VectorShape } from './clawd-vector'
+import { CELL_HEIGHT, CELL_WIDTH, escapeText, lightRule, num } from './svg-style'
+import type { ThemeKey } from './svg-style'
 import { textRowSvg } from './text-svg'
 import type { TextSpan } from './text-svg'
 import { displayWidth, truncate } from './text-width'
@@ -6,13 +9,15 @@ import { SPRITE_RES, figureCells, giantOf, scaled } from './tv-figure'
 import type { Box, Figure, Shape } from './tv-figure'
 import { cellText, isPress, panelOf, shownRows, thumbOf } from './tv-model'
 import type { Glass, PanelPart, TvInputs, TvLayout, TvLook, TvRow } from './tv-model'
+import { casingOf, giantShapes, spriteShapes } from './tv-smooth'
 
 // A frame of the TV drawn: on the terminal as cells over the region (the
 // mascot's quadrant glyphs, the glass's text, the panel's controls; every
 // cell the TV does not draw left to show the pane through), on the desktop
-// as one document the region's size (a dim over the pane, the mascot's
-// quarters in pixels, the glass, the panel, the ✕). The glass keeps its own
-// colours whatever the theme: light text on dark glass, as a screen is.
+// as one document the region's size (a dim over the pane, the mascot smooth
+// (hooks/tv-smooth.ts) or its quarters in pixels, the glass, the panel, the
+// ✕). The glass keeps its own colours whatever the theme: light text on dark
+// glass, as a screen is.
 
 /** The TV's own colours: the glass, its text (theme keys as a lit screen shows them), the panel, the ✕. */
 export const TV_COLOURS = {
@@ -193,8 +198,9 @@ const glassCells = (grid: Grid, inputs: TvInputs, glass: Glass, scroll: number, 
 
 /**
  * A frame on the terminal: the region's cells the TV draws (undefined where
- * the pane shows through). The giant at the figure's place with its TV, or
- * the sprite on its way; `scroll` the glass's, `osd` the channel shown on it.
+ * the pane shows through). The giant at the figure's place with its TV (the
+ * TV alone where the hooks draw the giant as a picture under it), or the
+ * sprite on its way; `scroll` the glass's, `osd` the channel shown on it.
  */
 export const paintCells = (inputs: TvInputs, look: TvLook | undefined, scroll: number, sprite: Figure, osd?: string): Grid => {
   const grid: Grid = Array.from({ length: Math.max(0, inputs.rows) }, () => Array.from({ length: Math.max(0, inputs.columns) }, () => undefined))
@@ -213,10 +219,10 @@ export const paintCells = (inputs: TvInputs, look: TvLook | undefined, scroll: n
   }
   const { layout } = inputs
   const shifted = (box: Box): Box => ({ ...box, x: box.x + layout.left, y: box.y + layout.top })
-  lay(giantOf(inputs.who, shapeOf(layout), look.eyes, look.spin ?? 0), layout.left, layout.top)
+  if (inputs.pictured !== true) lay(giantOf(inputs.who, shapeOf(layout), look.eyes, look.spin ?? 0), layout.left, layout.top)
   const placed: TvInputs = { ...inputs, layout: { ...layout, glass: shifted(layout.glass) } }
-  // The panel's round rows and the glass's sit on the body's colour.
-  const bodyColour = inputs.who.colour
+  // The panel's round rows and the glass's sit on the body's colour (the smooth giant's, under them as a picture).
+  const bodyColour = inputs.pictured === true ? casingOf(inputs.who) : inputs.who.colour
   glassCells(grid, placed, look.glass, scroll, osd)
   panelCells(grid, shifted(layout.panel), panelOf(layout.screen), 'CH')
   for (const box of [layout.glass, layout.panel]) {
@@ -378,21 +384,33 @@ const glassSvg = (inputs: TvInputs, box: Box, glass: Glass, scroll: number, osd:
 /**
  * A frame on the desktop: one document the region's size, the pane dimmed
  * under it; the sprite on its way (blown up smoothly), or the giant with its
- * TV and ✕. Its `alt` names what it shows.
+ * TV and ✕; the mascot smooth with the vector art (`ms` into the TV's life,
+ * for what it wears that moves), else its quarters. Its `alt` names what it
+ * shows.
  */
-export const paintSvg = (inputs: TvInputs, look: TvLook | undefined, scroll: number, sprite: Figure, osd?: string): { source: string; width: number; height: number } => {
+export const paintSvg = (inputs: TvInputs, look: TvLook | undefined, scroll: number, sprite: Figure, osd?: string, ms = 0): { source: string; width: number; height: number } => {
   const width = Math.max(1, inputs.columns) * CW
   const height = Math.max(1, inputs.rows) * CH
   const body: string[] = []
+  const used = new Set<ThemeKey>()
+  const smooth = (shapes: readonly VectorShape[]): void => {
+    const drawn = shapesMarkup(shapes, IDENTITY)
+    drawn.used.forEach(key => used.add(key))
+    body.push(`<g shape-rendering='geometricPrecision'>${drawn.markup}</g>`)
+  }
   if (look !== undefined) {
     body.push(`<rect width='${width}' height='${height}' fill='#000000' opacity='${num(look.scrim)}'/>`)
     if (look.form === 'sprite') {
-      const at = spriteFrame(sprite, inputs, look.travel, look.scale)
-      body.push(figureRects(at.figure, at.x * CW, at.y * CH, CW / 2, CH / 2))
+      if (inputs.art === 'vector') smooth(spriteShapes(inputs, look.travel, look.scale, look.eyes, ms))
+      else {
+        const at = spriteFrame(sprite, inputs, look.travel, look.scale)
+        body.push(figureRects(at.figure, at.x * CW, at.y * CH, CW / 2, CH / 2))
+      }
     } else {
       const { layout } = inputs
       const placed = (box: Box): Box => ({ ...box, x: box.x + layout.left, y: box.y + layout.top })
-      body.push(figureRects(giantOf(inputs.who, shapeOf(layout), look.eyes, look.spin ?? 0), layout.left * CW, layout.top * CH, CW / 2, CH / 2))
+      if (inputs.art === 'vector') smooth(giantShapes(inputs.who, layout, look.eyes, look.spin ?? 0, ms))
+      else body.push(figureRects(giantOf(inputs.who, shapeOf(layout), look.eyes, look.spin ?? 0), layout.left * CW, layout.top * CH, CW / 2, CH / 2))
       body.push(glassSvg(inputs, placed(layout.glass), look.glass, scroll, osd))
       body.push(panelSvg(placed(layout.panel), panelOf(layout.screen), 'CH'))
       const cx = (layout.left + layout.close.x + 1.5) * CW
@@ -401,7 +419,7 @@ export const paintSvg = (inputs: TvInputs, look: TvLook | undefined, scroll: num
     }
   }
   const defs = `<defs><pattern id='tvscan' width='4' height='3' patternUnits='userSpaceOnUse'><rect width='4' height='1' fill='#FFFFFF' opacity='.05'/></pattern></defs>`
-  const source = `<svg xmlns='http://www.w3.org/2000/svg' width='${width}' height='${height}' viewBox='0 0 ${width} ${height}' pointer-events='none' shape-rendering='crispEdges'>${defs}${body.join('')}</svg>`
+  const source = `<svg xmlns='http://www.w3.org/2000/svg' width='${width}' height='${height}' viewBox='0 0 ${width} ${height}' pointer-events='none' shape-rendering='crispEdges'>${defs}${lightRule(used)}${body.join('')}</svg>`
 
   return { source, width, height }
 }

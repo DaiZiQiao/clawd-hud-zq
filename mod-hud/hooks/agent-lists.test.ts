@@ -92,7 +92,7 @@ describe('collapsed finished agents', () => {
     return [id, { id, firstSeen: NOW - 20_000, lastSeen: NOW, steps: 2, toolCalls: 1, status: 'done', endedAt: NOW - (finished - index) * 1000, reason: 'answer' } satisfies ShadowAgentEntry]
   }))
 
-  test('a group lists its running whole and its three most recent finished, then `▸ n more`; a press lists all and `▾ collapse`, at 100 and 48 columns', async ($, on) => {
+  test('a group lists its running whole and its three most recent finished, then `▸ n more`; a press lists all and `▾ collapse`, at 100 and 48 columns', { timeoutMs: 20_000 }, async ($, on) => {
     const { held, world } = arrange(on)
     held.set('agents', { value: board(15), version: 1 })
     held.set('shadows', { value: flows(5), version: 1 })

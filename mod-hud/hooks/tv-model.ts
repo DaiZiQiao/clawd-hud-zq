@@ -162,8 +162,12 @@ export const tvRowsOf = (rows: readonly TextRow[]): { rows: TvRow[]; presses: Ma
  * one shown, a `view` naming who and which tab (a new one starts the glass at
  * its top through a flicker of static), where the mascot stood when it was
  * pressed (its sprite's top-left in the region), the pane's scrolls while the
- * TV is up (a new `seq` scrolls the glass by `by`, `page` a glassful), and
- * whether the surface draws pixels.
+ * TV is up (a new `seq` scrolls the glass by `by`, `page` a glassful),
+ * whether the surface draws pixels, whether the mascot is drawn smooth
+ * there (the vector art, hooks/tv-smooth.ts) or in its quarters, and
+ * whether the hooks draw the giant under the module's glass as a picture (a
+ * terminal that shows them), the module drawing the glass, its panel and the
+ * ✕ alone while it is the giant.
  */
 export type TvInputs = {
   columns: number
@@ -178,6 +182,8 @@ export type TvInputs = {
   from?: { x: number; y: number }
   wheel?: { seq: number; by: number; page?: true }
   svg?: true
+  art?: 'vector'
+  pictured?: true
 }
 
 /** The glass's rows for the tab's body: the text rows less the pinned head (one at least). */

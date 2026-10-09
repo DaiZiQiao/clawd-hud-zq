@@ -102,13 +102,12 @@ const visible = (shape: Shape): boolean =>
   (shape.alpha ?? 1) > 0.004 && (shape.kind === 'text' ? (shape.text ?? '') !== '' : shape.kind === 'poly' ? (shape.points?.length ?? 0) >= 3 : shape.w > 0 && shape.h > 0)
 
 /**
- * The shapes as one SVG document `width` by `height` CSS pixels, `view`
- * mapping world units to them: shapes in a row that share one placement in
- * one group; theme keys in the dark scheme's colours, the light scheme's by
- * the page's (`prefers-color-scheme`). Shapes past `limit` characters are left
- * out, the earliest kept.
+ * The shapes as SVG markup to set in a document of one's own: shapes in a
+ * row that share one placement in one group, under one group of `view`; the
+ * theme keys used, for the document's light scheme's rule. Shapes past
+ * `limit` characters are left out, the earliest kept.
  */
-export const svgOf = (shapes: readonly Shape[], width: number, height: number, view: Matrix, limit = Infinity, extra = ''): string => {
+export const shapesMarkup = (shapes: readonly Shape[], view: Matrix, limit = Infinity): { markup: string; used: Set<ThemeKey> } => {
   const used = new Set<ThemeKey>()
   const parts: string[] = []
   let length = 0
@@ -130,7 +129,18 @@ export const svgOf = (shapes: readonly Shape[], width: number, height: number, v
     length += group.length
   }
 
-  return `<svg xmlns='http://www.w3.org/2000/svg' width='${width}' height='${height}' viewBox='0 0 ${width} ${height}' pointer-events='none'${extra}>${lightRule(used)}<g transform='matrix(${view.map(num).join(' ')})'>${parts.join('')}</g></svg>`
+  return { markup: `<g transform='matrix(${view.map(num).join(' ')})'>${parts.join('')}</g>`, used }
+}
+
+/**
+ * The shapes as one SVG document `width` by `height` CSS pixels, `view`
+ * mapping world units to them (`shapesMarkup`); theme keys in the dark
+ * scheme's colours, the light scheme's by the page's (`prefers-color-scheme`).
+ */
+export const svgOf = (shapes: readonly Shape[], width: number, height: number, view: Matrix, limit = Infinity, extra = ''): string => {
+  const { markup, used } = shapesMarkup(shapes, view, limit)
+
+  return `<svg xmlns='http://www.w3.org/2000/svg' width='${width}' height='${height}' viewBox='0 0 ${width} ${height}' pointer-events='none'${extra}>${lightRule(used)}${markup}</svg>`
 }
 
 const rgbOf = (hex: string): [number, number, number] => {
