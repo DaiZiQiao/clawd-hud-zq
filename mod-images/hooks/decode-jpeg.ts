@@ -79,8 +79,8 @@ type Component = {
 type Phase = 'markers' | 'scan' | 'convert' | 'emit' | 'done'
 
 const FAST_BITS = 9
-/** MCUs decoded between looks at the clock. */
-const MCUS_PER_CHECK = 256
+/** Blocks decoded between looks at the clock: an MCU is one block, or up to 4 x 4 of each component. */
+const BLOCKS_PER_CHECK = 512
 /** Marker segments read between looks at the clock. */
 const SEGMENTS_PER_CHECK = 32
 /** Rows converted or handed out between looks at the clock. */
@@ -574,6 +574,8 @@ export const createJpegDecoder = (bytes: Uint8Array, sink: RowSink): JpegDecoder
 
   const decodeScan = (deadline: number): void => {
     const single = scan.length === 1
+    const blocksPerMcu = single ? 1 : scan.reduce((sum, c) => sum + c.h * c.v, 0)
+    const mcusPerCheck = max(1, floor(BLOCKS_PER_CHECK / blocksPerMcu))
     let sinceCheck = 0
     while (mcu < mcuTotal) {
       if (restart > 0 && mcu > 0 && mcu % restart === 0) {
@@ -602,7 +604,7 @@ export const createJpegDecoder = (bytes: Uint8Array, sink: RowSink): JpegDecoder
         mcu = min(mcuTotal, ceil(mcu / restart) * restart)
       }
       sinceCheck += 1
-      if (sinceCheck === MCUS_PER_CHECK) {
+      if (sinceCheck >= mcusPerCheck) {
         sinceCheck = 0
         if (performance.now() >= deadline) return
       }

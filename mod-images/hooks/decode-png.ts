@@ -92,13 +92,21 @@ export const pngHeaderOf = (bytes: Uint8Array): PngHeader | string => {
 }
 
 /**
+ * The chunks walked at most: they are read before the first slice, so a file
+ * of hundreds of thousands of empty ones would hold the worker up (65,536 took
+ * 50 ms; a 4 MiB file in libpng's 8 KiB chunks has 512).
+ */
+const MAX_CHUNKS = 16_384
+
+/**
  * Hands `visit` each chunk before IEND, its data `bytes[start..end)`; a chunk
  * running past the end of the file is cut there and is the last (a file cut
  * short still shows its top).
  */
 const eachChunk = (bytes: Uint8Array, visit: (type: number, start: number, end: number) => void): void => {
   let at = 8
-  while (at + 8 <= bytes.length) {
+  for (let count = 0; at + 8 <= bytes.length; count += 1) {
+    if (count === MAX_CHUNKS) throw new Error(`PNG: more than ${MAX_CHUNKS} chunks`)
     const length = u32(bytes, at)
     const type = u32(bytes, at + 4)
     const start = at + 8
@@ -273,9 +281,13 @@ export const createPngDecoder = (bytes: Uint8Array, sink: RowSink): PngDecoder =
   let key: number[] | undefined
   let hasTrns = false
   let dataBytes = 0
+  // Where each piece of the image data is, as start and end pairs.
+  const pieces: number[] = []
   eachChunk(bytes, (type, start, end) => {
-    if (type === IDAT) dataBytes += end - start
-    else if (type === PLTE) {
+    if (type === IDAT) {
+      dataBytes += end - start
+      pieces.push(start, end)
+    } else if (type === PLTE) {
       paletteSize = min(256, floor((end - start) / 3))
       for (let i = 0; i < paletteSize; i += 1) {
         palette[i * 4] = bytes[start + i * 3]!
@@ -299,12 +311,12 @@ export const createPngDecoder = (bytes: Uint8Array, sink: RowSink): PngDecoder =
   if (colourType === 3 && paletteSize === 0) throw new Error('PNG: palette image with no PLTE')
   // The image data's pieces joined, with the inflater's padding after them.
   const compressed = new Uint8Array(dataBytes + INFLATE_PAD)
-  let joined = 0
-  eachChunk(bytes, (type, start, end) => {
-    if (type !== IDAT) return
+  for (let i = 0, joined = 0; i < pieces.length; i += 2) {
+    const start = pieces[i]!
+    const end = pieces[i + 1]!
     compressed.set(bytes.subarray(start, end), joined)
     joined += end - start
-  })
+  }
   const inflater = createZlibInflater(compressed, dataBytes)
 
   // The geometry: Adam7's seven sub-images, or the one.

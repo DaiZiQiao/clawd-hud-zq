@@ -76,6 +76,9 @@ describe('decoding', () => {
     expect(() => decodeWebp(flatWebpOf(4, 4, { cacheBits: 12 }))).toThrow('WebP: a 12-bit colour cache')
     expect(() => decodeWebp(flatWebpOf(20, 20, { groups: { bits: 2, argb: [255, 16, 0, 0] } }))).toThrow('WebP: 4097 Huffman groups')
     expect(() => decodeWebp(flatWebpOf(20, 20, { groups: { bits: 2, argb: [255, 0, 29, 0] } }))).toThrow('WebP: 30 Huffman groups')
+    // Codes the library builds before its first pixel, all in its one call: their groups times their symbols are capped.
+    expect(() => decodeWebp(flatWebpOf(64, 64, { cacheBits: 11, groups: { bits: 2, argb: [255, 0, 199, 0] } }))).toThrow('WebP: 200 Huffman groups of 3136 symbols')
+    expect(() => decodeWebp(flatWebpOf(64, 64, { groups: { bits: 2, argb: [255, 0, 199, 0] } }))).not.toThrow(/Huffman groups/)
   })
 
   test('the library\'s own errors, and every other, carry the WebP prefix', () => {

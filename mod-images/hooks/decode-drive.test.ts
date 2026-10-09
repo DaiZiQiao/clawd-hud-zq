@@ -46,6 +46,46 @@ const masterOf = (bytes: Uint8Array, maxSide?: number): Master & { steps: number
   return { ...job.master(), steps }
 }
 
+/** A GIF on a 4 x 4 screen whose first frame is `width` by `height`, with no more data than a header needs. */
+const bigFrameGifOf = (width: number, height: number): Uint8Array => Uint8Array.of(
+  0x47, 0x49, 0x46, 0x38, 0x39, 0x61, 4, 0, 4, 0, 0, 0, 0,
+  0x2c, 0, 0, 0, 0, width & 0xff, width >>> 8, height & 0xff, height >>> 8, 0x80, 0, 0, 0, 255, 255, 255,
+  2, 2, 0x44, 0x01, 0, 0x3b,
+)
+
+/**
+ * A baseline JPEG, `width` by `height`, its three components each sampled
+ * 4 x 4 (48 blocks an MCU), every block a 1-bit DC code and 63 AC
+ * coefficients of 17 bits: the most entropy reads an MCU can ask for.
+ */
+const jpeg44Of = (width: number, height: number): Uint8Array => {
+  const u16 = (n: number): number[] => [(n >>> 8) & 0xff, n & 0xff]
+  const head = [0xff, 0xd8, 0xff, 0xdb, ...u16(67), 0, ...Array.from({ length: 64 }, () => 1)]
+  const dcCounts = Array.from({ length: 16 }, (_, at) => (at === 0 ? 1 : 0))
+  const acCounts = Array.from({ length: 16 }, (_, at) => (at === 15 ? 1 : 0))
+  head.push(0xff, 0xc4, ...u16(20), 0x00, ...dcCounts, 0)
+  head.push(0xff, 0xc4, ...u16(20), 0x10, ...acCounts, 0x01)
+  head.push(0xff, 0xc0, ...u16(17), 8, ...u16(height), ...u16(width), 3, 1, 0x44, 0, 2, 0x44, 0, 3, 0x44, 0)
+  head.push(0xff, 0xda, ...u16(12), 3, 1, 0, 2, 0, 3, 0, 0, 63, 0)
+  const bits = Math.ceil(width / 32) * Math.ceil(height / 32) * 48 * (1 + 63 * 17)
+  const file = new Uint8Array(head.length + Math.ceil(bits / 8) + 2)
+  file.set(head)
+  file.set([0xff, 0xd9], file.length - 2)
+
+  return file
+}
+
+/** The PNG with `count` empty IDAT chunks put after its IHDR. */
+const withEmptyChunksOf = (png: Uint8Array, count: number): Uint8Array => {
+  const empty = Uint8Array.of(0, 0, 0, 0, 0x49, 0x44, 0x41, 0x54, 0, 0, 0, 0)
+  const out = new Uint8Array(png.length + count * empty.length)
+  out.set(png.subarray(0, 33))
+  for (let i = 0; i < count; i += 1) out.set(empty, 33 + i * empty.length)
+  out.set(png.subarray(33), 33 + count * empty.length)
+
+  return out
+}
+
 /** A 32 by 32 PNG's own pixels, decoded whole. */
 const pngPixelsOf = (bytes: Uint8Array): Uint8Array => {
   const sink = fullSinkOf(32, 32)
@@ -126,6 +166,10 @@ describe('refusals', () => {
     gif.set([0xff, 0xff, 0xff, 0xff], 6)
     expect(startMaster(gif)).toEqual({ failure: 'too big', detail: 'GIF: 65535x65535 is over 36000000 pixels' })
     expect(startMaster(flatWebpOf(2049, 1))).toEqual({ failure: 'too big', detail: 'WebP: 2049x1 is over 2048 pixels a side' })
+    // A GIF's first frame is decoded whole wherever it lies: a vast one on a 4 x 4 screen is too big.
+    expect(imageHeaderOf(bigFrameGifOf(20_000, 20_000))).toEqual({ format: 'gif', width: 4, height: 4, decodable: true })
+    expect(startMaster(bigFrameGifOf(20_000, 20_000))).toEqual({ failure: 'too big', detail: 'GIF: a 20000x20000 frame is over 36000000 pixels' })
+    expect(isJob(startMaster(bigFrameGifOf(6000, 6000)))).toBe(true)
     // The library decodes a lossless WebP in one call: past a megapixel or so it is not tried.
     expect(startMaster(flatWebpOf(2048, 2048))).toEqual({ failure: 'too big', detail: 'WebP: 2048x2048 is over 1100000 pixels' })
     expect(startMaster(flatWebpOf(1101, 1000))).toEqual({ failure: 'too big', detail: 'WebP: 1101x1000 is over 1100000 pixels' })
@@ -287,6 +331,20 @@ describe('slicing', () => {
     await expect(runSliced(() => {
       throw new Error('PNG: bad filter type 9')
     }, async () => {})).rejects.toThrow('PNG: bad filter type 9')
+  })
+
+  test('a JPEG of 4 x 4 sampling in every component looks at the clock every ten MCUs, not every 256', () => {
+    // 512 x 512: 256 MCUs of 48 blocks; a step whose deadline has passed stops at its first look.
+    const job = jobOf(jpeg44Of(512, 512))
+    let steps = 1
+    while (!job.step(-Infinity) && steps < 1000) steps += 1
+    expect(steps).toBeGreaterThanOrEqual(26)
+  })
+
+  test('a PNG of more chunks than it walks is refused before any slice; fewer are joined in one walk', async () => {
+    const png = fixtureBytesOf(PNGSUITE.basn2c08!)
+    expect(startMaster(withEmptyChunksOf(png, 20_000))).toEqual({ failure: "can't read", detail: 'PNG: more than 16384 chunks' })
+    expect(await digestOf(masterOf(withEmptyChunksOf(png, 1000)).rgba)).toBe(await digestOf(masterOf(png).rgba))
   })
 
   test('each step honours its deadline: a large PNG in 2 ms slices', { timeoutMs: 30_000 }, async () => {

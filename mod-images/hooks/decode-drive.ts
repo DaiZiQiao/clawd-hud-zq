@@ -90,8 +90,8 @@ export type SliceOptions = {
   isAborted?: () => boolean
 }
 
-/** A header read, and why it has no decoder here when it has none. */
-type Probe = { header: ImageHeader; refusal?: string }
+/** A header read, why it has no decoder here when it has none, and why it is too big when the header's size does not tell. */
+type Probe = { header: ImageHeader; refusal?: string; tooBig?: string }
 
 /** The format, from the file's first bytes: the PNG signature, SOI then a marker, GIF87a or GIF89a, a RIFF WebP. */
 export const sniffFormatOf = (bytes: Uint8Array): ImageFormat | undefined => {
@@ -123,8 +123,12 @@ const probeOf = (bytes: Uint8Array): Probe | string => {
   }
   if (format === 'gif') {
     const gif = gifHeaderOf(bytes)
+    if (typeof gif === 'string') return gif
+    const header = { format, width: gif.width, height: gif.height, decodable: true }
+    // The first frame is decoded whole wherever it lies on the screen, so its own size is capped too.
+    const frame = gif.frameWidth * gif.frameHeight
 
-    return typeof gif === 'string' ? gif : { header: { format, width: gif.width, height: gif.height, decodable: true } }
+    return frame > PIXEL_CAP ? { header, tooBig: `GIF: a ${gif.frameWidth}x${gif.frameHeight} frame is over ${PIXEL_CAP} pixels` } : { header }
   }
   const webp = webpHeaderOf(bytes)
   if (typeof webp === 'string') return webp
@@ -265,7 +269,7 @@ export const startMaster = (bytes: Uint8Array, maxSide?: number): MasterJob | Ma
   const probe = probeOf(bytes)
   if (typeof probe === 'string') return { failure: "can't read", detail: probe }
   if (probe.refusal !== undefined) return { failure: 'no preview', detail: probe.refusal }
-  const cap = capFaultOf(probe.header)
+  const cap = probe.tooBig ?? capFaultOf(probe.header)
   if (cap !== undefined) return { failure: 'too big', detail: cap }
   const side = maxSide !== undefined && Number.isFinite(maxSide) ? Math.max(1, Math.floor(maxSide)) : MASTER_SIDE
   try {

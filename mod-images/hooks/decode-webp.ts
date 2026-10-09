@@ -14,7 +14,8 @@ import { decodeImage } from './vendor-webp/src/vp8l/entropy.js'
 // runs the stream is read as far as its Huffman groups with the library's own
 // parts, refusing what libwebp refuses or never writes (a transform used
 // twice, a colour cache over 11 bits, more Huffman groups than its encoder
-// makes), since each of those could keep the call busy for seconds.
+// makes) and groups whose codes would take long to build, since each of
+// those could keep the call busy for a second or more.
 
 const { ceil, max, min } = Math
 
@@ -33,6 +34,13 @@ export type WebpPicture = { width: number; height: number; rgba: Uint8Array }
 
 /** Huffman groups libwebp's encoder writes at most (its histogram image's limit). */
 const MAX_GROUPS = 2600
+/**
+ * The groups times the symbols of each group's five codes: the library builds
+ * every code before the first pixel, in its one call. 2600 groups with an
+ * 11-bit cache (8 million) took a second and over 100 MB; this keeps it to
+ * about 50 ms (95 groups with that cache, 275 with none).
+ */
+const MAX_GROUP_SYMBOLS = 300_000
 /** Colour cache bits VP8L allows. */
 const MAX_CACHE_BITS = 11
 
@@ -147,8 +155,9 @@ const vp8lFaultOf = (payload: Uint8Array): string | undefined => {
       width = ceil(width / (1 << packing))
     }
   }
+  let cacheBits = 0
   if (reader.read(1) === 1) {
-    const cacheBits = reader.read(4)
+    cacheBits = reader.read(4)
     if (cacheBits < 1 || cacheBits > MAX_CACHE_BITS) return `a ${cacheBits}-bit colour cache`
   }
   if (reader.read(1) === 0) return undefined
@@ -156,8 +165,11 @@ const vp8lFaultOf = (payload: Uint8Array): string | undefined => {
   const blocks = decodeImage(reader, ceil(width / (1 << bits)), ceil(height / (1 << bits)), false)
   let groups = 0
   for (const pixel of blocks) groups = max(groups, ((pixel >>> 8) & 0xffff) + 1)
+  if (groups > MAX_GROUPS || groups > blocks.length) return `${groups} Huffman groups`
+  // Green, red, blue, alpha and distance: green has the length codes and the cache's entries too.
+  const symbols = 256 + 24 + (cacheBits === 0 ? 0 : 1 << cacheBits) + 3 * 256 + 40
 
-  return groups > MAX_GROUPS || groups > blocks.length ? `${groups} Huffman groups` : undefined
+  return groups * symbols > MAX_GROUP_SYMBOLS ? `${groups} Huffman groups of ${symbols} symbols` : undefined
 }
 
 /**
