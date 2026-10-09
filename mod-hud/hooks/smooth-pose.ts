@@ -173,20 +173,40 @@ export type PoseContext = {
   tidyMs?: number
   stretchMs?: number
   mini?: boolean
+  /** Drawn for a picture of few frames: no breath, a blink shut whole while it lasts, a typing hand a stroke a frame. */
+  calm?: boolean
 }
 
 
+const BLINK_CYCLE = 4000
+const BLINK_LASTS = 230
+
+/** When a mascot's blink in its `k`th cycle begins. */
+const blinkStart = (k: number, seed: number): number => {
+  const x = Math.sin(k * 127.1 + seed * 311.7) * 43758.5453
+
+  return k * BLINK_CYCLE + 600 + (x - Math.floor(x)) * 2600 - seed * 997
+}
+
 /** A blink every three to five seconds, its own times by `seed`. */
 export const blinkAt = (t: number, seed: number): number => {
-  const cycle = 4000
-  const k = Math.floor((t + seed * 997) / cycle)
-  const x = Math.sin(k * 127.1 + seed * 311.7) * 43758.5453
-  const d = t + seed * 997 - (k * cycle + 600 + (x - Math.floor(x)) * 2600)
-  if (d < 0 || d > 230) return 1
+  const d = t - blinkStart(Math.floor((t + seed * 997) / BLINK_CYCLE), seed)
+  if (d < 0 || d > BLINK_LASTS) return 1
   if (d < 70) return 1 - 0.92 * (d / 70) ** 3
   if (d < 120) return 0.08
 
   return 0.08 + 0.92 * (1 - (1 - (d - 120) / 110) ** 3)
+}
+
+/** When a mascot's eyes next shut (its blink begins) or open again (it ends), from `t`: a picture of few frames draws one then. */
+export const blinkTurn = (t: number, seed: number): number => {
+  const k = Math.floor((t + seed * 997) / BLINK_CYCLE)
+  for (const start of [blinkStart(k, seed), blinkStart(k + 1, seed)]) {
+    if (t < start) return start
+    if (t <= start + BLINK_LASTS) return start + BLINK_LASTS + 1
+  }
+
+  return blinkStart(k + 2, seed)
 }
 
 /**
@@ -386,7 +406,7 @@ export const targetOf = (look: Look | MiniLook, context: PoseContext, mini: bool
   if (context.pose === 'dangle') pose = { ...pose, legs: [0.9 * Math.max(0, wave(t, 240)), 0.9 * Math.max(0, -wave(t, 240)), 0.9 * Math.max(0, wave(t, 240)), 0.9 * Math.max(0, -wave(t, 240))], tilt: 0.12 * wave(t, 900) }
   if (context.pose === 'tumble') pose = { ...pose, spin: (t / 1000) * 7 }
   if (pose.cap !== undefined) pose = { ...pose, cap: (t / 1000) * 30 }
-  if (pose.laptop > 0.5 && pose.reach > 0) pose = { ...pose, armR: pose.armR - 0.35 + 0.18 * wave(t, 400) }
+  if (pose.laptop > 0.5 && pose.reach > 0) pose = { ...pose, armR: pose.armR - 0.35 + 0.18 * (context.calm === true ? (Math.floor(t / 500) % 2 === 0 ? 1 : -1) : wave(t, 400)) }
 
   return pose
 }
@@ -455,8 +475,9 @@ export const createSmoother = (): Smoother => {
 /** Over the eased pose, what must never lag a frame: the blink and the breath; Usagi's ears' twitches. */
 export const livelyOf = (pose: FigurePose, context: PoseContext, still: boolean): FigurePose => {
   const t = context.now
-  const blink = pose.eyes === 'normal' && pose.eyeOpen > 0.5 ? blinkAt(t, context.seed) : 1
-  const breath = still && pose.flat < 0.05 && pose.blanket < 0.5 ? wave(t, 2700, context.seed) : 0
+  const blinking = pose.eyes === 'normal' && pose.eyeOpen > 0.5 ? blinkAt(t, context.seed) : 1
+  const blink = context.calm === true && blinking < 1 ? 0.08 : blinking
+  const breath = still && context.calm !== true && pose.flat < 0.05 && pose.blanket < 0.5 ? wave(t, 2700, context.seed) : 0
   const [twitchL, twitchR] = context.character === 'usagi' && pose.blanket < 0.5 && pose.flat < 0.05 ? earTwitch(t, context.seed) : [0, 0]
 
   return { ...pose, eyeOpen: pose.eyeOpen * blink, sx: pose.sx * (1 - 0.01 * breath), sy: pose.sy * (1 + 0.018 * breath), earL: pose.earL + twitchL, earR: pose.earR + twitchR }

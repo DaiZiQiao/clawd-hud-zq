@@ -5,7 +5,7 @@ import type { Shape } from './clawd-vector'
 import { SCENERY_STEP_MS, smoothPixels, smoothSvg } from './scene-smooth'
 import { SKY_MS, STAY_MS, litLights, litStill, sceneryOf } from './scenery'
 import type { Scenery } from './scenery'
-import { sceneryPicture, workScenery } from './scenery-pixels'
+import { sceneryPicture } from './scenery-pixels'
 import { STOPS } from './scenery-stops'
 
 // The world tour behind the smooth scene (hooks/scenery.ts): where it is at
@@ -225,7 +225,7 @@ describe('on the desktop', () => {
     for (const hour of [11.5, 23.5]) expect(keyAt(visit('ROME · ITALY', hour, 2000, 'fast') + 40_000)).toBe(keyAt(visit('ROME · ITALY', hour, 2000, 'fast')))
   })
 
-  test('drawn again as the light changes: in a picture the last light standing in till the next is lit, on the desktop at once', () => {
+  test('drawn again as the light changes: in a picture in the frame its scenery steps on in, on the desktop at once', () => {
     const dusk = visit('ROME · ITALY', 18, 2000, 'fast')
     const kept = sceneryPicture()
     const ground = (now: number): number => {
@@ -235,9 +235,7 @@ describe('on the desktop', () => {
       return (pixels[p] ?? 0) + (pixels[p + 1] ?? 0) + (pixels[p + 2] ?? 0)
     }
     const first = ground(dusk)
-    // Half an hour on at the stop: the light of the hour lit while the last stands in, then shown.
-    expect(ground(dusk + 30_000)).toBe(first)
-    workScenery([kept], Infinity)
+    // Half an hour on at the stop: lit for its hour in that frame, the picture sent once.
     expect(ground(dusk + 30_000)).toBeLessThan(first - 30)
     // On the desktop, the ground's colours.
     const land = (now: number): string => /<linearGradient id='l1'.*?<\/linearGradient>/.exec(smoothSvg({ shapes: [], wholes: [], width: 240, height: 24, still: false, scenery: sceneryAt(now) }, 120, 6, 90_000).scenery?.[0] ?? '')?.[0] ?? ''

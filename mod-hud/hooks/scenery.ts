@@ -600,7 +600,8 @@ const litWhole = (land: Land, shape: Shape): Shape[] => {
     const edges = land.edges.map(x => x / land.span)
     const stops = grad.stops.flatMap((stop, i): (readonly [number, string, number])[] => {
       const next = grad.stops[i + 1]
-      if (next === undefined || !edges.some(edge => edge > stop[0] && edge < next[0])) return [stop]
+      // Over a seam, and at the strip's ends (where a seam outside it may reach in), the light turns: more stops.
+      if (next === undefined || (i > 0 && i < grad.stops.length - 2 && !edges.some(edge => edge > stop[0] && edge < next[0]))) return [stop]
 
       return [stop, ...[0.25, 0.5, 0.75].map(k => [stop[0] + (next[0] - stop[0]) * k, mix(stop[1], next[1], k), stop[2]] as const)]
     })

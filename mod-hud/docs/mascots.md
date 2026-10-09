@@ -229,19 +229,20 @@ the stretch, pick up, dangle, throw and tumble.
 - **Kept light.** The terminal decodes and draws every tile it is sent, so a
   picture sends few: the hooks' timer comes every 125 ms, a frame each while
   anything moves (eight a second), every fourth while every mascot stands
-  still (two a second), and a mascot standing still does not breathe in a
-  picture (its body swelling would send all its tiles again), though it
-  blinks and types. The scenery behind is a still picture between its steps
+  still (two a second), and one as a blink begins and as it ends. A picture's
+  mascots are drawn calm (`PoseContext.calm`): standing still they do not
+  breathe (a body swelling would send all its tiles again), a blink is shut
+  whole while it lasts, and a typing hand strikes a key a frame. The scenery behind is a still picture between its steps
   (below). A picture sends at most 128 KiB a second (`BYTES_A_SECOND`, twice
   that at once): past it, its frames wait, whatever moves. It draws again no
   sooner than three times what its last frame took (`PICTURE_SHARE`, four
   frames at most), so a costly frame comes less often instead of making the
   rest late, and a press on it draws at once. Each picture's world steps on
   by the time gone since its last frame (up to `MOST_STEP_MS`), so a late
-  frame is never slow motion. A band 120 cells across sends about 150 KiB a
-  second while its mascot walks and 30 while it works at its laptop, where
-  every frame drawn whole sent ten times that; the hooks spend a few percent
-  of a core on it. A tile whose swap is refused is swapped in again at the
+  frame is never slow motion. A band 120 cells across sends about 80 to 130
+  KiB a second while its mascot walks (the cap holds it there) and 20 to 40
+  while it works at its laptop, where every frame drawn whole sent over ten
+  times that; the hooks spend a few percent of a core on it. A tile whose swap is refused is swapped in again at the
   next frame. Over the picture is a `Client` drawing nothing
   (`hooks/scene-hit.tsx`). It numbers each pointer event and posts its recent
   ones, so a press, a drag and a throw reach the world whole, and a click
@@ -350,9 +351,10 @@ now by its sun). From the hour comes the sun's height, and from that:
   laid over, and kept until its light changes (`Land.litKey`, a
   two-hundredth of the sun's height). That work is done a few shapes or
   sixteen rows at a time, 4 ms of each timer's frame (`workScenery`): the
-  next leg's land and its light drawn ahead first (`prefetchScenery`), then a
-  new light while the last is shown, one at a time. Each picture keeps its
-  own (`SceneryPicture`): its leg's land and the next one's, no other.
+  next leg's land and its light drawn ahead (`prefetchScenery`); a new light
+  is drawn in the frame the scenery steps on in, so the picture is sent once
+  for it. Each picture keeps its own (`SceneryPicture`): its leg's land and
+  the next one's, no other.
 - **On the desktop** (`smoothSvg`) the scenery is two `Svg`s under the
   mascots' (`pixelsOf`): the sky and the still land of the stops in view
   (`Land.parts`) with their lights, a document that changes only as the sky
@@ -778,7 +780,8 @@ that shows pictures (Ghostty, kitty), the TV's module tells the hooks when
 the mascot has grown into the giant (as its glass switches on) and when it
 shrinks out of it (`{ kind: 'tv', giant }`); in between, the hooks draw the
 giant as one picture over its box (`giantPicture`: a cell 8 by 16 pixels,
-some 30 KiB, drawn once, and once more for its blink), and the module draws
+some 30 KiB, drawn once, once more for its blink, and for a propeller cap
+twice more, its blade turning two frames a second), and the module draws
 only the glass, its panel and the `✕` over it, as text (`TvInputs.pictured`).
 The giant blinks every few seconds there too, the hooks swapping its eyes
 shut a moment. The flight and the growing stay the module's quarters there.

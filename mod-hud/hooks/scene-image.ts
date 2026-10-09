@@ -26,7 +26,7 @@ import type { Smoother } from './smooth-pose'
 // each event numbered so none is taken twice. Pure: the hooks
 // (hooks/register.tsx) keep the stages, the timer and the blits.
 
-/** A frame every 125 ms while anything moves (eight a second); every fourth while all stand still (a blink, a hand on the keys: two a second do). */
+/** A frame every 125 ms while anything moves (eight a second); every fourth while all stand still (a hand on the keys: two a second do), and as a blink begins and ends. */
 export const IMAGE_FRAME_MS = 125
 export const STILL_EVERY = 4
 
@@ -87,9 +87,10 @@ export type Stage = {
   ahead?: string
   wait: number
   allowance: number
-  /** Whether anything in the last frame moved, and frames since. */
+  /** Whether anything in the last frame moved, and frames since; when a mascot's eyes next shut or open (the scene's time). */
   still: boolean
   skipped: number
+  blinks?: number
   /** The hit layer whose events it takes, and the last one taken, by its number. */
   layer?: string
   seq: number
@@ -135,10 +136,11 @@ const stageFrame = (stage: Stage, scheme: 'dark' | 'light'): { pixels: Uint8Arra
     const layout = layoutAt(world, plan.tick)
     world.owners = sceneCanvas(scene, layout, plan, view.sprites)?.owners
     const daylight = world.props.scenery
-    // Not breathing: a body that swells and settles would send its every tile again each frame it stands still.
-    frame = smoothFrame(scene, layout, plan, view.sprites, stage.smoother, world.sceneNow, daylight === undefined ? false : { daylight, held: stage.held ?? world.sceneNow, pans: false }, false)
+    // Calm: no breath (a body that swells and settles would send its every tile again each frame it stands still), a blink shut whole.
+    frame = smoothFrame(scene, layout, plan, view.sprites, stage.smoother, world.sceneNow, daylight === undefined ? false : { daylight, held: stage.held ?? world.sceneNow, pans: false }, true)
   }
   stage.still = (frame === undefined || frame.still) && world.carried.size === 0
+  stage.blinks = frame?.blinks
   const { pixels, width } = smoothPixels(frame ?? { shapes: [], wholes: [], width: 0, height: 0, still: true }, columns, rows, stage.cell, scheme, stage.scenery)
   // Once a leg (or in another scheme), the next leg's land queued to be drawn ahead.
   const scenery = frame?.scenery
@@ -209,7 +211,9 @@ export const stageTick = (stage: Stage, step: number, scheme: 'dark' | 'light'):
   stage.skipped += 1
   stage.wait -= 1
   stage.allowance = Math.min(BYTES_AT_ONCE, stage.allowance + (BYTES_A_SECOND * step) / 1000)
-  if (stage.wait < 0 && stage.allowance > 0 && !(stage.still && stage.world.carried.size === 0 && stage.skipped < STILL_EVERY)) drawTick(stage, scheme)
+  // All standing still: every STILL_EVERY frames, and as an eye shuts or opens.
+  const resting = stage.still && stage.world.carried.size === 0 && stage.skipped < STILL_EVERY && !(stage.blinks !== undefined && stage.world.sceneNow >= stage.blinks)
+  if (stage.wait < 0 && stage.allowance > 0 && !resting) drawTick(stage, scheme)
   const unsent = (stage.tiles ?? []).filter(tile => !tile.sent)
   for (const tile of unsent) {
     tile.sent = true

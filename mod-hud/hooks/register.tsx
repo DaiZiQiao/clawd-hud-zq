@@ -1267,10 +1267,10 @@ const tileKey = (picture: { key: string }, tile: Tile): string => `${picture.key
  */
 type GiantPicture = { requestId: string; surface: string; key: string; drawn: string; frames: Map<string, string>; shown: string; turns: boolean; ms: number; draw: (eyes: 'open' | 'shut', blade: number) => string }
 
-/** A giant's frame at its clock: its eyes shut a moment every few seconds, its blade a frame every BLADE_MS while it turns; neither shorter than the timer's frame, so none is missed. */
+/** A giant's frame at its clock: its eyes shut a moment every few seconds, no shorter than the timer's frame so none is missed; its blade turning two frames a second (each frame the whole giant). */
 const giantFrameOf = (giant: GiantPicture): { key: string; eyes: 'open' | 'shut'; blade: number } => {
   const eyes = giant.ms % BLINK_EVERY_MS < Math.max(BLINK_MS, IMAGE_FRAME_MS) ? 'shut' : 'open'
-  const blade = giant.turns ? Math.floor(giant.ms / Math.max(BLADE_MS, IMAGE_FRAME_MS)) % 2 : 0
+  const blade = giant.turns ? Math.floor(giant.ms / Math.max(BLADE_MS, 4 * IMAGE_FRAME_MS)) % 2 : 0
 
   return { key: `${eyes}:${blade}`, eyes, blade }
 }
@@ -1514,7 +1514,7 @@ const giantPictureOf = async ($: EngineInterface, table: object, surface: string
   if (giant === undefined || giant.drawn !== drawn) {
     const draw = (eyes: 'open' | 'shut', blade: number): string => giantPicture(who, layout, eyes, scheme, blade)
     // Its clock starts past a blink: the first comes a few seconds on.
-    giant = { requestId, surface, key: `${TV_KEY}:giant`, drawn, frames: new Map(), shown: '', turns: who.cap === true, ms: BLINK_MS, draw }
+    giant = { requestId, surface, key: `${TV_KEY}:giant`, drawn, frames: new Map(), shown: '', turns: who.cap === true, ms: Math.max(BLINK_MS, IMAGE_FRAME_MS), draw }
     giantPictures.set(site, giant)
   }
   // The frame its clock is at, the one the timer then swaps on from.

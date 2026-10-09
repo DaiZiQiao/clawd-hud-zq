@@ -11,7 +11,7 @@ import type { Daylight, Scenery } from './scenery'
 import { behindPixels, sceneryPicture } from './scenery-pixels'
 import type { SceneryPicture } from './scenery-pixels'
 import { crossShapes, figureShapes, markShapes, pipeShapes, tickShapes } from './smooth-art'
-import { livelyOf, targetOf } from './smooth-pose'
+import { blinkTurn, livelyOf, targetOf } from './smooth-pose'
 import { TODDLE_MS, quirkPose } from './usagi-moves'
 import { quirkAt } from './usagi-quirks'
 import type { PoseContext, Smoother } from './smooth-pose'
@@ -29,9 +29,10 @@ import { CELL_HEIGHT, CELL_WIDTH, num } from './svg-style'
  * of them (`wholes`, from and to), its size in units, whether all its mascots
  * stand still (none moving, held or thrown, in a scene's step, tidying up; no
  * pipe, no mark: only a breath or a blink between this frame and the next),
- * and the scenery it stands in, when it has one (hooks/scenery.ts).
+ * drawn calm, when a mascot's eyes next shut or open (`blinks`), and the
+ * scenery it stands in, when it has one (hooks/scenery.ts).
  */
-export type SmoothFrame = { shapes: Shape[]; wholes: (readonly [number, number])[]; width: number; height: number; still: boolean; scenery?: Scenery }
+export type SmoothFrame = { shapes: Shape[]; wholes: (readonly [number, number])[]; width: number; height: number; still: boolean; blinks?: number; scenery?: Scenery }
 
 /** The phases a mascot keeps still in: at work, stalled, slumped. */
 const RESTING: ReadonlySet<string> = new Set(['work', 'stalled', 'sit'])
@@ -81,12 +82,12 @@ export type SceneryOptions = { daylight: Daylight; held?: number; pans?: boolean
 
 /**
  * The scene's frame at `now` (the scene's time, ms): each mascot's pose eased
- * by `smoother` (kept by the caller from frame to frame), breathing as it
- * stands still unless `breathes` says not, and with `scenery` the land it
+ * by `smoother` (kept by the caller from frame to frame), `calm` for a
+ * picture of few frames (`PoseContext.calm`), and with `scenery` the land it
  * stands in, each mascot's shadow on the ground under it; undefined when
  * nothing fits.
  */
-export const smoothFrame = (scene: MascotScene, layout: MascotLayout, plan: MascotPlan | undefined, view: SceneView | undefined, smoother: Smoother, now: number, scenery: SceneryOptions | false = false, breathes = true): SmoothFrame | undefined => {
+export const smoothFrame = (scene: MascotScene, layout: MascotLayout, plan: MascotPlan | undefined, view: SceneView | undefined, smoother: Smoother, now: number, scenery: SceneryOptions | false = false, calm = false): SmoothFrame | undefined => {
   const placed = placedSprites(scene, layout, plan, view)
   if (placed === undefined || plan === undefined) return undefined
   const room = placed.headroom
@@ -95,6 +96,7 @@ export const smoothFrame = (scene: MascotScene, layout: MascotLayout, plan: Masc
   const wholes: (readonly [number, number])[] = []
   const kept = new Set<string>()
   let still = placed.pipes.length === 0 && placed.marks.length === 0
+  let blinks = Infinity
   for (const sprite of placed.sprites) {
     if (sprite.kind === 'strip') {
       shapes.push(...stripShapes(sprite, room))
@@ -115,6 +117,7 @@ export const smoothFrame = (scene: MascotScene, layout: MascotLayout, plan: Masc
       now,
       seed: seedOf(sprite.id),
       mini,
+      ...(calm ? { calm } : {}),
       ...(figure.context.motion === undefined ? {} : { motion: figure.context.motion }),
       ...(figure.context.facing === undefined ? {} : { facing: figure.context.facing }),
       ...(figure.context.pose === undefined ? {} : { pose: figure.context.pose }),
@@ -136,7 +139,8 @@ export const smoothFrame = (scene: MascotScene, layout: MascotLayout, plan: Masc
       pose = quirkPose(pose, quirk, context.facing)
       still = false
     }
-    pose = livelyOf(pose, context, breathes && !sprite.moving && quirk === undefined)
+    pose = livelyOf(pose, context, !sprite.moving && quirk === undefined)
+    if (calm) blinks = Math.min(blinks, blinkTurn(now, context.seed))
     const info = mini ? { ...figure.info, energy: 0 as const, letter: undefined } : figure.info
     // The room's top is the canvas's: its feet's height over it, in the figure's units.
     const from = shapes.length
@@ -161,7 +165,7 @@ export const smoothFrame = (scene: MascotScene, layout: MascotLayout, plan: Masc
   const land = scenery === false ? undefined : sceneryOf(width, height, (room + BOX_ROWS - 0.5) * 4 - 2, now, scenery.daylight, scenery.held ?? Math.floor(now / SCENERY_STEP_MS) * SCENERY_STEP_MS, scenery.pans)
 
   // Panning on to the next stop, every frame drawn, as while a mascot moves.
-  return { shapes, wholes, width, height, still: still && land?.panning !== true, ...(land === undefined ? {} : { scenery: land }) }
+  return { shapes, wholes, width, height, still: still && land?.panning !== true, ...(blinks < Infinity ? { blinks } : {}), ...(land === undefined ? {} : { scenery: land }) }
 }
 
 /** How often what moves in the scenery (boats, sails, the weather) moves on by default, ms: ten times a second, the mascots every frame. */
@@ -187,20 +191,24 @@ const choiceMarkups = new Map<string, readonly (readonly (readonly Markup[])[])[
 const sceneryDocuments = new Map<string, readonly string[]>()
 
 /**
- * Each size's last choice of the scenery's layers: a fuller one is taken only
- * with ROOM_STEP characters to spare, so the mascots' markup growing and
- * shrinking a little does not flip the ground's texture on and off.
+ * The room the scenery is given: a fuller choice of its layers than the last
+ * (`SceneryHeld`) is taken only with this many characters to spare, so the
+ * mascots' markup growing and shrinking a little does not flip the ground's
+ * texture on and off.
  */
-const chosen = new Map<string, number>()
 const ROOM_STEP = 4096
+
+/** A drawing's last choice of the scenery's layers, kept by the drawing from frame to frame. */
+export type SceneryHeld = { choice?: number }
 
 /**
  * The frame as the desktop's `Svg` sources, `columns` by `rows` cells of
  * CELL_WIDTH by CELL_HEIGHT pixels, under `limit` characters together: the
  * mascots (`source`) and, laid under them, the scenery's layers (`scenery`,
- * back to front: the fullest of `sceneryChoices` with room).
+ * back to front: the fullest of `sceneryChoices` with room, a fuller one
+ * than `held`'s last only with ROOM_STEP to spare).
  */
-export const smoothSvg = (frame: SmoothFrame, columns: number, rows: number, limit: number): { source: string; scenery?: readonly string[]; width: number; height: number } => {
+export const smoothSvg = (frame: SmoothFrame, columns: number, rows: number, limit: number, held: SceneryHeld = {}): { source: string; scenery?: readonly string[]; width: number; height: number } => {
   const width = Math.max(1, Math.floor(columns)) * CELL_WIDTH
   const height = Math.max(1, Math.floor(rows)) * CELL_HEIGHT
   const view = scale(PIXELS_PER_UNIT)
@@ -229,12 +237,10 @@ export const smoothSvg = (frame: SmoothFrame, columns: number, rows: number, lim
   const room = budget - near.reduce((sum, part) => sum + part.markup.length, 0)
   const size = `${columns}x${rows}`
   const choices = keptIn(choiceMarkups, `${scenery.behind}:${size}`, () => sceneryChoices(scenery, frame.width, frame.height), 4)
-  const last = chosen.get(size) ?? choices.length
+  const last = held.choice ?? choices.length
   const fits = choices.findIndex((layers, index) => layers.flat().reduce((sum, part) => sum + part.markup.length, 0) <= room - (index < last ? ROOM_STEP : 0))
   const choice = fits < 0 ? choices.length : fits
-  chosen.delete(size)
-  chosen.set(size, choice)
-  for (const old of chosen.keys()) if (chosen.size > 8) chosen.delete(old)
+  held.choice = choice
   const behind = keptIn(sceneryDocuments, `${scenery.behind}:${size}:${choice}`, () => (choices[choice] ?? []).filter(parts => parts.some(part => part.markup !== '')).map(document), 4)
 
   return { source: document(near), ...(behind.length === 0 ? {} : { scenery: behind }), width, height }
@@ -302,6 +308,6 @@ export const smoothPixels = (
   if (scenery === undefined) return { pixels: rasterOf(frame.shapes, width, height, view, glyphShapes, scheme), width, height }
   const behind = behindPixels(kept, scenery, width, height, cell, scheme)
 
-  // The stop's name over it as it is now, fading in and out while the rest holds.
-  return { pixels: rasterOf([...frame.shapes, ...scenery.land.caption, ...scenery.front], width, height, view, glyphShapes, scheme, behind.slice()), width, height }
+  // The stop's name over it as it is now, fading in and out while the rest holds, under the mascots.
+  return { pixels: rasterOf([...scenery.land.caption, ...frame.shapes, ...scenery.front], width, height, view, glyphShapes, scheme, behind.slice()), width, height }
 }

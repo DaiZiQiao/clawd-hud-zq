@@ -119,7 +119,7 @@
     "scenery": {
       "type": "boolean",
       "title": "World tour",
-      "description": "With the vector art, the mascots tour the world's wonders behind them, in the band and the pane: a stop at each landmark in its own weather (Big Ben in the rain, Mount Fuji in cherry blossom, snow in Tromsø, and more) and at its own time of day (see daylight), its name and hour shown as it arrives, then a pan to the next.",
+      "description": "With the vector art, the mascots tour the world's wonders behind them, in the band and the pane: a stop at each landmark in its own weather (Big Ben in the rain, Mount Fuji in cherry blossom, snow in Tromsø, and more) and at its own time of day (see daylight), its name and hour shown as it arrives, then a pan to the next (in Ghostty or kitty, a cut).",
       "default": true
     },
     "daylight": {

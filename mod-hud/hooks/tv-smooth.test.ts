@@ -343,7 +343,8 @@ describe('in a terminal that shows pictures', () => {
     await ui.advance((TV_FRAMES.travel + TV_FRAMES.grow + 1) * TV_FRAME_MS)
     await ui.redraw()
     expect((await ui.findAll({ type: 'Image' })).some(one => one.key === 'tv:giant')).toBe(true)
-    await clock.advance(400)
+    // Two blade frames a second, each the whole giant.
+    await clock.advance(1600)
     expect(new Set(sent).size).toBe(2)
     expect(sent.length).toBeGreaterThanOrEqual(3)
     await ui.unmount()

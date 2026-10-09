@@ -161,9 +161,9 @@ describe('the stage', () => {
     const drawn: Tile[][] = []
     for (let index = 0; index < 3 * STILL_EVERY; index += 1) drawn.push(stageTick(stage, IMAGE_FRAME_MS, 'dark'))
     expect(stage.world.ms).toBe(before + 3 * STILL_EVERY * IMAGE_FRAME_MS)
-    // At work and breathing: still, so a frame every third, and of it only the tiles the mascot is in.
+    // At work: still, so a frame every STILL_EVERY (and as a blink begins and ends), and of it only the tiles the mascot is in.
     expect(stage.still).toBe(true)
-    expect(drawn.filter(one => one.length > 0).length).toBeLessThanOrEqual(3)
+    expect(drawn.filter(one => one.length > 0).length).toBeLessThanOrEqual(5)
     expect(drawn.filter(one => one.length > 0).length).toBeGreaterThanOrEqual(1)
     expect(Math.max(...drawn.map(one => one.length))).toBeLessThan(tilesOf(60, 10).length)
     // Waiting its share of the time after a costly frame: the world steps on (by the time gone), nothing drawn.

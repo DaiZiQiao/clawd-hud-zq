@@ -7,11 +7,11 @@ import type { Land, Scenery } from './scenery'
 // The world tour behind a terminal's picture, in pixels (hooks/scene-smooth.ts
 // lays the mascots over it). A leg's still land is a strip drawn once in
 // daylight colours, its lights beside it, then lit for the hour column by
-// column with its lights laid over: again as its light changes, the last lit
-// standing in meanwhile. That work is done a few shapes or a band of rows at
-// a time, a few ms a frame (`workScenery`), the next leg's land drawn ahead
-// while this one is shown (`prefetchScenery`); at once only when a frame
-// cannot do without it. What is behind the mascots is kept between the
+// column with its lights laid over: again in the frame its light changes in
+// (a picture's scenery moves on only every few seconds). The next leg's land
+// is drawn and lit ahead while this one is shown (`prefetchScenery`), a few
+// shapes or a band of rows at a time, a few ms a frame (`workScenery`); at
+// once only when a frame cannot do without it. What is behind the mascots is kept between the
 // scenery's steps. Each picture keeps its own (`SceneryPicture`), so two
 // pictures never undo each other's.
 
@@ -137,11 +137,7 @@ const workOn = (strip: Strip): boolean => {
   return true
 }
 
-/**
- * The pictures' strips' work on until the clock says `until` (ms, `clockMs`):
- * each's next leg first, its work bounded (drawn once, lit once), then its
- * shown land's new light, the last standing in meanwhile.
- */
+/** The pictures' strips' work on until the clock says `until` (ms, `clockMs`): each's next leg first, then what is left of its shown land's. */
 export const workScenery = (pictures: Iterable<SceneryPicture>, until: number): void => {
   for (const picture of pictures) {
     for (const strip of [picture.next, picture.current]) {
@@ -150,7 +146,7 @@ export const workScenery = (pictures: Iterable<SceneryPicture>, until: number): 
   }
 }
 
-/** The leg after this one's land drawn ahead in `picture`, and lit for the light as that leg begins: to stand in till it is lit for its own. */
+/** The leg after this one's land drawn ahead in `picture`, and lit for the light as that leg begins (lit again as it is shown, if the picture's light is another then). */
 export const prefetchScenery = (picture: SceneryPicture, next: Scenery, columns: number, rows: number, cell: Cell, scheme: 'dark' | 'light'): void => {
   const width = Math.max(1, Math.floor(columns)) * cell.width
   const height = Math.max(1, Math.floor(rows)) * cell.height
@@ -161,15 +157,15 @@ export const prefetchScenery = (picture: SceneryPicture, next: Scenery, columns:
 /**
  * What is behind the mascots in a picture `width` by `height` pixels: the
  * sky painted a row at a time, its sun, moon, stars and clouds, the still
- * land lit for the hour (or, while that is lit, as last lit) from where the
- * pan has got to, then what moves on it and the weather. Each layer kept in
+ * land lit for the hour from where the pan has got to, then what moves on it
+ * and the weather. Each layer kept in
  * `picture` by its key, the picture's size and the light the land was lit
  * for: drawn again only as any of those changes.
  */
 export const behindPixels = (picture: SceneryPicture, scenery: Scenery, width: number, height: number, cell: Cell, scheme: 'dark' | 'light'): Uint8Array => {
   const strip = shownStrip(picture, scenery.land, width, height, cell, scheme)
-  // Never yet lit: its work all done now.
-  if (strip.lit === undefined) while (workOn(strip));
+  // Lit for another light (the scenery stepped on, or cut to the next stop), or never: its work all done now, so the picture is sent once.
+  if (strip.lit?.litKey !== scenery.land.litKey) while (workOn(strip));
   const lit = strip.lit
   const behindKey = `${scenery.behind}:${width}x${height}:${scheme}:${lit?.litKey}`
   if (picture.behind?.key === behindKey) return picture.behind.pixels

@@ -3,6 +3,7 @@ import type { ClientElements, ClientModule, ElementConstructor, JsonValue, Rende
 import { sceneCanvas } from './scene-canvas'
 import { renderCanvas } from './scene-render'
 import { smoothFrame, smoothSvg } from './scene-smooth'
+import type { SceneryHeld } from './scene-smooth'
 import { SVG_MAX, sceneAlt, sceneSvg } from './scene-svg'
 import type { SceneSvg } from './scene-svg'
 import type { SceneInputs } from './scene-types'
@@ -41,8 +42,9 @@ export const VECTOR_FRAME_MS = 33
 
 
 
-/** Each world's eased poses, kept with it from frame to frame. */
+/** Each world's eased poses, and its last choice of the scenery's layers, kept with it from frame to frame. */
 const smoothers = new WeakMap<World, Smoother>()
+const helds = new WeakMap<World, SceneryHeld>()
 
 const smootherOf = (world: World): Smoother => {
   const kept = smoothers.get(world)
@@ -139,7 +141,12 @@ export const draw = (world: World, elements: SceneElements): RenderElement => {
   const alt = sceneAlt(scene, canvas.layers, plan.collapsed.length)
   // The vector art: the same plan and view, each mascot's pose eased from its last frame.
   const frame = world.props.art === 'vector' ? smoothFrame(scene, layout, plan, view.sprites, smootherOf(world), world.sceneNow, world.props.scenery === undefined ? false : { daylight: world.props.scenery }) : undefined
-  if (frame !== undefined) return pixelsOf(elements, { ...smoothSvg(frame, room.columns, room.rows, SVG_MAX), alt }, room)
+  if (frame !== undefined) {
+    const held = helds.get(world) ?? {}
+    helds.set(world, held)
+
+    return pixelsOf(elements, { ...smoothSvg(frame, room.columns, room.rows, SVG_MAX, held), alt }, room)
+  }
 
   return pixelsOf(elements, sceneSvg(canvas.layers, room, alt), room)
 }
