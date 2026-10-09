@@ -1,0 +1,27 @@
+{
+  "name": "mod-images",
+  "version": "1.0.0",
+  "author": {
+    "name": "Dai Zi Qiao",
+    "url": "https://github.com/DaiZiQiao"
+  },
+  "description": "Thumbnails of the images pasted into the prompt, in a strip just above it before you send: real pixels in kitty and Ghostty, coloured half-block cells in other terminals, and /mod-images to see what it sees.",
+  "types": "./types/index.d.ts",
+  "userConfig": {
+    "height": {
+      "type": "number",
+      "title": "Thumbnail height (rows)",
+      "description": "The tallest the thumbnails get, from 3 to 20 rows. The strip always shrinks to fit the room above the prompt: about 6 rows in an 80x24 terminal, 8 in 120x30.",
+      "default": 8,
+      "min": 3,
+      "max": 20
+    },
+    "pictures": {
+      "type": "string",
+      "title": "Pictures",
+      "description": "auto (default): real pixels where the terminal draws them (kitty 0.28 or newer, Ghostty, outside tmux), coloured half-block cells elsewhere, and one line of text for a screen reader or NO_COLOR. blocks: always half-block cells. text: one line naming the images.",
+      "default": "auto",
+      "options": ["auto", "blocks", "text"]
+    }
+  }
+}
