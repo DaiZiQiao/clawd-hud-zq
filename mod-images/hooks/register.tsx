@@ -1,11 +1,12 @@
 import { atom, read, update } from 'claude-code'
-import type { EngineInterface, ImageSource, Register, RenderElement, Timer } from 'claude-code'
+import type { EngineInterface, ImageSource, Register, Timer } from 'claude-code'
 
-import type { ImagesFormat, ImagesStrip, ImagesTile } from '../types'
+import type { ImagesStrip, ImagesTile } from '../types'
 import { MASTER_SIDE, READ_CAP, imageHeaderOf, runSliced, startMaster } from './decode-drive'
 import { chipIdsOf, chipKeyOf, sentIdsOf } from './draft-chips'
 import { EMPTY_PROVENANCE, markSentOf, pollDelayOf, reconcile, sameTilesOf, unmarkSentOf } from './draft-reconcile'
 import type { DecodeFacts } from './draft-reconcile'
+import { FORMAT_NAMES, FORMAT_OF_EXT } from './image-types'
 import type { Master } from './image-types'
 import { bytesOf } from './images-bytes'
 import { demoMastersOf } from './images-demo'
@@ -77,9 +78,6 @@ const demo = atom(DEMO, null)
 const PICTURES = { plugin: 'mod-images', key: 'pictures' } as const
 const pictures = atom(PICTURES, 0)
 
-const FORMAT_NAMES: Record<ImagesFormat, string> = { png: 'PNG', jpeg: 'JPEG', gif: 'GIF', webp: 'WebP' }
-const EXT_FORMATS: Record<StoreFile['ext'], ImagesFormat> = { png: 'png', jpg: 'jpeg', gif: 'gif', webp: 'webp' }
-
 type DecodeJob = { sid: string; dir: string; file: StoreFile }
 
 // A listing of a folder Claude Code has not made yet: it makes the session's
@@ -142,7 +140,6 @@ const resetModule = (): void => {
   stopTimers()
   lastTick = 0
   nextDelay = 1000
-  armedDelay = Infinity
   running = undefined
   dirty = false
   lastChipKey = ''
@@ -356,7 +353,8 @@ const refreshOnce = async ($: EngineInterface): Promise<void> => {
   const now = await $.clock.now()
   const { text } = await $.prompt.read()
   const ids = chipIdsOf(text)
-  lastChipKey = chipKeyOf(ids)
+  const chipKey = chipKeyOf(ids)
+  lastChipKey = chipKey
   const sid = await $.session.id()
   const root = await $.session.root()
   if (sid !== currentSid) forgetSession(sid)
@@ -380,7 +378,7 @@ const refreshOnce = async ($: EngineInterface): Promise<void> => {
     }
   }
   // The prompt a cancelled turn put back: its chips are the pictures it carried.
-  if (restoreIds.length > 0 && (now > restoreUntil || chipKeyOf(ids) === chipKeyOf(restoreIds))) {
+  if (restoreIds.length > 0 && (now > restoreUntil || chipKey === chipKeyOf(restoreIds))) {
     const taken = now > restoreUntil ? [] : restoreIds
     restoreIds = []
     if (taken.length > 0) await update($, provenance, prov => unmarkSentOf(prov ?? EMPTY_PROVENANCE, taken))
@@ -452,7 +450,7 @@ const soon = ($: EngineInterface): void => {
 const enqueue = ($: EngineInterface, job: DecodeJob): void => {
   const key = keyOf(job.sid, job.file.id)
   if (decodeFacts.has(key)) return
-  decodeFacts.set(key, { state: 'reading', format: EXT_FORMATS[job.file.ext] })
+  decodeFacts.set(key, { state: 'reading', format: FORMAT_OF_EXT[job.file.ext] })
   queue.push(job)
   if (!draining) void drain($)
 }
@@ -469,7 +467,7 @@ const drain = async ($: EngineInterface): Promise<void> => {
   }
 }
 
-const failed = (key: string, reason: string, facts: Omit<DecodeFacts, 'state' | 'reason'> = {}): void => {
+const failed = (key: string, reason: string, facts: Omit<DecodeFacts, 'state' | 'reason'>): void => {
   decodeFacts.set(key, { ...facts, state: 'failed', reason })
 }
 
@@ -478,7 +476,7 @@ const failed = (key: string, reason: string, facts: Omit<DecodeFacts, 'state' | 
 // draft stops its decode at the next slice.
 const decode = async ($: EngineInterface, { sid, dir, file }: DecodeJob): Promise<void> => {
   const key = keyOf(sid, file.id)
-  const format = EXT_FORMATS[file.ext]
+  const format = FORMAT_OF_EXT[file.ext]
   const isGone = (): boolean => currentSid !== sid || !draftIds.has(file.id)
   try {
     if (isGone()) {
@@ -751,7 +749,9 @@ export const register: Register = (on, options) => {
     return next(e)
   })
 
-  on('session.append', { door: 'prompt' }, async ($, e, next) => {
+  // A prompt typed while a turn runs reaches the conversation by the door
+  // `delivery`, the others by `prompt`.
+  on('session.append', { door: ['prompt', 'delivery'] }, async ($, e, next) => {
     const stored = await next(e)
     if (active && e.agentId === undefined) await noteSent($, e.message.content)
 
@@ -769,14 +769,6 @@ export const register: Register = (on, options) => {
     }
 
     return done
-  })
-
-  // A prompt typed while a turn runs reaches the conversation by this door.
-  on('session.append', { door: 'delivery' }, async ($, e, next) => {
-    const stored = await next(e)
-    if (active && e.agentId === undefined) await noteSent($, e.message.content)
-
-    return stored
   })
 
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
@@ -860,14 +852,13 @@ export const register: Register = (on, options) => {
 
       return cells
     }
-    if (e.surface !== 'terminal') return below
-    const { Box, Text, Raster, Image } = $.ui.resolve(e)
-    const element: RenderElement = renderStrip({ Box, Text, Raster, Image }, layout, drawableOf, swatchOf)
+    const ui = $.ui.resolve(e)
+    const { Box } = ui
 
     return (
       <Box flexDirection="column">
         {below}
-        {element}
+        {renderStrip(ui, layout, drawableOf, swatchOf)}
       </Box>
     )
   })

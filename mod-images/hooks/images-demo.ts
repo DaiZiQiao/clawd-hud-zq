@@ -44,7 +44,7 @@ const rampOf = (): Master => {
     for (let x = 0; x < width; x += 1) put(rgba, y * width + x, hslOf((x * 360) / width, 1, lightness))
   }
 
-  return { width, height, rgba, hasAlpha: false }
+  return { width, height, rgba }
 }
 
 /** Opaque squares warming from teal to coral, every other one left transparent. */
@@ -61,7 +61,7 @@ const checkerOf = (): Master => {
     }
   }
 
-  return { width, height, rgba, hasAlpha: true }
+  return { width, height, rgba }
 }
 
 /** A dark code editor: title bar, side bar, tabs, syntax-coloured lines, a blue status bar, and a light `save changes?` dialog with a shadow. */
@@ -117,7 +117,7 @@ const editorOf = (): Master => {
   fill(141, 90, 42, 10, 0x0e639c)
   fill(152, 94, 20, 2, 0xffffff)
 
-  return { width, height, rgba, hasAlpha: false }
+  return { width, height, rgba }
 }
 
 /** Three sample masters for `/mod-images test`: a hue ramp (16:9), a checker with transparent squares (1:1), and a dark editor-like screenshot with a light dialog (16:10). Deterministic, and new arrays each call. */

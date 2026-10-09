@@ -7,7 +7,7 @@
 // that chroma two by two per block, this decoder from the block's mean.
 
 /** A JPEG, libjpeg's 1/8 decode of it, and how close this decoder comes. */
-export type JpegFixture = {
+type JpegFixture = {
   file: string
   reference: string
   tolerance: { mean: number; max: number; luma: number }

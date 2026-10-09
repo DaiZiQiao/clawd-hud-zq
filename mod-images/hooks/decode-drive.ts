@@ -1,8 +1,10 @@
+import type { ImagesFormat } from '../types'
 import { createGifDecoder, gifHeaderOf } from './decode-gif'
 import { createJpegDecoder, jpegHeaderOf } from './decode-jpeg'
 import { createPngDecoder, isPngOf, pngHeaderOf } from './decode-png'
 import { decodeWebp, isWebpOf, webpHeaderOf } from './decode-webp'
-import type { ImageFormat, Master, RowSink } from './image-types'
+import { FORMAT_NAMES } from './image-types'
+import type { Master, RowSink } from './image-types'
 import { createMasterBinner, masterSizeOf } from './thumb-master'
 import type { MasterBinner } from './thumb-master'
 
@@ -40,23 +42,21 @@ export const WEBP_PIXEL_CAP = 1_100_000
 /** Every format: the longest side decoded, JPEG's and GIF's own limit (a PNG row's buffers grow with its width). */
 export const SIDE_CAP = 65_535
 
-/** `runSliced`'s defaults: a slice, the CPU summed over slices, and the slices. */
+/** `runSliced`'s defaults for a slice and the CPU summed over slices, and its cap on the slices. */
 const SLICE_MS = 8
 const CPU_CAP_MS = 3000
 const SLICES_MAX = 400
 
 /** A picture's header: what it is and its size, before anything is decoded. */
-export type ImageHeader = {
-  format: ImageFormat
+type ImageHeader = {
+  format: ImagesFormat
   /** The size as displayed: EXIF orientation applied for JPEG. */
   width: number
   height: number
-  /** False for what no decoder here draws: lossy and animated WebP, and JPEG beyond baseline, extended and progressive Huffman 8-bit grey, YCbCr or RGB. */
-  decodable: boolean
 }
 
 /** Why a file has no master: `no preview` (a kind no decoder here draws), `too big` (over a cap), `can't read` (not a picture, or its header is bad). */
-export type DecodeFailure = 'no preview' | 'too big' | "can't read"
+type DecodeFailure = 'no preview' | 'too big' | "can't read"
 
 /** No job, and why: `detail` names the format and the reason (`PNG: bad IHDR`), for /mod-images. */
 export type MasterFailure = { failure: DecodeFailure; detail: string }
@@ -69,21 +69,18 @@ export type MasterFailure = { failure: DecodeFailure; detail: string }
  * error: the job finishes with what decoded.
  */
 export type MasterJob = {
-  header: ImageHeader
   /** Decodes until `deadline` (performance.now() ms); true once the whole picture is in. Throws on corrupt data. */
   step: (deadline: number) => boolean
   /** The master so far: what decoded, the rest transparent. */
   master: () => Master
 }
 
-/** How `runSliced` slices: each slice's length, the caps on the CPU summed and on the slices, the clock, and an abort. */
-export type SliceOptions = {
+/** How `runSliced` slices: each slice's length, the cap on the CPU summed, the clock, and an abort. */
+type SliceOptions = {
   /** A slice's length: `step` gets a deadline this far ahead. Default 8. */
   sliceMs?: number
   /** The step time summed over slices after which the job is `too slow`. Default 3000. */
   cpuCapMs?: number
-  /** The slices after which the job is `too slow`. Default 400. */
-  maxSlices?: number
   /** The clock the deadlines are read from: the one `step` compares them with. Default `performance.now`. */
   now?: () => number
   /** Asked before each slice: true stops the job, `aborted`. */
@@ -94,7 +91,7 @@ export type SliceOptions = {
 type Probe = { header: ImageHeader; refusal?: string; tooBig?: string }
 
 /** The format, from the file's first bytes: the PNG signature, SOI then a marker, GIF87a or GIF89a, a RIFF WebP. */
-export const sniffFormatOf = (bytes: Uint8Array): ImageFormat | undefined => {
+export const sniffFormatOf = (bytes: Uint8Array): ImagesFormat | undefined => {
   if (isPngOf(bytes)) return 'png'
   if (bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) return 'jpeg'
   const gif = bytes.length >= 6 && bytes[0] === 0x47 && bytes[1] === 0x49 && bytes[2] === 0x46 && bytes[3] === 0x38
@@ -111,20 +108,20 @@ const probeOf = (bytes: Uint8Array): Probe | string => {
   if (format === 'png') {
     const png = pngHeaderOf(bytes)
 
-    return typeof png === 'string' ? png : { header: { format, width: png.width, height: png.height, decodable: true } }
+    return typeof png === 'string' ? png : { header: { format, width: png.width, height: png.height } }
   }
   if (format === 'jpeg') {
     const jpeg = jpegHeaderOf(bytes)
     if (typeof jpeg === 'string') return jpeg
     const swap = jpeg.orientation >= 5
-    const header = { format, width: swap ? jpeg.height : jpeg.width, height: swap ? jpeg.width : jpeg.height, decodable: jpeg.unsupported === undefined }
+    const header = { format, width: swap ? jpeg.height : jpeg.width, height: swap ? jpeg.width : jpeg.height }
 
     return jpeg.unsupported === undefined ? { header } : { header, refusal: `JPEG: ${jpeg.unsupported}` }
   }
   if (format === 'gif') {
     const gif = gifHeaderOf(bytes)
     if (typeof gif === 'string') return gif
-    const header = { format, width: gif.width, height: gif.height, decodable: true }
+    const header = { format, width: gif.width, height: gif.height }
     // The first frame is decoded whole wherever it lies on the screen, so its own size is capped too.
     const frame = gif.frameWidth * gif.frameHeight
 
@@ -132,7 +129,7 @@ const probeOf = (bytes: Uint8Array): Probe | string => {
   }
   const webp = webpHeaderOf(bytes)
   if (typeof webp === 'string') return webp
-  const header = { format, width: webp.width, height: webp.height, decodable: webp.kind === 'lossless' }
+  const header = { format, width: webp.width, height: webp.height }
   if (webp.kind === 'lossy') return { header, refusal: 'WebP: lossy (VP8) has no decoder here' }
   if (webp.kind === 'animated') return { header, refusal: 'WebP: an animation has no decoder here' }
 
@@ -145,8 +142,6 @@ export const imageHeaderOf = (bytes: Uint8Array): ImageHeader | undefined => {
 
   return typeof probe === 'string' ? undefined : probe.header
 }
-
-const FORMAT_NAMES: Readonly<Record<ImageFormat, string>> = { png: 'PNG', jpeg: 'JPEG', gif: 'GIF', webp: 'WebP' }
 
 /** Why a picture of this header is over a cap, or undefined. */
 const capFaultOf = (header: ImageHeader): string | undefined => {
@@ -164,13 +159,12 @@ const capFaultOf = (header: ImageHeader): string | undefined => {
 }
 
 /** A job over a decoder's `step` and the binner its rows go to; an error thrown once is thrown again. */
-const jobOf = (header: ImageHeader, step: (deadline: number) => boolean, binner: MasterBinner): MasterJob => {
+const jobOf = (step: (deadline: number) => boolean, binner: MasterBinner): MasterJob => {
   let done = false
   let thrown: unknown
   let failed = false
 
   return {
-    header,
     step: deadline => {
       if (failed) throw thrown
       if (done) return true
@@ -212,7 +206,7 @@ const webpJobOf = (bytes: Uint8Array, header: ImageHeader, maxSide: number): Mas
   let picture: Uint8Array | undefined
   let y = 0
 
-  return jobOf(header, deadline => {
+  return jobOf(deadline => {
     if (picture === undefined) {
       const decoded = decodeWebp(bytes)
       if (decoded.width !== header.width || decoded.height !== header.height) throw new Error('WebP: the picture is not the size its header says')
@@ -239,7 +233,7 @@ const startedJobOf = (bytes: Uint8Array, header: ImageHeader, maxSide: number): 
     const binner = createMasterBinner(header.width, header.height, size.width, size.height, png.mayHaveAlpha)
     relay.forward(binner)
 
-    return jobOf(header, png.step, binner)
+    return jobOf(png.step, binner)
   }
   if (header.format === 'jpeg') {
     // The DC-only decoder gives an eighth of each side: the master is never larger than that.
@@ -248,14 +242,14 @@ const startedJobOf = (bytes: Uint8Array, header: ImageHeader, maxSide: number): 
     const binner = createMasterBinner(jpeg.width, jpeg.height, size.width, size.height, true)
     relay.forward(binner)
 
-    return jobOf(header, jpeg.step, binner)
+    return jobOf(jpeg.step, binner)
   }
   const gif = createGifDecoder(bytes, relay.sink)
   const size = masterSizeOf(header.width, header.height, maxSide)
   const binner = createMasterBinner(header.width, header.height, size.width, size.height, true)
   relay.forward(binner)
 
-  return jobOf(header, gif.step, binner)
+  return jobOf(gif.step, binner)
 }
 
 /**
@@ -288,7 +282,6 @@ export const startMaster = (bytes: Uint8Array, maxSide?: number): MasterJob | Ma
 export const runSliced = async (step: (deadline: number) => boolean, pause: () => Promise<unknown>, options: SliceOptions = {}): Promise<'done' | 'aborted' | 'too slow'> => {
   const sliceMs = options.sliceMs ?? SLICE_MS
   const cpuCapMs = options.cpuCapMs ?? CPU_CAP_MS
-  const maxSlices = options.maxSlices ?? SLICES_MAX
   const now = options.now ?? (() => performance.now())
   let spentMs = 0
   let slices = 0
@@ -299,7 +292,7 @@ export const runSliced = async (step: (deadline: number) => boolean, pause: () =
     spentMs += now() - start
     slices += 1
     if (done) return 'done'
-    if (spentMs >= cpuCapMs || slices >= maxSlices) return 'too slow'
+    if (spentMs >= cpuCapMs || slices >= SLICES_MAX) return 'too slow'
     await pause()
   }
 }

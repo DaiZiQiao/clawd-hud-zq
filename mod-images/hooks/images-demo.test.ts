@@ -27,7 +27,7 @@ const lightOf = (rgba: Uint8Array, width: number, left: number, top: number, wid
 describe('the sample pictures', () => {
   test('three masters, 16:9, square and 16:10, within 256 pixels a side, their RGBA whole', () => {
     const masters = demoMastersOf()
-    expect(masters.map(master => [master.width, master.height, master.hasAlpha])).toEqual([[256, 144, false], [192, 192, true], [256, 160, false]])
+    expect(masters.map(master => [master.width, master.height])).toEqual([[256, 144], [192, 192], [256, 160]])
     for (const master of masters) expect(master.rgba).toHaveLength(master.width * master.height * 4)
   })
 

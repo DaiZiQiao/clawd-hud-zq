@@ -92,26 +92,21 @@ export const createMasterBinner = (sourceWidth: number, sourceHeight: number, wi
 
   const master = (): Master => {
     const rgba = new Uint8Array(width * height * 4)
-    let hasAlpha = false
     for (let i = 0, o = 0, d = 0; i < width * height; i += 1, o += 5, d += 4) {
       const count = acc[o + 4]!
-      if (count === 0) {
-        hasAlpha = true
-        continue
-      }
+      if (count === 0) continue
       // Unweighed: the plain average, opaque. Weighed: alpha the average,
       // colour unpremultiplied by the alpha summed.
       const sum = weighAlpha ? acc[o + 3]! : count
       const alpha = weighAlpha ? round(sum / count) : 255
       rgba[d + 3] = alpha
-      if (alpha < 255) hasAlpha = true
       if (sum === 0) continue
       rgba[d] = round(acc[o]! / sum)
       rgba[d + 1] = round(acc[o + 1]! / sum)
       rgba[d + 2] = round(acc[o + 2]! / sum)
     }
 
-    return { width, height, rgba, hasAlpha }
+    return { width, height, rgba }
   }
 
   return { row, master }

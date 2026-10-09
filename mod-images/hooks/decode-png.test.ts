@@ -19,7 +19,7 @@ import {
 // PNG built here from stored blocks across many slices, and pictures cut
 // short or corrupt after some rows.
 
-type Decoded = { header: PngHeader; data: Uint8Array; steps: number; rows: number; truncated: string | undefined }
+type Decoded = { header: PngHeader; data: Uint8Array; steps: number; rows: number }
 
 /** The whole picture; each step's deadline long past, so each decodes one chunk of image data. */
 const decodedOf = (bytes: Uint8Array): Decoded => {
@@ -30,7 +30,7 @@ const decodedOf = (bytes: Uint8Array): Decoded => {
   let steps = 1
   while (!decoder.step(0)) steps += 1
 
-  return { header, data: sink.data, steps, rows: sink.rows, truncated: decoder.truncated() }
+  return { header, data: sink.data, steps, rows: sink.rows }
 }
 
 // A 1200 by 900 RGB picture of seeded noise, every row filter 0.
@@ -122,7 +122,6 @@ describe('image data past one chunk', () => {
   test('a large PNG of stored blocks over several IDAT chunks decodes row for row, a chunk a step', { timeoutMs: 30_000 }, async () => {
     const raw = largeRawOf()
     const decoded = decodedOf(storedPngOf(WIDE, TALL, raw, 400_000))
-    expect(decoded.truncated).toBeUndefined()
     expect(decoded.rows).toBe(TALL)
     expect(decoded.steps).toBe(Math.ceil(raw.length / 65_536))
     expect(await digestOf(decoded.data)).toBe(await digestOf(rgbaOfRaw(raw, TALL)))
@@ -130,11 +129,10 @@ describe('image data past one chunk', () => {
 })
 
 describe('data cut short or corrupt', () => {
-  test('a picture cut short keeps its whole rows, the rest untouched, and says why', async () => {
+  test('a picture cut short keeps its whole rows, the rest untouched', async () => {
     const whole = decodedOf(fixtureBytesOf(SHOT_PNG))
     const bytes = fixtureBytesOf(SHOT_PNG)
     const cut = decodedOf(bytes.subarray(0, Math.floor(bytes.length * 0.6)))
-    expect(cut.truncated).toMatch(/^image data: /)
     expect(cut.rows).toBeGreaterThan(50)
     expect(cut.rows).toBeLessThan(300)
     const rowBytes = 400 * 4
@@ -152,7 +150,6 @@ describe('data cut short or corrupt', () => {
     raw[100 * (1 + WIDE * 3)] = 7
     const decoded = decodedOf(storedPngOf(WIDE, TALL, raw, 1 << 20))
     expect(decoded.rows).toBe(100)
-    expect(decoded.truncated).toBe('bad filter type 7')
     raw[0] = 9
     expect(() => decodedOf(storedPngOf(WIDE, TALL, raw, 1 << 20))).toThrow('PNG: bad filter type 9')
   })

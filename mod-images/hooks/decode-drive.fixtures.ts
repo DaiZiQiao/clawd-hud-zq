@@ -11,7 +11,7 @@ import { bytesOf } from './images-bytes'
 export const fixtureBytesOf = (text: string): Uint8Array => bytesOf(text.replace(/\s+/g, ''))
 
 /** A sink that keeps the whole picture: `data` is RGBA, `width` by `height`. */
-export type FullSink = RowSink & { data: Uint8Array; rows: number }
+type FullSink = RowSink & { data: Uint8Array; rows: number }
 
 export const fullSinkOf = (width: number, height: number): FullSink => {
   const data = new Uint8Array(width * height * 4)
@@ -158,7 +158,7 @@ const putFlatCodes = (bits: ReturnType<typeof bitWriterOf>, [a, r, g, b]: readon
 }
 
 /** What `flatWebpOf` writes beside its colour. */
-export type FlatWebpOptions = {
+type FlatWebpOptions = {
   /** Transforms by type, each with no data of its own (subtract green is 2). */
   transforms?: readonly number[]
   /** A colour cache of this many bits; 0 or none for no cache. */

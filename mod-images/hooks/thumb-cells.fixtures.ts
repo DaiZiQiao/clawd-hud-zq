@@ -7,11 +7,11 @@ import { bytesOf } from './images-bytes'
 
 type Pixel = readonly [number, number, number, number]
 
-/** A master from its pixels, row-major; `hasAlpha` when any is not fully opaque. */
+/** A master from its pixels, row-major. */
 export const masterOf = (width: number, height: number, pixels: readonly Pixel[]): Master => {
   if (pixels.length !== width * height) throw new Error(`${pixels.length} pixels for ${width} x ${height}`)
 
-  return { width, height, rgba: Uint8Array.from(pixels.flat()), hasAlpha: pixels.some(pixel => pixel[3] !== 255) }
+  return { width, height, rgba: Uint8Array.from(pixels.flat()) }
 }
 
 /** A master of one colour. */

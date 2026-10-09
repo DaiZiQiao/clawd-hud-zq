@@ -20,17 +20,17 @@ import { decodeImage } from './vendor-webp/src/vp8l/entropy.js'
 const { ceil, max, min } = Math
 
 /** What a WebP holds: a lossless picture this decoder draws, a lossy one, or an animation. */
-export type WebpKind = 'lossless' | 'lossy' | 'animated'
+type WebpKind = 'lossless' | 'lossy' | 'animated'
 
 /** A WebP's canvas and kind, from its RIFF header. */
-export type WebpHeader = {
+type WebpHeader = {
   width: number
   height: number
   kind: WebpKind
 }
 
 /** A decoded picture: straight RGBA, row-major. */
-export type WebpPicture = { width: number; height: number; rgba: Uint8Array }
+type WebpPicture = { width: number; height: number; rgba: Uint8Array }
 
 /** Huffman groups libwebp's encoder writes at most (its histogram image's limit). */
 const MAX_GROUPS = 2600

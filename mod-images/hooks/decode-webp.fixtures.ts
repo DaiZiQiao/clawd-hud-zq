@@ -5,7 +5,7 @@
 // decoder here.
 
 /** A lossless WebP and the SHA-256 of libwebp's RGBA of it. */
-export type WebpFixture = { file: string; digest: string }
+type WebpFixture = { file: string; digest: string }
 
 export const LOSSLESS_WEBPS: Readonly<Record<'plain' | 'alpha' | 'vp8x', WebpFixture>> = {
   plain: {

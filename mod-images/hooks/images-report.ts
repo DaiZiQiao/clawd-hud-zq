@@ -1,4 +1,5 @@
 import type { ImagesTile } from '../types'
+import { FORMAT_NAMES } from './image-types'
 import { NO_PICTURES } from './images-mode'
 import type { ColourChoice, ModeChoice } from './images-mode'
 import type { ImagesSettings } from './images-options'
@@ -50,9 +51,7 @@ export type ReportFacts = {
 }
 
 /** The version this code was written against and checked with. */
-export const VERIFIED_WITH = '2.1.295'
-
-const FORMAT_NAMES: Record<string, string> = { png: 'PNG', jpeg: 'JPEG', gif: 'GIF', webp: 'WebP' }
+const VERIFIED_WITH = '2.1.295'
 
 /** `40 s`, `3 min`, `2 h`: how long ago, roughly. */
 export const formatAge = (ms: number): string => {

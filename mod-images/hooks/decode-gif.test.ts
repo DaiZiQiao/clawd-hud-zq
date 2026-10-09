@@ -2,7 +2,7 @@ import { describe, expect, test } from 'claude-code/testing'
 
 import { fixtureBytesOf, fullSinkOf } from './decode-drive.fixtures'
 import { createGifDecoder, gifHeaderOf } from './decode-gif'
-import type { GifDecoder } from './decode-gif'
+import type { GifHeader } from './decode-gif'
 import { GIFS, OFFSET_GIF } from './decode-gif.fixtures'
 
 // A GIF's first frame: against PIL's for a plain, an interlaced, a
@@ -10,7 +10,7 @@ import { GIFS, OFFSET_GIF } from './decode-gif.fixtures'
 // canvas; the same picture whatever the slices; data cut short; and headers
 // that cannot be read.
 
-type Decoded = { decoder: GifDecoder; data: Uint8Array; steps: number; rows: number }
+type Decoded = { header: GifHeader; data: Uint8Array; steps: number; rows: number }
 
 const decodedOf = (bytes: Uint8Array, deadline = 0): Decoded => {
   const header = gifHeaderOf(bytes)
@@ -20,7 +20,7 @@ const decodedOf = (bytes: Uint8Array, deadline = 0): Decoded => {
   let steps = 1
   while (!decoder.step(deadline)) steps += 1
 
-  return { decoder, data: sink.data, steps, rows: sink.rows }
+  return { header, data: sink.data, steps, rows: sink.rows }
 }
 
 /** Where the first image descriptor of a 64 by 48 frame at (0, 0) starts. */
@@ -41,19 +41,19 @@ const differencesOf = (reference: Uint8Array, data: Uint8Array): number => {
 describe('first frames', () => {
   test('plain, interlaced, see-through and the first of three frames match PIL', () => {
     for (const [name, fixture] of Object.entries(GIFS)) {
-      const { decoder, data, rows } = decodedOf(fixtureBytesOf(fixture.file))
+      const { header, data, rows } = decodedOf(fixtureBytesOf(fixture.file))
       expect(differencesOf(fixtureBytesOf(fixture.reference), data), name).toBe(0)
       expect(rows, name).toBe(48)
-      expect(decoder.header.interlaced, name).toBe(name === 'interlaced' || name === 'transparent')
+      expect(header.interlaced, name).toBe(name === 'interlaced' || name === 'transparent')
     }
-    const { decoder, data } = decodedOf(fixtureBytesOf(GIFS.transparent.file))
-    expect(decoder.header.transparent).toBeGreaterThanOrEqual(0)
+    const { header, data } = decodedOf(fixtureBytesOf(GIFS.transparent.file))
+    expect(header.transparent).toBeGreaterThanOrEqual(0)
     expect([...data.subarray(0, 4)]).toEqual([0, 0, 0, 0])
   })
 
   test('a frame at an offset sits on a transparent canvas the size of the logical screen', () => {
-    const { decoder, data, rows } = decodedOf(fixtureBytesOf(OFFSET_GIF.file))
-    expect(decoder.header).toEqual({ width: 64, height: 48, frameX: 10, frameY: 8, frameWidth: 40, frameHeight: 30, interlaced: false, transparent: -1 })
+    const { header, data, rows } = decodedOf(fixtureBytesOf(OFFSET_GIF.file))
+    expect(header).toEqual({ width: 64, height: 48, frameX: 10, frameY: 8, frameWidth: 40, frameHeight: 30, interlaced: false, transparent: -1 })
     expect(rows).toBe(48)
     const frame = fixtureBytesOf(OFFSET_GIF.reference)
     for (let y = 0; y < 48; y += 1) {

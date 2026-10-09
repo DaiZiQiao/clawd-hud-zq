@@ -24,8 +24,8 @@ import type { Master } from './image-types'
 // The decoders' front: formats sniffed, headers read without decoding (EXIF
 // turned), refusals (no preview, too big from the header alone, can't read),
 // masters (never larger than the picture, in display orientation, straight
-// alpha, `hasAlpha` only when some pixel is not opaque, partial when the data
-// is cut short), `runSliced` on a fake clock, steps honouring their deadline,
+// alpha, see-through only where the picture is, partial when the data is cut
+// short), `runSliced` on a fake clock, steps honouring their deadline,
 // and a fixed-seed fuzz of mutated and cut files that may only fail cleanly.
 
 const isJob = (started: MasterJob | MasterFailure): started is MasterJob => !('failure' in started)
@@ -128,14 +128,14 @@ describe('formats and headers', () => {
     for (const junk of ['', 'GIF8x', 'RIFF....AVI ', 'not a picture at all'].map(text => new TextEncoder().encode(text))) expect(sniffFormatOf(junk)).toBeUndefined()
   })
 
-  test('the header is the size as displayed, read without decoding, and says what no decoder here draws', () => {
-    expect(imageHeaderOf(fixtureBytesOf(SHOT_PNG))).toEqual({ format: 'png', width: 400, height: 300, decodable: true })
-    expect(imageHeaderOf(fixtureBytesOf(ORIENTED[5]!.file))).toEqual({ format: 'jpeg', width: 80, height: 128, decodable: true })
-    expect(imageHeaderOf(fixtureBytesOf(ORIENTED[1]!.file))).toEqual({ format: 'jpeg', width: 128, height: 80, decodable: true })
-    expect(imageHeaderOf(fixtureBytesOf(CMYK_JPEG))).toEqual({ format: 'jpeg', width: 256, height: 192, decodable: false })
-    expect(imageHeaderOf(fixtureBytesOf(GIFS.animated.file))).toEqual({ format: 'gif', width: 64, height: 48, decodable: true })
-    expect(imageHeaderOf(fixtureBytesOf(LOSSLESS_WEBPS.vp8x.file))).toEqual({ format: 'webp', width: 64, height: 48, decodable: true })
-    for (const lossy of [LOSSY_WEBP, LOSSY_ALPHA_WEBP, ANIMATED_WEBP]) expect(imageHeaderOf(fixtureBytesOf(lossy))?.decodable).toBe(false)
+  test('the header is the size as displayed, read without decoding, also for what no decoder here draws', () => {
+    expect(imageHeaderOf(fixtureBytesOf(SHOT_PNG))).toEqual({ format: 'png', width: 400, height: 300 })
+    expect(imageHeaderOf(fixtureBytesOf(ORIENTED[5]!.file))).toEqual({ format: 'jpeg', width: 80, height: 128 })
+    expect(imageHeaderOf(fixtureBytesOf(ORIENTED[1]!.file))).toEqual({ format: 'jpeg', width: 128, height: 80 })
+    expect(imageHeaderOf(fixtureBytesOf(CMYK_JPEG))).toEqual({ format: 'jpeg', width: 256, height: 192 })
+    expect(imageHeaderOf(fixtureBytesOf(GIFS.animated.file))).toEqual({ format: 'gif', width: 64, height: 48 })
+    expect(imageHeaderOf(fixtureBytesOf(LOSSLESS_WEBPS.vp8x.file))).toEqual({ format: 'webp', width: 64, height: 48 })
+    for (const lossy of [LOSSY_WEBP, LOSSY_ALPHA_WEBP, ANIMATED_WEBP]) expect(imageHeaderOf(fixtureBytesOf(lossy))).toEqual({ format: 'webp', width: 64, height: 48 })
     expect(imageHeaderOf(fixtureBytesOf(PNGSUITE.xd9n2c08!))).toBeUndefined()
     expect(imageHeaderOf(new TextEncoder().encode('hello'))).toBeUndefined()
   })
@@ -167,7 +167,7 @@ describe('refusals', () => {
     expect(startMaster(gif)).toEqual({ failure: 'too big', detail: 'GIF: 65535x65535 is over 36000000 pixels' })
     expect(startMaster(flatWebpOf(2049, 1))).toEqual({ failure: 'too big', detail: 'WebP: 2049x1 is over 2048 pixels a side' })
     // A GIF's first frame is decoded whole wherever it lies: a vast one on a 4 x 4 screen is too big.
-    expect(imageHeaderOf(bigFrameGifOf(20_000, 20_000))).toEqual({ format: 'gif', width: 4, height: 4, decodable: true })
+    expect(imageHeaderOf(bigFrameGifOf(20_000, 20_000))).toEqual({ format: 'gif', width: 4, height: 4 })
     expect(startMaster(bigFrameGifOf(20_000, 20_000))).toEqual({ failure: 'too big', detail: 'GIF: a 20000x20000 frame is over 36000000 pixels' })
     expect(isJob(startMaster(bigFrameGifOf(6000, 6000)))).toBe(true)
     // The library decodes a lossless WebP in one call: past a megapixel or so it is not tried.
@@ -210,16 +210,15 @@ describe('masters', () => {
     expect([turned.width, turned.height]).toEqual([10, 16])
   })
 
-  test('straight alpha, colour kept under it, and hasAlpha only when some pixel is not opaque', async () => {
+  test('straight alpha, colour kept under it, and a pixel not opaque only where the picture has one', async () => {
     const bytes = fixtureBytesOf(PNGSUITE.basn6a08!)
     const pixels = pngPixelsOf(bytes)
     const master = masterOf(bytes)
-    expect(master.hasAlpha).toBe(true)
     for (let i = 0; i < 32 * 32 * 4; i += 4) {
       const expected = pixels[i + 3] === 0 ? [0, 0, 0, 0] : [...pixels.subarray(i, i + 4)]
       expect([...master.rgba.subarray(i, i + 4)], `${i / 4}`).toEqual(expected)
     }
-    for (const [name, bytesOfIt, hasAlpha] of [
+    for (const [name, bytesOfIt, seeThrough] of [
       ['opaque PNG', fixtureBytesOf(PNGSUITE.basn2c08!), false],
       ['PNG with a colour key no pixel has', withTrnsOf(fixtureBytesOf(PNGSUITE.basn2c08!), [0, 1, 0, 2, 0, 3]), false],
       ['PNG with a colour key that matches', fixtureBytesOf(PNGSUITE.tbrn2c08!), true],
@@ -230,9 +229,7 @@ describe('masters', () => {
       ['lossless WebP', fixtureBytesOf(LOSSLESS_WEBPS.plain.file), false],
       ['lossless WebP with alpha', fixtureBytesOf(LOSSLESS_WEBPS.alpha.file), true],
     ] as const) {
-      const one = masterOf(bytesOfIt)
-      expect(one.hasAlpha, name).toBe(hasAlpha)
-      expect(alphasOf(one).some(alpha => alpha < 255), name).toBe(hasAlpha)
+      expect(alphasOf(masterOf(bytesOfIt)).some(alpha => alpha < 255), name).toBe(seeThrough)
     }
     // At one to one, an opaque picture's master is the picture.
     expect(await digestOf(masterOf(fixtureBytesOf(PNGSUITE.basn2c08!)).rgba)).toBe(await digestOf(pngPixelsOf(fixtureBytesOf(PNGSUITE.basn2c08!))))
@@ -240,9 +237,7 @@ describe('masters', () => {
 
   test('a picture cut short finishes with what decoded, the rest transparent', () => {
     for (const [name, bytes] of [['PNG', fixtureBytesOf(SHOT_PNG)], ['JPEG', fixtureBytesOf(JPEGS.baseline!.file)]] as const) {
-      const master = masterOf(bytes.subarray(0, Math.floor(bytes.length * 0.6)))
-      const alphas = alphasOf(master)
-      expect(master.hasAlpha, name).toBe(true)
+      const alphas = alphasOf(masterOf(bytes.subarray(0, Math.floor(bytes.length * 0.6))))
       expect(alphas[0], name).toBe(255)
       expect(alphas.at(-1), name).toBe(0)
     }

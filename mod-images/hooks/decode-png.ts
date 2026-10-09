@@ -27,13 +27,10 @@ export type PngHeader = {
  * passes `deadline` (checked after each chunk of image data) or the picture is
  * done, true then, handing each finished row to the sink.
  */
-export type PngDecoder = {
-  header: PngHeader
+type PngDecoder = {
   /** A colour type with alpha, or a tRNS chunk: some pixel may be see-through. */
   mayHaveAlpha: boolean
   step: (deadline: number) => boolean
-  /** Why the image data stopped early (the rows before it stand); undefined while it is whole. */
-  truncated: () => string | undefined
 }
 
 const SIGNATURE = [137, 80, 78, 71, 13, 10, 26, 10] as const
@@ -348,14 +345,11 @@ export const createPngDecoder = (bytes: Uint8Array, sink: RowSink): PngDecoder =
   let filter = 0
   let rowsDone = 0
   let finished = false
-  let truncated: string | undefined
 
   // The data stops here: the rows decoded stand, and with none there is no picture.
   const stop = (why: string): void => {
     finished = true
-    if (passIndex >= passes.length) return
-    truncated = why
-    if (rowsDone === 0) throw new Error(`PNG: ${why}`)
+    if (passIndex < passes.length && rowsDone === 0) throw new Error(`PNG: ${why}`)
   }
 
   const finishRow = (pass: Pass): void => {
@@ -401,7 +395,6 @@ export const createPngDecoder = (bytes: Uint8Array, sink: RowSink): PngDecoder =
   }
 
   return {
-    header,
     mayHaveAlpha: colourType === 4 || colourType === 6 || hasTrns,
     step: deadline => {
       while (!finished) {
@@ -417,6 +410,5 @@ export const createPngDecoder = (bytes: Uint8Array, sink: RowSink): PngDecoder =
 
       return finished
     },
-    truncated: () => truncated,
   }
 }

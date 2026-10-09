@@ -6,7 +6,7 @@ import { createMasterBinner, masterSizeOf } from './thumb-master'
 // ratios averaged exactly and others pixel by pixel into the bin each centre
 // falls in; colour weighed by alpha so see-through pixels do not darken
 // edges; Adam7-style rows and parts of rows; bins no row reached left
-// transparent; `hasAlpha` true only for a master with a pixel not opaque.
+// transparent.
 
 /** RGBA from [r, g, b, a] quads. */
 const rgbaOf = (pixels: readonly (readonly [number, number, number, number])[]): Uint8Array => Uint8Array.from(pixels.flat())
@@ -34,7 +34,6 @@ describe('binning', () => {
     const master = binner.master()
     expect([master.width, master.height]).toEqual([2, 1])
     expect(quadsOf(master.rgba)).toEqual([[6, 11, 17, 255], [100, 51, 63, 255]])
-    expect(master.hasAlpha).toBe(false)
   })
 
   test('other ratios put each pixel in the bin its centre falls in: three columns into two', () => {
@@ -66,24 +65,17 @@ describe('binning', () => {
     expect(quadsOf(pieces.master().rgba)).toEqual(quadsOf(whole.master().rgba))
   })
 
-  test('bins no row reached are transparent, and the master says it has alpha', () => {
+  test('bins no row reached are transparent', () => {
     const binner = createMasterBinner(2, 4, 2, 2, false)
     binner.row(0, 0, 1, rgbaOf([[10, 20, 30, 255], [40, 50, 60, 255]]), 2)
-    const master = binner.master()
-    expect(quadsOf(master.rgba)).toEqual([[10, 20, 30, 255], [40, 50, 60, 255], [0, 0, 0, 0], [0, 0, 0, 0]])
-    expect(master.hasAlpha).toBe(true)
+    expect(quadsOf(binner.master().rgba)).toEqual([[10, 20, 30, 255], [40, 50, 60, 255], [0, 0, 0, 0], [0, 0, 0, 0]])
   })
 
-  test('hasAlpha is true only when a master pixel is not opaque, whatever the path', () => {
-    const opaque = createMasterBinner(2, 2, 1, 1, true)
-    opaque.row(0, 0, 1, rgbaOf([[1, 2, 3, 255], [4, 5, 6, 255]]), 2)
-    opaque.row(1, 0, 1, rgbaOf([[7, 8, 9, 255], [10, 11, 12, 255]]), 2)
-    expect(opaque.master().hasAlpha).toBe(false)
+  test('a bin over several rows averages their alpha and weighs their colour by it', () => {
     const clear = createMasterBinner(2, 2, 1, 1, true)
     clear.row(0, 0, 1, rgbaOf([[1, 2, 3, 255], [4, 5, 6, 0]]), 2)
     clear.row(1, 0, 1, rgbaOf([[7, 8, 9, 255], [10, 11, 12, 255]]), 2)
     expect(quadsOf(clear.master().rgba)).toEqual([[6, 7, 8, 191]])
-    expect(clear.master().hasAlpha).toBe(true)
   })
 
   test('the master so far can be read at any time, and rows outside the picture change nothing', () => {

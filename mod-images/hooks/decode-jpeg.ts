@@ -21,13 +21,12 @@ import type { RowSink } from './image-types'
 const { ceil, floor, max, min } = Math
 
 /** A JPEG's frame header, as far as the decoder needs it. */
-export type JpegHeader = {
+type JpegHeader = {
   /** The stored size, before EXIF orientation. */
   width: number
   height: number
   /** EXIF orientation, 1 to 8 (1 without one); 5 to 8 swap width and height. */
   orientation: number
-  components: number
   progressive: boolean
   /** Why the DC-only decoder cannot draw it (arithmetic coding, 12-bit samples, CMYK, ...), or undefined when it can. */
   unsupported?: string
@@ -39,7 +38,6 @@ export type JpegHeader = {
  * every row of `width` by `height` handed to the sink by then.
  */
 export type JpegDecoder = {
-  header: JpegHeader
   /** The size of the picture the sink receives: ceil(width / 8) by ceil(height / 8), oriented. */
   width: number
   height: number
@@ -315,7 +313,7 @@ export const jpegHeaderOf = (bytes: Uint8Array): JpegHeader | string => {
       const unsupported = unsupportedOf(marker, precision, components, hierarchical)
       const progressive = marker === 0xc2 || marker === 0xc6 || marker === 0xca || marker === 0xce
 
-      return { width, height, orientation, components, progressive, ...(unsupported === undefined ? {} : { unsupported }) }
+      return { width, height, orientation, progressive, ...(unsupported === undefined ? {} : { unsupported }) }
     }
   }
 }
@@ -722,7 +720,6 @@ export const createJpegDecoder = (bytes: Uint8Array, sink: RowSink): JpegDecoder
   }
 
   return {
-    header,
     width: outWidth,
     height: outHeight,
     step: deadline => {

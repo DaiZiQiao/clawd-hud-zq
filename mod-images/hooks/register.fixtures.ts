@@ -9,7 +9,7 @@ import type { Engine } from 'claude-code/testing'
 export const NOW = 1_800_000_000_000
 export const SID = 'aaaaaaaa-1111-4222-8333-444444444444'
 export const NEXT_SID = 'bbbbbbbb-1111-4222-8333-444444444444'
-export const ROOT = '/work'
+const ROOT = '/work'
 export const USER_DIR = '/tmp/claude-1000'
 export const imagesDirOf = (sid = SID): string => `${USER_DIR}/-work/${sid}/images`
 export const START = { cwd: ROOT, surface: 'terminal', isInteractive: true } as const
@@ -29,7 +29,7 @@ export const BAND_PROPS = {
   scroll: { offset: 0, bodyRows: 9 },
   view: {},
 } as const
-export const VIEWPORT = { columns: 120, rows: 30, isFullscreen: true }
+const VIEWPORT = { columns: 120, rows: 30, isFullscreen: true }
 
 type FileOf = { base64: string; size: number; mtimeMs: number }
 

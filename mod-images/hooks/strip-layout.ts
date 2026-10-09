@@ -1,4 +1,5 @@
-import type { ImagesFormat, ImagesTile } from '../types'
+import type { ImagesTile } from '../types'
+import { clamp, FORMAT_NAMES } from './image-types'
 
 // Where the strip goes in the band above the prompt (`AbovePrompt`): how many
 // rows the thumbnails take, how wide each tile is, what the label row under
@@ -81,7 +82,6 @@ const PLAIN_COLUMNS_MIN = 12
 
 const READING = 'reading'
 const NOT_ATTACHED = 'not attached'
-const FORMAT_NAMES: Record<ImagesFormat, string> = { png: 'PNG', jpeg: 'JPEG', gif: 'GIF', webp: 'WebP' }
 
 /**
  * The rows the strip may take: the band's `maxRows`, and never more than half
@@ -97,8 +97,6 @@ export const rowsCapOf = (maxRows: number, viewportRows: number | undefined): nu
 }
 
 // --- words -----------------------------------------------------------------
-
-const clamp = (value: number, least: number, most: number): number => Math.min(Math.max(value, least), most)
 
 // ASCII cut to `width` cells, ending in `…` when cut.
 const cut = (text: string, width: number): string =>
@@ -197,8 +195,8 @@ const textLineOf = (tiles: readonly ImagesTile[], columns: number): string => {
 
 // --- one compact row -------------------------------------------------------
 
-const compactOf = (tiles: readonly ImagesTile[], mode: LayoutMode, columns: number): Layout => {
-  const itemOf = (tile: ImagesTile): CompactItem => ({ id: tile.id, label: `#${tile.id}`, swatch: tile.state === 'ready' && mode !== 'text' })
+const compactOf = (tiles: readonly ImagesTile[], columns: number): Layout => {
+  const itemOf = (tile: ImagesTile): CompactItem => ({ id: tile.id, label: `#${tile.id}`, swatch: tile.state === 'ready' })
   const baseOf = (item: CompactItem): number => (item.swatch ? SWATCH_COLUMNS + 1 : 0) + item.label.length
   const gap = COMPACT_SEPARATOR.length
   const packed = packedOf(tiles.map(tile => baseOf(itemOf(tile))), gap, columns, tiles.map(tile => tile.id))
@@ -283,7 +281,7 @@ const stripOf = (input: LayoutInput, rowsCap: number, columns: number): Layout =
   const packed = packedOf(widths, TILE_GAP, columns, tiles.map(tile => tile.id))
 
   return packed === undefined
-    ? compactOf(tiles, mode, columns)
+    ? compactOf(tiles, columns)
     : placedOf(ROWS_MIN, widths, packed.count, packed.overflow)
 }
 
@@ -306,7 +304,7 @@ export const layoutOf = (input: LayoutInput): Layout => {
   const rowsCap = rowsCapOf(input.maxRows, input.viewportRows)
   if (tiles.length === 0 || rowsCap < 1 || columns < 1) return { kind: 'none' }
   if (mode === 'text') return { kind: 'text', line: textLineOf(tiles, columns) }
-  if (input.shared || rowsCap < ROWS_MIN + 1) return compactOf(tiles, mode, columns)
+  if (input.shared || rowsCap < ROWS_MIN + 1) return compactOf(tiles, columns)
 
   return stripOf(input, rowsCap, columns)
 }

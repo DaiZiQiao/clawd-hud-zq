@@ -11,7 +11,7 @@ import type { CompactItem, Layout, PlacedTile } from './strip-layout'
 // keeps its shape while pictures arrive.
 
 /** The terminal elements the strip draws with. */
-export type StripElements = {
+type StripElements = {
   Box: ElementConstructor<BoxProps>
   Text: ElementConstructor<TextProps>
   Raster: ElementConstructor<RasterProps>
@@ -30,9 +30,8 @@ export type TileDrawable =
   | { kind: 'wait' }
   | { kind: 'note'; lines: readonly string[]; dashed: boolean }
 
-/** Keys the tests and the blit probe find elements by. */
+/** The key the tests and the blit probe find a picture by. */
 export const pictureKeyOf = (id: number): string => `img:${id}`
-export const swatchKeyOf = (id: number): string => `swatch:${id}`
 
 const cutTo = (text: string, width: number): string => (text.length <= width ? text : width <= 1 ? text.slice(0, width) : `${text.slice(0, width - 1)}…`)
 
@@ -126,7 +125,7 @@ const compactOf = (ui: StripElements, items: readonly CompactItem[], overflow: s
     const cells = item.swatch ? swatchOf(item.id) : undefined
     parts.push(
       <Box key={`images:item:${item.id}`} flexDirection="row" flexShrink={0}>
-        {cells !== undefined && <Raster key={swatchKeyOf(item.id)} columns={SWATCH_COLUMNS} rows={1} cells={cells} />}
+        {cells !== undefined && <Raster key={`swatch:${item.id}`} columns={SWATCH_COLUMNS} rows={1} cells={cells} />}
         <Text wrap="truncate-end">
           {cells !== undefined && ' '}
           <Text bold>{item.label}</Text>

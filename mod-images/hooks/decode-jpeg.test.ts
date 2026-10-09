@@ -95,7 +95,7 @@ describe('variants', () => {
     const digests = ['baseline', 'progressive', 'restart', 'restartProgressive'].map(name => JPEGS[name]!.digest)
     expect(new Set(digests).size).toBe(1)
     expect(JPEGS.grey!.digest).toBe(JPEGS.greyProgressive!.digest)
-    expect(jpegHeaderOf(fixtureBytesOf(JPEGS.restartProgressive!.file))).toEqual({ width: 256, height: 192, orientation: 1, components: 3, progressive: true })
+    expect(jpegHeaderOf(fixtureBytesOf(JPEGS.restartProgressive!.file))).toEqual({ width: 256, height: 192, orientation: 1, progressive: true })
   })
 
   test('partial MCUs on the right and at the bottom: 203 by 141 is 26 by 18 at 1/8', () => {
@@ -111,8 +111,9 @@ describe('EXIF orientation', () => {
     expect([w, h]).toEqual([16, 10])
     for (const [index, fixture] of ORIENTED.entries()) {
       const o = index + 1
-      const { decoder, data } = decodedOf(fixtureBytesOf(fixture.file))
-      expect(decoder.header.orientation, `${o}`).toBe(o)
+      const bytes = fixtureBytesOf(fixture.file)
+      const { decoder, data } = decodedOf(bytes)
+      expect(jpegHeaderOf(bytes), `${o}`).toMatchObject({ orientation: o })
       expect([decoder.width, decoder.height], `${o}`).toEqual(o >= 5 ? [h, w] : [w, h])
       expect(closenessOf(fixtureBytesOf(fixture.reference), data).luma, `${o}`).toBeLessThanOrEqual(fixture.tolerance.luma)
       for (let y = 0; y < decoder.height; y += 1) {

@@ -1,5 +1,6 @@
 import type { ImagesFormat, ImagesProvenance, ImagesTile } from '../types'
 import { chipIdsOf } from './draft-chips'
+import { FORMAT_OF_EXT } from './image-types'
 import type { StoreFile, StoreListing } from './store-path'
 
 // Which of the draft's chips Claude Code will send a picture for, and what
@@ -75,8 +76,6 @@ export type ReconcileOutput = {
 const UNREADABLE = "can't read"
 /** A pasted chip whose file the listing in hand lacks, once the wait is over. */
 const NOT_FOUND = 'not found'
-
-const FORMAT_OF_EXT: Record<StoreFile['ext'], ImagesFormat> = { png: 'png', jpg: 'jpeg', gif: 'gif', webp: 'webp' }
 
 // A tile as `$.state` holds it: JSON, every key left out rather than
 // undefined (or a size that is not a number JSON can carry).

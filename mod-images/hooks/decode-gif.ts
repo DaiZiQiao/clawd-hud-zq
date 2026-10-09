@@ -29,8 +29,7 @@ export type GifHeader = {
  * `performance.now()` passes `deadline` or every canvas row is handed out,
  * true then.
  */
-export type GifDecoder = {
-  header: GifHeader
+type GifDecoder = {
   step: (deadline: number) => boolean
 }
 
@@ -353,7 +352,6 @@ export const createGifDecoder = (bytes: Uint8Array, sink: RowSink): GifDecoder =
   }
 
   return {
-    header,
     step: deadline => {
       while (!isDone()) {
         if (phase === 'top') {

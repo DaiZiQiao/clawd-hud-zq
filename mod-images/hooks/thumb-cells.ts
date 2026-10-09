@@ -1,3 +1,4 @@
+import { clamp } from './image-types'
 import type { Master } from './image-types'
 import { base64Of } from './images-bytes'
 
@@ -31,8 +32,6 @@ const LOWER_HALF = 0x2584
 const OPAQUE_FROM = 128
 /** An Image's RGBA is 1 to 2048 pixels a side. */
 const IMAGE_SIDE_MAX = 2048
-
-const clamp = (value: number, least: number, most: number): number => min(max(value, least), most)
 
 /**
  * Along one axis, the source pixels each of `target` pixels covers and how

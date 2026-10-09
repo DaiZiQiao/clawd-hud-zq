@@ -5,7 +5,7 @@
 // 8) on a 64 by 48 logical screen, with PIL's RGBA of the frame alone.
 
 /** A GIF and PIL's RGBA of its first frame. */
-export type GifFixture = { file: string; reference: string }
+type GifFixture = { file: string; reference: string }
 
 export const GIFS: Readonly<Record<'plain' | 'interlaced' | 'transparent' | 'animated', GifFixture>> = {
   plain: {
