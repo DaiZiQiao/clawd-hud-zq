@@ -2,7 +2,7 @@ import { chain, rasterOf, rotate, scale, translate } from './clawd-vector'
 import type { Shape } from './clawd-vector'
 import { BOX_ROWS, HAT_X, SKY } from './mascot-sprites'
 import type { MascotRole } from './scene-types'
-import { EYE, accessoryShapes, browLine, crownShapes, figureShapes, propellerShapes, shade, strokeShapes, usagiHatShapes, usagiMouthShapes } from './smooth-art'
+import { EYE, accessoryShapes, browLine, crownShapes, figureShapes, propellerShapes, shade, strokeShapes, usagiCapShapes, usagiCrownShapes, usagiHatShapes, usagiMouthShapes } from './smooth-art'
 import type { FigureInfo } from './smooth-art'
 import { base64Of, pngOf } from './png'
 import { NEUTRAL } from './smooth-pose'
@@ -209,12 +209,15 @@ const giantUsagi = (who: Who, layout: TvLayout, eyes: Eyes, spin: number): Shape
   // The ears' pink inside, over their own but under the head (the casing laid again over their roots).
   shapes.splice(shapes.length - 1, 0, ...inside)
   shapes.push(...usagiFace(body.x, body.w, at.eyes, eyes))
-  // What it wears, blown up evenly from the scene's: as big as the rows over its head hold its ears (7.8 units), its head (10.6) the body's width at most.
+  // What it wears, blown up evenly from the scene's: as big as the rows over its head hold its ears (7.8 units), its head (10.6)
+  // the body's width at most; sat on its flat top, in front of its ears.
   const k = Math.max(1, Math.min(body.w / 10.6, (body.y - at.top) / 7.8))
-  const head = chain(translate(middle, body.y), scale(k), translate(0, 10))
-  if (who.cap === true) shapes.push(...propellerShapes(chain(head, translate(0, -10)), capOf(who), turnOf(spin)))
-  else if (who.hat !== undefined) shapes.push(...usagiHatShapes(head, who.hat))
-  if (who.crown === true && who.cap !== true) shapes.push(...crownShapes(chain(translate(middle - earW * 1.6, body.y + 0.5 * k), scale(k), rotate(-0.35)), 0, 0, 0.9))
+  const seat = chain(translate(middle, body.y + 0.25 * k), scale(k))
+  if (who.cap === true) {
+    const cap = usagiCapShapes(seat, capOf(who), turnOf(spin))
+    shapes.push(...cap.cap, ...cap.propeller)
+  } else if (who.hat !== undefined) shapes.push(...usagiHatShapes(seat, who.hat))
+  if (who.crown === true && who.cap !== true) shapes.push(...usagiCrownShapes(chain(translate(middle - earW * 1.6, body.y + 0.5 * k), scale(k * 0.9), rotate(-0.35))))
 
   return shapes
 }

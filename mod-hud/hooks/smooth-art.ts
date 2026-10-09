@@ -1,5 +1,5 @@
 import { CLAWD, propShapes } from './clawd-moves'
-import { about, chain, multiply, rotate, scale, translate } from './clawd-vector'
+import { about, applyTo, chain, multiply, rotate, scale, translate } from './clawd-vector'
 import type { Matrix, Shape } from './clawd-vector'
 import { ACCESSORIES, BLANKET, CROWN, LAPTOP_COLOUR } from './mascot-sprites'
 import type { Accessory } from './mascot-sprites'
@@ -152,54 +152,6 @@ const energyShapes = (m: Matrix, energy: Energy, at: 'left' | 'right', y: number
   const xs = at === 'right' ? [4.6, 6.6] : [-4.6, -6.6]
 
   return xs.slice(0, energy).flatMap((x, one) => sparkShapes(x, y, 1.8 + 0.25 * wave(t, 900, one), 0.3 * one).map(shape => ({ ...shape, m: multiply(m, shape.m ?? [1, 0, 0, 1, 0, 0]) })))
-}
-
-/** Usagi's hat on its head's top (its ears through the brim), by name. */
-export const usagiHatShapes = (m: Matrix, name: HatName): Shape[] => {
-  const hat = HATS[name]
-  const main = hat.colour
-  const palette = hat.palette as Readonly<Record<string, string>>
-  const k = chain(m, translate(0, -10))
-  switch (name) {
-    case 'hardhat':
-      return [
-        { kind: 'ellipse', x: -3.2, y: -4.4, w: 6.4, h: 5.6, fill: main, m: k },
-        { kind: 'rect', x: -7.2, y: -1.4, w: 14.4, h: 1.6, r: 0.6, fill: main, m: k },
-        { kind: 'rect', x: -0.4, y: -4.2, w: 0.8, h: 2.8, r: 0.3, fill: '#E08A3E', m: k },
-      ]
-    case 'fedora':
-      return [
-        { kind: 'rect', x: -3.2, y: -4.4, w: 6.4, h: 3.6, r: 1.2, fill: main, m: k },
-        { kind: 'ellipse', x: -1, y: -5, w: 2, h: 1.6, fill: '#7A5230', m: k },
-        { kind: 'rect', x: -3.2, y: -2, w: 6.4, h: 1, fill: palette.D ?? '#5C3D1E', m: k },
-        { kind: 'rect', x: -7.6, y: -1.2, w: 15.2, h: 1.3, r: 0.6, fill: main, m: k },
-      ]
-    case 'mortarboard':
-      return [
-        { kind: 'rect', x: -3, y: -2.6, w: 6, h: 2.6, r: 0.5, fill: '#3E62A3', m: k },
-        { kind: 'poly', x: 0, y: 0, w: 0, h: 0, points: [[-7.6, -3.6], [0, -5.2], [7.6, -3.6], [0, -2]], fill: main, m: k },
-        { kind: 'rect', x: 6.6, y: -3.8, w: 0.3, h: 3, fill: CROWN.colour, m: k },
-        { kind: 'ellipse', x: 6.2, y: -1.2, w: 1.1, h: 1.4, fill: CROWN.colour, m: k },
-      ]
-    case 'helmet':
-      return [
-        { kind: 'ellipse', x: -3.4, y: -4.6, w: 6.8, h: 5.8, fill: main, m: k },
-        { kind: 'rect', x: -7.2, y: -1.4, w: 14.4, h: 1.6, r: 0.6, fill: main, m: k },
-        { kind: 'ellipse', x: -1.1, y: -3.6, w: 2.2, h: 2, fill: palette.L ?? '#FFE27A', m: k },
-        { kind: 'ellipse', x: -0.5, y: -3.2, w: 1, h: 0.9, fill: '#FFFFFF', alpha: 0.8, m: k },
-      ]
-    case 'tophat':
-      return [
-        { kind: 'rect', x: -3, y: -8, w: 6, h: 7, r: 0.5, fill: main, m: k },
-        { kind: 'rect', x: -3, y: -3, w: 6, h: 1.4, fill: palette.R ?? '#D05454', m: k },
-        { kind: 'rect', x: -7.2, y: -1.4, w: 14.4, h: 1.5, r: 0.6, fill: main, m: k },
-      ]
-    case 'beret':
-      return [
-        { kind: 'ellipse', x: -5, y: -3.4, w: 10, h: 3.6, fill: main, m: chain(k, rotate(-0.12)) },
-        { kind: 'rect', x: -0.3, y: -5, w: 0.6, h: 1.8, r: 0.3, fill: main, m: chain(k, rotate(-0.12)) },
-      ]
-  }
 }
 
 // --- the figures ----------------------------------------------------------------------
@@ -416,40 +368,15 @@ const LINE = 0.45
 const grownBy = (shape: Shape, g: number, fill: string): Shape =>
   shape.kind === 'rect' || shape.kind === 'ellipse'
     ? { ...shape, x: shape.x - g, y: shape.y - g, w: shape.w + 2 * g, h: shape.h + 2 * g, ...(shape.kind === 'rect' ? { r: (shape.r ?? 0) + g } : {}), fill }
-    : { ...shape, fill }
+    : shape.kind === 'poly'
+      ? { ...shape, grow: (shape.grow ?? 0) + g, fill }
+      : shape.kind === 'line'
+        ? { ...shape, stroke: (shape.stroke ?? 0) + 2 * g, fill }
+        : { ...shape, fill }
 
-/** A thin stroke along an arc about (`cx`, `cy`), `r` out, from angle `from` to `to` (radians, y down), `width` thick. */
-const arcShapes = (m: Matrix, cx: number, cy: number, r: number, from: number, to: number, width: number, fill: string): Shape[] => {
-  const steps = 8
-  const at = (index: number, out: number): readonly [number, number] => {
-    const a = from + ((to - from) * index) / steps
-
-    return [cx + (r + out) * Math.cos(a), cy + (r + out) * Math.sin(a)]
-  }
-  const outer = Array.from({ length: steps + 1 }, (_, index) => at(index, width / 2))
-  const inner = Array.from({ length: steps + 1 }, (_, index) => at(steps - index, -width / 2))
-
-  return [{ kind: 'poly', x: 0, y: 0, w: 0, h: 0, points: [...outer, ...inner], fill, m }]
-}
-
-/** A stroke `width` thick along a line of points, its ends round. */
-export const strokeShapes = (m: Matrix, points: readonly (readonly [number, number])[], width: number, fill: string): Shape[] => {
-  const last = points.length - 1
-  if (last < 1) return []
-  // Each point pushed half the width out either side, square to the line there.
-  const edge = (index: number, sign: number): readonly [number, number] => {
-    const [x, y] = points[index] ?? [0, 0]
-    const [ax, ay] = points[Math.max(0, index - 1)] ?? [x, y]
-    const [bx, by] = points[Math.min(last, index + 1)] ?? [x, y]
-    const length = Math.hypot(bx - ax, by - ay) || 1
-
-    return [x - (sign * (by - ay) * width) / (2 * length), y + (sign * (bx - ax) * width) / (2 * length)]
-  }
-  const band = [...points.map((_, index) => edge(index, 1)), ...points.map((_, index) => edge(last - index, -1))]
-  const ends = [points[0], points[last]].map(([x, y] = [0, 0]): Shape => ({ kind: 'ellipse', x: x - width / 2, y: y - width / 2, w: width, h: width, fill, m }))
-
-  return [{ kind: 'poly', x: 0, y: 0, w: 0, h: 0, points: band, fill, m }, ...ends]
-}
+/** A stroke `width` thick along a line of points, its ends and bends round. */
+export const strokeShapes = (m: Matrix, points: readonly (readonly [number, number])[], width: number, fill: string): Shape[] =>
+  points.length < 2 ? [] : [{ kind: 'line', x: 0, y: 0, w: 0, h: 0, points, stroke: width, fill, m }]
 
 /**
  * A brow's line, as Chiikawa draws Usagi's: a quarter of an ellipse, level
@@ -503,6 +430,437 @@ const tailShapes = (m: Matrix, cx: number, cy: number, alpha: number): Shape[] =
   }),
 ]
 
+// --- Usagi's hats -------------------------------------------------------------------------
+//
+// Worn as a hat is: its opening round the top of its head, down to just over
+// its brows, its front dipping (seen a little from above), its brim curved,
+// in its bold line, a soft shade under it on its forehead, its ears up
+// through holes in it. Each is drawn about the middle of its opening in the
+// figure's units, y down.
+
+type Point = readonly [number, number]
+
+/** How high the middle of a hat's opening sits on Usagi: its head's top third in it. */
+export const HAT_SEAT = -11.6
+
+/** How much of a ring round a hat shows, seen a little from above: its front this share of its radius lower. */
+const TILT = 0.11
+
+/** How much lower its brows sit under a hat. */
+const HAT_BROWS = 0.55
+
+/** Where an ear comes up through a hat, either side: its hole's middle across, and how far under the hat's top. */
+const EAR_HOLE = { x: 1.55, under: 0.55, rx: 1.45, ry: 0.32 } as const
+
+/** A colour `k` of the way to white: a lit side. */
+const tint = (hex: string, k: number): string => {
+  const n = Number.parseInt(hex.slice(1, 7), 16)
+  if (!hex.startsWith('#') || !Number.isFinite(n)) return hex
+  const part = (shift: number): string => {
+    const one = (n >> shift) & 255
+
+    return Math.round(one + (255 - one) * k).toString(16).padStart(2, '0')
+  }
+
+  return `#${part(16)}${part(8)}${part(0)}`
+}
+
+/** Points round an ellipse about (`cx`, `cy`) from angle `from` to `to` (radians, y down: π/2 its front). */
+const ellipsePoints = (cx: number, cy: number, rx: number, ry: number, from: number, to: number, steps = 16): Point[] =>
+  Array.from({ length: steps + 1 }, (_, index) => {
+    const a = from + ((to - from) * index) / steps
+
+    return [cx + rx * Math.cos(a), cy + ry * Math.sin(a)] as const
+  })
+
+/** The near half of a ring round a hat, `r` out at height `y`, right to left: an opening's or a band's edge. */
+const nearRing = (r: number, y = 0, steps = 10): Point[] => ellipsePoints(0, y, r, r * TILT, 0, Math.PI, steps)
+
+/** How many points round a brim. */
+const BRIM_STEPS = 36
+
+/** A brim all round, `r` out at its sides and `ahead` more at its front (tipped `dip` down there), its sides turned up `curl`. */
+const brimPoints = (r: number, ahead: number, dip: number, curl: number): Point[] =>
+  Array.from({ length: BRIM_STEPS }, (_, index) => {
+    const a = (index / BRIM_STEPS) * 2 * Math.PI
+    const front = Math.max(0, Math.sin(a))
+    const out = r + ahead * front
+
+    return [out * Math.cos(a), TILT * out * Math.sin(a) + dip * front - curl * Math.cos(a) ** 2] as const
+  })
+
+/** A brim's near edge, left to right. */
+const brimFront = (brim: readonly Point[]): Point[] => brim.slice(0, BRIM_STEPS / 2 + 1).reverse()
+
+/** A dome `r` round at its foot (its near edge dipping), `h` high. */
+const domePoints = (r: number, h: number): Point[] => [...ellipsePoints(0, 0, r, h, Math.PI, 2 * Math.PI, 14), ...nearRing(r).slice(1, -1)]
+
+const polyOf = (m: Matrix, points: readonly Point[], fill: string, alpha = 1): Shape => ({ kind: 'poly', x: 0, y: 0, w: 0, h: 0, points, fill, m, ...(alpha < 1 ? { alpha } : {}) })
+
+/** A part in Usagi's line: the line (`line` thick) laid under its fill. */
+const inked = (m: Matrix, points: readonly Point[], fill: string, line = LINE): Shape[] => [{ ...polyOf(m, points, fill), outline: { width: line, fill: USAGI.line } }]
+
+/** Where an upright at `x` crosses a closed outline (y down), highest first. */
+const crossingsOf = (points: readonly Point[], x: number): number[] =>
+  points
+    .flatMap(([ax, ay], index) => {
+      const [bx, by] = points[(index + 1) % points.length] ?? [ax, ay]
+
+      return ax <= x !== bx <= x ? [ay + ((x - ax) * (by - ay)) / (bx - ax)] : []
+    })
+    .sort((a, b) => a - b)
+
+/**
+ * A closed outline cut along a line, `edge` its height across: what of it
+ * is above the line, closed along the line where it was cut.
+ */
+const cutAbove = (points: readonly Point[], edge: (x: number) => number): Point[] => {
+  const above = (point: Point): boolean => point[1] < edge(point[0])
+  const first = points.findIndex(above)
+  if (first < 0) return []
+  const ring = [...points.slice(first), ...points.slice(0, first)]
+  // Where the way from `a` to `b` crosses the line, halved down to it.
+  const crossing = (a: Point, b: Point): Point => {
+    const side = above(a)
+    let low = 0
+    let high = 1
+    for (let step = 0; step < 18; step += 1) {
+      const middle = (low + high) / 2
+      if (above([a[0] + (b[0] - a[0]) * middle, a[1] + (b[1] - a[1]) * middle]) === side) low = middle
+      else high = middle
+    }
+
+    return [a[0] + (b[0] - a[0]) * low, a[1] + (b[1] - a[1]) * low]
+  }
+  const kept: Point[] = []
+  let left: Point | undefined
+  ring.forEach((a, index) => {
+    const b = ring[(index + 1) % ring.length] ?? a
+    if (above(a)) kept.push(a)
+    if (above(a) === above(b)) return
+    const at = crossing(a, b)
+    if (above(a)) {
+      kept.push(at)
+      left = at
+      return
+    }
+    // Back above: along the line from where it went under.
+    if (left !== undefined) {
+      const from = left
+      kept.push(...Array.from({ length: 5 }, (_, step): Point => {
+        const x = from[0] + ((at[0] - from[0]) * (step + 1)) / 6
+
+        return [x, edge(x)]
+      }))
+    }
+    kept.push(at)
+  })
+
+  return kept
+}
+
+/**
+ * A hat as Usagi wears it, about the middle of its opening: its shapes; its
+ * parts' outlines, for the shade under its lowest edge; the outline whose
+ * top its ears come up through.
+ */
+type HatDesign = {
+  shapes: (m: Matrix) => Shape[]
+  parts: () => readonly (readonly Point[])[]
+  top: readonly Point[]
+}
+
+/** The worker's hard hat: a shell with a ridge over it, a brim all round, longer at the front. */
+const HARDHAT: HatDesign = (() => {
+  const main = HATS.hardhat.colour
+  const brim = brimPoints(5.0, 0.6, 0.02, 0)
+  const shell = domePoints(4.35, 3.0)
+  const ridge: Shape = { kind: 'rect', x: -0.45, y: -2.95, w: 0.9, h: 3.35, r: 0.45, fill: tint(main, 0.22) }
+
+  return {
+    shapes: m => [
+      ...inked(m, brim, main),
+      ...inked(m, shell, main),
+      grownBy({ ...ridge, m }, 0.2, USAGI.line),
+      { ...ridge, m },
+      { kind: 'ellipse', x: -0.9, y: -0.32, w: 1.8, h: 0.64, fill: '#FFFFFF', alpha: 0.32, m: chain(m, translate(-2.95, -0.85), rotate(-0.5)) },
+    ],
+    parts: () => [brim, shell],
+    top: shell,
+  }
+})()
+
+/** The explorer's fedora: its crown dented between two lobes, pinched at the front, a dark band, a wide brim turned up at the sides. */
+const FEDORA: HatDesign = (() => {
+  const main = HATS.fedora.colour
+  const brim = brimPoints(5.7, 0, 0.05, 0.45)
+  const lobe = (x: number): number => -2.75 - 0.55 * Math.sin((Math.PI * Math.min(3.5, Math.abs(x))) / 3.5) ** 0.7
+  const crown = [...nearRing(3.7), ...Array.from({ length: 17 }, (_, index): Point => [-3.5 + (7 * index) / 16, lobe(-3.5 + (7 * index) / 16)])]
+  const band = [...nearRing(3.7), ...nearRing(3.66, -0.75).reverse()]
+  // The brim's front, over the crown's foot.
+  const lip = [...brimFront(brim), ...nearRing(3.7)]
+  const dent = shade(main, 0.35)
+
+  return {
+    shapes: m => [
+      ...inked(m, brim, main),
+      ...inked(m, crown, main),
+      polyOf(m, band, HATS.fedora.palette.D),
+      ...[-1, 1].flatMap(side => strokeShapes(m, [[side * 0.4, -2.62], [side * 0.88, -2.0], [side * 1.1, -1.2]], 0.17, dent)),
+      { kind: 'ellipse', x: -3.15, y: -2.2, w: 0.65, h: 1.3, fill: '#FFFFFF', alpha: 0.16, m },
+      polyOf(m, lip, main),
+      ...strokeShapes(m, nearRing(3.7), 0.3, USAGI.line),
+    ],
+    parts: () => [brim, crown],
+    top: crown,
+  }
+})()
+
+/** The reviewer's mortarboard: a cap round its head, a square board on it corner to the front, its tassel hanging off its right corner. */
+const MORTARBOARD: HatDesign = (() => {
+  const main = HATS.mortarboard.colour
+  const gold = HATS.mortarboard.palette.G
+  const skull: Point[] = [...nearRing(4.3), [-4.1, -1.55], [4.1, -1.55]]
+  const board: Point[] = [[-6.0, -1.9], [0, -2.95], [6.0, -1.9], [0, -0.85]]
+  const edge: Point[] = [[-6.0, -1.9], [0, -0.85], [6.0, -1.9], [6.0, -1.52], [0, -0.47], [-6.0, -1.52]]
+  const tassel: Point[] = [[5.68, 0.1], [6.32, 0.1], [6.55, 1.3], [5.45, 1.3]]
+
+  return {
+    shapes: m => [
+      ...inked(m, skull, shade(main, 0.2)),
+      ...inked(m, edge, shade(main, 0.38)),
+      ...inked(m, board, main, 0.22),
+      { kind: 'ellipse', x: -3.0, y: -2.2, w: 2.0, h: 0.38, fill: '#FFFFFF', alpha: 0.22, m },
+      // Its tassel off its right corner.
+      ...strokeShapes(m, [[5.85, -1.75], [6.0, 0.15]], 0.44, USAGI.line),
+      ...strokeShapes(m, [[5.85, -1.75], [6.0, 0.15]], 0.22, gold),
+      ...inked(m, tassel, gold, 0.22),
+      ...[5.8, 6.0, 6.2].flatMap(x => strokeShapes(m, [[x, 0.42], [x + (x - 6) * 0.4, 1.12]], 0.08, shade(gold, 0.35))),
+      grownBy({ kind: 'ellipse', x: 5.64, y: -0.12, w: 0.72, h: 0.46, fill: gold, m }, 0.2, USAGI.line),
+      { kind: 'ellipse', x: 5.64, y: -0.12, w: 0.72, h: 0.46, fill: gold, m },
+    ],
+    parts: () => [skull, tassel],
+    top: board,
+  }
+})()
+
+/** The debugger's miner's helmet: a round shell on a short brim, a strap round it, its lamp lit at the front. */
+const HELMET: HatDesign = (() => {
+  const main = HATS.helmet.colour
+  const lamp = HATS.helmet.palette.L
+  const brim = brimPoints(4.75, 0.35, 0.02, 0)
+  const shell = domePoints(4.35, 3.3)
+  const strap = [...nearRing(4.35), ...nearRing(4.32, -0.5).reverse()]
+  const housing: Shape = { kind: 'ellipse', x: -0.95, y: -2.15, w: 1.9, h: 1.65, fill: '#3E4A57' }
+
+  return {
+    shapes: m => [
+      ...inked(m, brim, shade(main, 0.12)),
+      ...inked(m, shell, main),
+      polyOf(m, strap, shade(main, 0.3)),
+      { kind: 'ellipse', x: -0.85, y: -0.3, w: 1.7, h: 0.6, fill: '#FFFFFF', alpha: 0.3, m: chain(m, translate(-3.0, -1.15), rotate(-0.55)) },
+      // Its lamp, lit: a glow round it, its lens in its housing, a glint.
+      { kind: 'ellipse', x: -2.0, y: -2.8, w: 4.0, h: 2.95, fill: lamp, alpha: 0.22, m },
+      grownBy({ ...housing, m }, 0.25, USAGI.line),
+      { ...housing, m },
+      { kind: 'ellipse', x: -0.65, y: -1.9, w: 1.3, h: 1.15, fill: lamp, m },
+      { kind: 'ellipse', x: -0.5, y: -1.78, w: 0.4, h: 0.3, fill: '#FFFFFF', alpha: 0.9, m },
+    ],
+    parts: () => [brim, shell],
+    top: shell,
+  }
+})()
+
+/** The planner's top hat: short and wide, its ears up through its lid, a red band, its brim curled up at the sides. */
+const TOPHAT: HatDesign = (() => {
+  const main = HATS.tophat.colour
+  const brim = brimPoints(4.5, 0, 0.04, 0.5)
+  const foot = nearRing(2.75)
+  const crown = [...foot, ...ellipsePoints(0, -3.15, 2.95, 2.95 * TILT, Math.PI, 2 * Math.PI, 10)]
+  const lid = ellipsePoints(0, -3.15, 2.95, 2.95 * TILT, 0, 2 * Math.PI, 16).slice(0, -1)
+  const band = [...foot, ...nearRing(2.79, -0.8).reverse()]
+  const lip = [...brimFront(brim), ...foot]
+
+  return {
+    shapes: m => [
+      ...inked(m, brim, main),
+      ...inked(m, crown, main),
+      ...inked(m, lid, tint(main, 0.18), 0.22),
+      polyOf(m, band, HATS.tophat.palette.R),
+      { kind: 'rect', x: -2.35, y: -2.85, w: 0.5, h: 1.85, r: 0.25, fill: '#FFFFFF', alpha: 0.18, m },
+      polyOf(m, lip, main),
+      ...strokeShapes(m, foot, 0.3, USAGI.line),
+    ],
+    parts: () => [brim, crown],
+    top: lid,
+  }
+})()
+
+/** The frontend's beret: soft and full, tipped down over its right, on a band round its head, a little stalk on top. */
+const BERET: HatDesign = (() => {
+  const main = HATS.beret.colour
+  const band = [...nearRing(4.35), ...nearRing(4.32, -0.45).reverse()]
+  const turn = 0.13
+  const puff = Array.from({ length: 36 }, (_, index): Point => {
+    const a = (index / 36) * 2 * Math.PI
+    const c = Math.cos(a)
+    const s = Math.sin(a)
+    // Round as a squashed ball, fuller where it hangs over its right.
+    const x = 5.2 * Math.sign(c) * Math.abs(c) ** 0.85
+    const y = 1.55 * Math.sign(s) * Math.abs(s) ** 0.9 + 0.35 * Math.max(0, s) * Math.max(0, c)
+
+    return [0.5 + x * Math.cos(turn) - y * Math.sin(turn), -1.75 + x * Math.sin(turn) + y * Math.cos(turn)]
+  })
+  const stalk: Shape = { kind: 'rect', x: -0.17, y: -0.75, w: 0.34, h: 0.9, r: 0.17, fill: main }
+  const stalkAt = chain(translate(0.05, Math.min(...crossingsOf(puff, 0.05))), rotate(0.25))
+
+  return {
+    shapes: m => [
+      ...inked(m, band, shade(main, 0.2)),
+      grownBy({ ...stalk, m: multiply(m, stalkAt) }, 0.2, USAGI.line),
+      ...inked(m, puff, main),
+      { ...stalk, m: multiply(m, stalkAt) },
+      ...strokeShapes(m, [[1.2, -0.52], [2.9, -0.36], [4.7, 0.0]], 0.17, shade(main, 0.3)),
+      { kind: 'ellipse', x: -0.95, y: -0.28, w: 1.9, h: 0.56, fill: '#FFFFFF', alpha: 0.25, m: chain(m, translate(-3.0, -2.75), rotate(-0.25)) },
+    ],
+    parts: () => [band, puff],
+    top: puff,
+  }
+})()
+
+const HAT_DESIGNS: Readonly<Record<HatName, HatDesign>> = { hardhat: HARDHAT, fedora: FEDORA, mortarboard: MORTARBOARD, helmet: HELMET, tophat: TOPHAT, beret: BERET }
+
+/** Usagi's hat by name, about the middle of its opening. */
+export const usagiHatShapes = (m: Matrix, name: HatName): Shape[] => HAT_DESIGNS[name].shapes(m)
+
+/** Where an ear comes up through a hat `x` across: its hole's middle, under the hat's top there. */
+const holeOf = (top: readonly Point[], x: number): Point => [x, (crossingsOf(top, x)[0] ?? 0) + EAR_HOLE.under]
+
+/** A hat knocked off: its ear holes empty, dark. */
+const emptyHolesShapes = (m: Matrix, top: readonly Point[]): Shape[] =>
+  [-1, 1].map((side): Shape => {
+    const [x, y] = holeOf(top, side * EAR_HOLE.x)
+
+    return { kind: 'ellipse', x: x - EAR_HOLE.rx, y: y - EAR_HOLE.ry, w: 2 * EAR_HOLE.rx, h: 2 * EAR_HOLE.ry, fill: USAGI.line, alpha: 0.85, m }
+  })
+
+/**
+ * An ear up through a hole in a hat, in the hat's frame: the hole dark about
+ * (`x`, `y`), the ear (outlined, pink inside) up from the hole's front rim
+ * to `tip`, leaning `turn` from there, the rim's line across its foot.
+ */
+const earThroughShapes = (m: Matrix, x: number, y: number, tip: number, turn: number): Shape[] => {
+  const { rx, ry } = EAR_HOLE
+  const rim = (px: number): number => y + ry * Math.sqrt(Math.max(0, 1 - ((px - x) / rx) ** 2))
+  const lean = about(x, y, rotate(turn))
+  // The ear `half` across either side of its middle, round at its ends, from under the rim to its tip; cut along the rim.
+  const ear = (half: number): Point[] =>
+    cutAbove(
+      [...ellipsePoints(x, tip + 0.85, half, half, 0, -Math.PI, 8), ...ellipsePoints(x, y + 1.2, half, half, Math.PI, 0, 4)].map(([px, py]) => applyTo(lean, px, py)),
+      rim,
+    )
+
+  return [
+    { kind: 'ellipse', x: x - rx, y: y - ry, w: 2 * rx, h: 2 * ry, fill: USAGI.line, m },
+    polyOf(m, ear(0.85 + LINE), USAGI.line),
+    polyOf(m, ear(0.85), USAGI.cream),
+    { kind: 'rect', x: x - 0.45, y: tip + 0.45, w: 0.9, h: Math.max(0.6, y - 1 - tip), r: 0.45, fill: USAGI.ear, m: multiply(m, lean) },
+    ...strokeShapes(m, ellipsePoints(x, y, rx, ry, Math.PI, 0, 8), 0.24, USAGI.line),
+  ]
+}
+
+/** The soft shade a hat casts on Usagi's forehead, under its parts' lowest edge, inside its head (its middle `HAT_SEAT` up). */
+const hatShadeShapes = (m: Matrix, parts: readonly (readonly Point[])[]): Shape[] => {
+  const inside = (x: number, y: number): boolean => (x / 5.2) ** 2 + ((y - (-8.4 - HAT_SEAT)) / 4.2) ** 2 < 1
+  const runs: Point[][] = [[]]
+  for (let index = 0; index <= 28; index += 1) {
+    const x = -5.6 + (11.2 * index) / 28
+    const lows = parts.flatMap(points => crossingsOf(points, x).slice(-1))
+    const top = lows.length === 0 ? Infinity : Math.max(...lows) + 0.8 * LINE
+    const run = runs[runs.length - 1] ?? []
+    if (Number.isFinite(top) && inside(x, top) && inside(x, top + 0.45)) run.push([x, top])
+    else if (run.length > 0) runs.push([])
+  }
+
+  return runs
+    .filter(run => run.length >= 3)
+    .map(run => {
+      const under = run.map(([x, y], index): Point => [x, y + 0.45 * Math.sin((Math.PI * index) / (run.length - 1))]).reverse()
+
+      return polyOf(m, [...run, ...under], USAGI.line, 0.13)
+    })
+}
+
+/**
+ * Usagi's propeller cap in flight, in `tone`: a cap of panels, its front
+ * one deeper, a short peak, a button on top (its ears come up through it);
+ * then, over its ears, its propeller turning (`turn`, radians).
+ */
+export const usagiCapShapes = (m: Matrix, tone: string, turn: number): { cap: Shape[]; propeller: Shape[]; top: readonly Point[]; parts: readonly (readonly Point[])[] } => {
+  const shell = domePoints(4.3, 2.85)
+  // A seam from its button down a quarter round from its middle, either side.
+  const seam = (side: number): Point[] =>
+    Array.from({ length: 7 }, (_, index) => {
+      const theta = (index / 6) * (Math.PI / 2)
+      const phi = Math.PI / 2 - side * (Math.PI / 4)
+
+      return [4.3 * Math.sin(theta) * Math.cos(phi), -2.85 * Math.cos(theta) + TILT * 4.3 * Math.sin(theta) * Math.sin(phi)] as const
+    })
+  const panel = [...seam(-1), ...ellipsePoints(0, 0, 4.3, 4.3 * TILT, (3 * Math.PI) / 4, Math.PI / 4, 4).slice(1, -1), ...seam(1).reverse()]
+  const peak = [
+    ...ellipsePoints(0, 0.3, 3.4, 0.4, 0, Math.PI, 10),
+    ...Array.from({ length: 7 }, (_, index): Point => {
+      const x = -3.4 + (6.8 * index) / 6
+
+      return [x, TILT * Math.sqrt(Math.max(0, 4.3 * 4.3 - x * x))]
+    }),
+  ]
+  const spread = Math.abs(Math.cos(turn))
+  const blades: Shape = { kind: 'ellipse', x: -(3.6 * spread + 0.25), y: -4.45, w: 2 * (3.6 * spread + 0.25), h: 0.8, fill: '#D05454', m }
+  const stalk: Shape = { kind: 'rect', x: -0.17, y: -4.05, w: 0.34, h: 1.3, r: 0.12, fill: '#3E4A57', m }
+
+  return {
+    cap: [
+      ...inked(m, shell, tint(tone, 0.3)),
+      polyOf(m, panel, tone),
+      ...[-1, 1].flatMap(side => strokeShapes(m, seam(side), 0.14, shade(tone, 0.35))),
+      ...inked(m, peak, shade(tone, 0.2)),
+      { kind: 'ellipse', x: -0.45, y: -3.08, w: 0.9, h: 0.46, fill: '#3E4A57', m },
+    ],
+    propeller: [
+      grownBy(stalk, 0.16, USAGI.line),
+      stalk,
+      grownBy(blades, 0.22, USAGI.line),
+      blades,
+      { kind: 'ellipse', x: -0.4, y: -4.35, w: 0.8, h: 0.6, fill: '#3E4A57', m },
+    ],
+    top: shell,
+    parts: [shell, peak],
+  }
+}
+
+/** Usagi's crown: a little gold band, three points with a ball on each, a red stone; about its band's foot, up its middle. */
+export const usagiCrownShapes = (m: Matrix): Shape[] => {
+  const gold = CROWN.colour
+  const band = [...ellipsePoints(0, 0, 1.6, 0.25, 0, Math.PI, 8), ...ellipsePoints(0, -0.8, 1.6, 0.25, Math.PI, 0, 8)]
+  const points: Point[][] = [
+    [[-1.6, -0.5], [-1.25, -2.0], [-0.45, -0.6]],
+    [[-0.6, -0.6], [0, -2.35], [0.6, -0.6]],
+    [[0.45, -0.6], [1.25, -2.0], [1.6, -0.5]],
+  ]
+  const balls = [[-1.25, -2.0], [0, -2.35], [1.25, -2.0]].map(([x = 0, y = 0]): Shape => ({ kind: 'ellipse', x: x - 0.24, y: y - 0.24, w: 0.48, h: 0.48, fill: gold, m }))
+
+  return [
+    ...balls.map(ball => grownBy(ball, LINE * 0.8, USAGI.line)),
+    ...balls,
+    ...points.flatMap(one => inked(m, one, gold, LINE * 0.8)),
+    ...inked(m, band, gold, LINE * 0.8),
+    { kind: 'ellipse', x: -0.28, y: -0.6, w: 0.56, h: 0.42, fill: '#D05454', m },
+    ...[-0.95, 0.95].map((x): Shape => ({ kind: 'ellipse', x: x - 0.16, y: -0.52, w: 0.32, h: 0.28, fill: '#4D79C4', m })),
+    { kind: 'rect', x: -1.35, y: -0.62, w: 0.7, h: 0.14, r: 0.07, fill: '#FFFFFF', alpha: 0.45, m },
+  ]
+}
+
 /**
  * Usagi as Chiikawa draws it: a big round head on a small round body, its
  * long ears together (pink inside; lowered squatting, trailing a walk,
@@ -514,12 +872,15 @@ const tailShapes = (m: Matrix, cx: number, cy: number, alpha: number): Shape[] =
  */
 const usagiShapes = (pose: FigurePose, info: FigureInfo, t: number): Shape[] => {
   const hat = info.role === undefined || pose.hatOff || pose.cap !== undefined ? undefined : ROLE_HATS[info.role]
+  const capped = pose.cap !== undefined
   const flat = pose.flat
   const body = chain(translate(pose.dx, pose.drop), rotate(pose.tilt), about(0, -6.2, rotate(pose.spin)), scale(pose.sx, pose.sy * (1 - 0.45 * flat)))
-  // Its ears stand through a hat; only bare (no hat, no crown) do they droop.
-  const earsDown = hat === undefined ? Math.max(pose.earsDown, 0) : 0
-  const droop = hat === undefined && info.crown !== true ? pose.droop : 0
+  // Its ears come up through its hat or its cap, standing; only bare (no hat, no crown) do they droop.
+  const through = capped || hat !== undefined
+  const earsDown = hat === undefined && !capped ? Math.max(pose.earsDown, 0) : 0
+  const droop = hat === undefined && !capped && info.crown !== true ? pose.droop : 0
   const earLength = 7.8 - 3 * earsDown
+  const earTurn = (side: number): number => side * 0.05 + 0.3 * pose.trail + side * (1.9 * droop + 1.45 * flat + (side < 0 ? pose.earL : pose.earR))
   // Its silhouette, outlined as one: the outlines first, then the parts over them.
   const lines: Shape[] = []
   const parts: Shape[] = []
@@ -528,10 +889,9 @@ const usagiShapes = (pose: FigurePose, info: FigureInfo, t: number): Shape[] => 
     parts.push(shape)
   }
   const inside: Shape[] = []
-  for (const side of [-1, 1]) {
-    const turn = side * 0.05 + 0.3 * pose.trail + side * (1.9 * droop + 1.45 * flat + (side < 0 ? pose.earL : pose.earR))
+  for (const side of through ? [] : [-1, 1]) {
     // Close together, a sliver apart.
-    const ear = multiply(body, about(side * 1.45, -11.4, rotate(turn)))
+    const ear = multiply(body, about(side * 1.45, -11.4, rotate(earTurn(side))))
     part({ kind: 'rect', x: side * 1.45 - 0.85, y: -11.4 - earLength, w: 1.7, h: earLength + 0.4, r: 0.85, fill: USAGI.cream, m: ear })
     inside.push({ kind: 'rect', x: side * 1.45 - 0.45, y: -10.95 - earLength, w: 0.9, h: Math.max(0.6, earLength - 2.2), r: 0.45, fill: USAGI.ear, m: ear })
   }
@@ -559,9 +919,15 @@ const usagiShapes = (pose: FigurePose, info: FigureInfo, t: number): Shape[] => 
   if (going > 0.05) shapes.push(...tailShapes(body, Math.sign(pose.trail) * 3.5, -2.8, going))
   // Sprinting: its legs a spinning wheel under it, a blur and four legs turning five times a second.
   if (pose.run > 0.05) shapes.unshift(...wheelShapes(body, pose.run, t))
-  // Its face: dot eyes with a small glint, its brows high over them (higher wide-eyed), level over the middle and falling
-  // away to the sides, its cheeks blushing with three strokes, its mouth.
-  const browTop = -10.75 + (pose.eyes === 'wide' ? -0.5 : 0)
+  // What it wears on its head sits on it, its opening round its head's top just over its brows, a soft shade under it.
+  const seat = chain(body, translate(0, HAT_SEAT))
+  const capTone = info.role !== undefined ? HATS[ROLE_HATS[info.role]].colour : info.crown === true ? CROWN.colour : CAP.colour
+  const cap = pose.cap !== undefined ? usagiCapShapes(seat, capTone, pose.cap) : undefined
+  const worn = hat !== undefined ? HAT_DESIGNS[hat].parts() : cap?.parts ?? []
+  shapes.push(...hatShadeShapes(seat, worn))
+  // Its face: dot eyes with a small glint, its brows high over them (higher wide-eyed, as far as a hat lets them), level
+  // over the middle and falling away to the sides, its cheeks blushing with three strokes, its mouth.
+  const browTop = -10.75 + (worn.length > 0 ? HAT_BROWS : 0) + (pose.eyes === 'wide' ? (worn.length > 0 ? -0.1 : -0.5) : 0)
   shapes.push(
     ...blushShapes(body, -3.7, -6.85),
     ...blushShapes(body, 3.7, -6.85),
@@ -580,18 +946,28 @@ const usagiShapes = (pose: FigurePose, info: FigureInfo, t: number): Shape[] => 
   }
   // Asleep: a bubble from its nose, swelling and shrinking with each breath.
   if (pose.blanket > 0.5) shapes.push(...noseBubbleShapes(chain(body, translate(-0.5, -1.4)), t))
-  // What it wears on its head's top (two units over the sprite's), cut to its narrower head.
-  const crown = chain(body, translate(0, -2), about(0, -10, scale(0.78, 0.9)))
-  if (hat !== undefined) shapes.push(...usagiHatShapes(crown, hat))
-  // The propeller cap in flight: its hat's colour, the crown's gold, or its own on a bare head.
-  const capTone = info.role !== undefined ? HATS[ROLE_HATS[info.role]].colour : info.crown === true ? CROWN.colour : CAP.colour
-  if (pose.cap !== undefined) shapes.push(...propellerShapes(chain(body, translate(0, -12)), capTone, pose.cap))
-  if (info.crown === true && !pose.hatOff && flat < 0.5) shapes.push(...crownShapes(chain(body, translate(-3.5, -11.2), rotate(-0.35)), 0, 0, 0.62))
-  if (!pose.hatOff) shapes.push(...energyShapes(body, info.energy, 'right', -13.2, t))
-  // Knocked flat: its hat (or crown) on the floor beside it.
+  // Its hat, or in flight its propeller cap (its hat's colour, the crown's gold, or its own on a bare head); its ears up
+  // through holes in it, leaning from there; the propeller over them.
+  if (hat !== undefined) shapes.push(...usagiHatShapes(seat, hat))
+  if (cap !== undefined) shapes.push(...cap.cap)
+  const top = hat !== undefined ? HAT_DESIGNS[hat].top : cap?.top
+  if (through && top !== undefined) {
+    for (const side of [-1, 1]) {
+      const [x, y] = holeOf(top, side * EAR_HOLE.x)
+      shapes.push(...earThroughShapes(seat, x, y, -11.4 - earLength - HAT_SEAT, earTurn(side)))
+    }
+  }
+  if (cap !== undefined) shapes.push(...cap.propeller)
+  // The session's crown, small, tilted on the left of its head.
+  if (info.crown === true && !pose.hatOff && flat < 0.5) shapes.push(...usagiCrownShapes(chain(body, translate(-3.05, -12.0), rotate(-0.42), scale(1.12))))
+  if (!pose.hatOff) shapes.push(...energyShapes(body, info.energy, 'right', worn.length > 0 ? -14 : -13.2, t))
+  // Knocked flat: its hat (its ear holes empty) or its crown on the floor beside it.
   const floor = chain(translate(pose.dx + 9, 0), rotate(0.35))
-  if (pose.hatOff && info.role !== undefined) shapes.push(...usagiHatShapes(chain(floor, translate(0, 9.2), scale(0.75)), ROLE_HATS[info.role]))
-  else if (pose.hatOff && info.crown === true) shapes.push(...crownShapes(floor, 0, 0, 0.8))
+  if (pose.hatOff && info.role !== undefined) {
+    const name = ROLE_HATS[info.role]
+    const lying = chain(floor, translate(0, -0.6), scale(0.75))
+    shapes.push(...usagiHatShapes(lying, name), ...emptyHolesShapes(lying, HAT_DESIGNS[name].top))
+  } else if (pose.hatOff && info.crown === true) shapes.push(...usagiCrownShapes(chain(floor, scale(0.9))))
 
   return shapes
 }

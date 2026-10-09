@@ -173,9 +173,9 @@ the stretch, pick up, dangle, throw and tumble.
   proportions (its logo's 18 by 6 quadrants) and wears its accessory, letter
   and energy marks. Usagi is drawn as Chiikawa draws it: cream, a bold
   near-black line round it all, a big round head (10.6 units across) on a
-  smaller round body (6.9), its long ears together, their lines touching, pink
-  inside (up through its hat, lowered squatting, drooping slumped
-  bare-headed, trailing a walk), its little feet, its hands stubby nubs
+  smaller round body (6.9), its long ears close together, a sliver apart,
+  pink inside (up through holes in its hat, lowered squatting, drooping
+  slumped bare-headed, trailing a walk), its little feet, its hands stubby nubs
   sticking out of its sides (their line the silhouette's at rest, over it
   raised); its dot eyes with a small glint in their top right under brows
   high over them (a quarter of an ellipse each, level by the face's middle,
@@ -187,12 +187,22 @@ the stretch, pick up, dangle, throw and tumble.
   then round to the right, all but joined to it; wide open on a shout, a D
   on its back, its tongue in it; a small `o`, a smug hooked smile, a grin of
   two peaks; going, its tail, a white
-  puff tufted in short strokes, out of its back; its hat, side crown and
-  energy. Its laptop stands nearer it than Clawd's, its body being narrower.
+  puff tufted in short strokes, out of its back; and its energy. What it
+  wears is worn as a hat is: its role's hat (a hard hat with a ridge, a
+  fedora dented between two lobes, a mortarboard and its tassel, a miner's
+  helmet with its lamp lit, a short top hat, a soft beret tipped over its
+  right) round its head's top third, down to just over its brows (which sit a
+  little lower under it), its front dipping as seen a little from above, in
+  its bold line, a soft shade on its forehead under it, its ears up through
+  holes in it, leaning from there as it walks; in flight a propeller cap of
+  panels the same way, its propeller turning over its ears; the session's
+  crown, small and outlined, tilted on the left of its head in front of its
+  ear. Its laptop stands nearer it than Clawd's, its body being narrower.
   Its thoughts are its phrases (`Yahaa!`, `HUHHH?`) in the cloud, its
   shouts on the cigarette's puffs (`Ura!`, `HUHHH?`, `UNA!`, hands up), and
-  `HUHHH?` getting up from a fall. Knocked flat, a hat or crown lies on the
-  floor beside it. A child's mini is the same figure at 0.6 the size.
+  `HUHHH?` getting up from a fall. Knocked flat, its hat (its ear holes
+  empty) or its crown lies on the floor beside it. A child's mini is the same
+  figure at 0.6 the size.
 - **The frame** (`hooks/scene-smooth.ts`): each mascot's feet on its floor,
   the pipes, the marks (`✓`, `✦`, the envelope), and the strip's status dots
   as shapes. World units: a cell is 2 across and 4 down.
@@ -624,7 +634,8 @@ legs, what it wears blown up evenly from the scene's. Usagi: cream with
 Chiikawa's bold line, its long ears up out of its head as the TV's own
 rabbit ears (pink inside, a V), its hand nubs by its face and its feet, its
 face under the TV (glinting eyes under fine brows, hatched cheeks, a small
-mouth), its hat between its ears, the crown by its left ear. In a terminal
+mouth), its hat (or propeller cap) sat on its flat top in front of its
+ears, the crown by its left ear. In a terminal
 that shows pictures (Ghostty, kitty), the TV's module tells the hooks when
 the mascot has grown into the giant (as its glass switches on) and when it
 shrinks out of it (`{ kind: 'tv', giant }`); in between, the hooks draw the

@@ -2,7 +2,7 @@ import type { JsonValue } from 'claude-code'
 import { describe, expect, mock, test } from 'claude-code/testing'
 
 import type { HudSelection } from '../types'
-import { rasterOf, scale } from './clawd-vector'
+import { IDENTITY, rasterOf, scale, svgOf } from './clawd-vector'
 import { CROWN } from './mascot-sprites'
 import { base64Of, deflate, pngOf } from './png'
 import { bytesOf, countColour, inflate, pngPixels } from './png.fixtures'
@@ -60,6 +60,30 @@ describe('the rasterizer', () => {
     expect(alphaAt(0.5, 2.5)).toBe(255)
     expect(alphaAt(2.5, 0.5)).toBe(255)
     expect(alphaAt(2, 2)).toBe(0)
+  })
+
+  test('a line its width wide along its points, round at its ends and bends; a polygon\'s outline round it under its fill; as the SVG draws them', () => {
+    const at = (pixels: Uint8Array) => (x: number, y: number): number[] => {
+      const index = (Math.floor(y * 8) * 24 + Math.floor(x * 8)) * 4
+
+      return [...pixels.slice(index, index + 4)]
+    }
+    const line = { kind: 'line' as const, x: 0, y: 0, w: 0, h: 0, points: [[0.5, 0.5], [2.5, 0.5], [2.5, 2.5]] as const, stroke: 0.5, fill: '#FF0000' }
+    const drawn = at(rasterOf([line], 24, 24, scale(8)))
+    expect(drawn(1.5, 0.5)[3]).toBe(255)
+    expect(drawn(2.5, 1.5)[3]).toBe(255)
+    expect(drawn(1.5, 1.0)[3]).toBe(0)
+    // Round past its end by half its width, no further.
+    expect(drawn(0.3, 0.5)[3]).toBeGreaterThan(128)
+    expect(drawn(0.1, 0.5)[3]).toBe(0)
+    const square = { kind: 'poly' as const, x: 0, y: 0, w: 0, h: 0, points: [[1, 1], [2, 1], [2, 2], [1, 2]] as const, fill: '#FF0000', outline: { width: 0.5, fill: '#0000FF' } }
+    const outlined = at(rasterOf([square], 24, 24, scale(8)))
+    expect(outlined(1.5, 1.5)).toEqual([255, 0, 0, 255])
+    expect(outlined(0.75, 1.5)).toEqual([0, 0, 255, 255])
+    expect(outlined(0.25, 1.5)[3]).toBe(0)
+    const svg = svgOf([line, square], 24, 24, IDENTITY)
+    expect(svg).toContain(`<polyline points='0.5,0.5 2.5,0.5 2.5,2.5' fill='none' stroke='#FF0000' stroke-width='0.5' stroke-linecap='round' stroke-linejoin='round'/>`)
+    expect(svg).toContain(`fill='#FF0000' stroke='#0000FF' stroke-width='1' stroke-linejoin='round' paint-order='stroke'`)
   })
 })
 

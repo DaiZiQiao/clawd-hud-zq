@@ -49,12 +49,16 @@ export type Paint = string
 
 /**
  * One shape, placed by `m`: a rectangle (corners rounded by `r`), an ellipse
- * (its box's; a ring `ring` thick instead of a disc), a convex polygon
- * (`points`), or a line of text (its baseline's middle, start or end at
- * `x`, `y`; `size` its height in units). Filled with `fill` at `alpha`.
+ * (its box's; a ring `ring` thick instead of a disc), a polygon (`points`,
+ * any simple one; grown `grow` all round, its corners rounded, as an outline
+ * laid under it is; or with its `outline` laid under it, that far out round
+ * it), a line through `points` `stroke` thick (its ends and bends round), or
+ * a line of text (its baseline's middle, start or end at `x`, `y`; `size` its
+ * height in units). Filled with `fill` at `alpha`; an outline's colour, and
+ * a grown polygon's or a line's, raw (no theme key).
  */
 export type Shape = {
-  kind: 'rect' | 'ellipse' | 'poly' | 'text'
+  kind: 'rect' | 'ellipse' | 'poly' | 'line' | 'text'
   x: number
   y: number
   w: number
@@ -62,6 +66,9 @@ export type Shape = {
   r?: number
   ring?: number
   points?: readonly (readonly [number, number])[]
+  grow?: number
+  outline?: { width: number; fill: string }
+  stroke?: number
   text?: string
   size?: number
   anchor?: 'start' | 'middle' | 'end'
@@ -80,9 +87,19 @@ const matrixAttr = (m: Matrix | undefined): string =>
 const elementOf = (shape: Shape): string => {
   const theme = isThemeKey(shape.fill) ? ` class='${CLASSES[shape.fill]}'` : ''
   const alpha = shape.alpha ?? 1
+  const grow = shape.kind === 'poly' ? shape.grow ?? 0 : 0
+  const outline = shape.kind === 'poly' ? shape.outline : undefined
   const paint = shape.kind === 'ellipse' && shape.ring !== undefined
     ? ` fill='none' stroke='${hexOf(shape.fill)}' stroke-width='${num(shape.ring)}'${alpha < 1 ? ` stroke-opacity='${num(alpha)}'` : ''}`
-    : `${theme} fill='${hexOf(shape.fill)}'${alpha < 1 ? ` fill-opacity='${num(alpha)}'` : ''}`
+    : shape.kind === 'line'
+      ? ` fill='none' stroke='${hexOf(shape.fill)}' stroke-width='${num(shape.stroke ?? 0)}' stroke-linecap='round' stroke-linejoin='round'${alpha < 1 ? ` stroke-opacity='${num(alpha)}'` : ''}`
+      : grow > 0
+        // Grown: its stroke as wide as twice the growth, round at the corners; seen through as one.
+        ? `${theme} fill='${hexOf(shape.fill)}' stroke='${hexOf(shape.fill)}' stroke-width='${num(2 * grow)}' stroke-linejoin='round'${alpha < 1 ? ` opacity='${num(alpha)}'` : ''}`
+        : outline !== undefined
+          // Outlined: its stroke painted first, under its fill, twice as wide as the outline, round at the corners.
+          ? `${theme} fill='${hexOf(shape.fill)}' stroke='${outline.fill}' stroke-width='${num(2 * outline.width)}' stroke-linejoin='round' paint-order='stroke'${alpha < 1 ? ` opacity='${num(alpha)}'` : ''}`
+          : `${theme} fill='${hexOf(shape.fill)}'${alpha < 1 ? ` fill-opacity='${num(alpha)}'` : ''}`
   switch (shape.kind) {
     case 'rect': {
       const r = Math.min(shape.r ?? 0, shape.w / 2, shape.h / 2)
@@ -93,13 +110,22 @@ const elementOf = (shape: Shape): string => {
       return `<ellipse cx='${num(shape.x + shape.w / 2)}' cy='${num(shape.y + shape.h / 2)}' rx='${num(shape.w / 2)}' ry='${num(shape.h / 2)}'${paint}/>`
     case 'poly':
       return `<polygon points='${(shape.points ?? []).map(([x, y]) => `${num(x)},${num(y)}`).join(' ')}'${paint}/>`
+    case 'line':
+      return `<polyline points='${(shape.points ?? []).map(([x, y]) => `${num(x)},${num(y)}`).join(' ')}'${paint}/>`
     case 'text':
       return `<text x='${num(shape.x)}' y='${num(shape.y)}' font-size='${num(shape.size ?? 3)}'${shape.anchor === undefined || shape.anchor === 'middle' ? '' : ` text-anchor='${shape.anchor}'`}${shape.bold === true ? ` font-weight='700'` : ''}${paint}>${escapeText(shape.text ?? '')}</text>`
   }
 }
 
 const visible = (shape: Shape): boolean =>
-  (shape.alpha ?? 1) > 0.004 && (shape.kind === 'text' ? (shape.text ?? '') !== '' : shape.kind === 'poly' ? (shape.points?.length ?? 0) >= 3 : shape.w > 0 && shape.h > 0)
+  (shape.alpha ?? 1) > 0.004 &&
+  (shape.kind === 'text'
+    ? (shape.text ?? '') !== ''
+    : shape.kind === 'poly'
+      ? (shape.points?.length ?? 0) >= 3
+      : shape.kind === 'line'
+        ? (shape.points?.length ?? 0) >= 2 && (shape.stroke ?? 0) > 0
+        : shape.w > 0 && shape.h > 0)
 
 /**
  * The shapes as SVG markup to set in a document of one's own: shapes in a
@@ -165,8 +191,10 @@ const distanceTo = (shape: Shape): ((x: number, y: number) => number) => {
         : (x, y) => Math.abs((Math.hypot((x - cx) / rx, (y - cy) / ry) - 1) * small) - ring / 2
     }
     case 'poly': {
-      // Any simple polygon, convex or not (a stroke along an arc): the distance to its nearest edge, inside by its crossings.
+      // Any simple polygon, convex or not (a stroke along an arc): the distance to its nearest edge, inside by its crossings;
+      // grown, that much nearer.
       const points = shape.points ?? []
+      const grow = shape.grow ?? 0
       const edges = points.map((point, i) => {
         const [ax, ay] = point
         const [bx, by] = points[(i + 1) % points.length] ?? [0, 0]
@@ -185,7 +213,30 @@ const distanceTo = (shape: Shape): ((x: number, y: number) => number) => {
           if (ay > y !== ay + dy > y && x < ax + ((y - ay) * dx) / dy) inside = !inside
         }
 
-        return inside ? -Math.sqrt(nearest) : Math.sqrt(nearest)
+        return (inside ? -Math.sqrt(nearest) : Math.sqrt(nearest)) - grow
+      }
+    }
+    case 'line': {
+      // A line through its points: the distance to its nearest stretch, less half its width.
+      const points = shape.points ?? []
+      const half = (shape.stroke ?? 0) / 2
+      const stretches = points.slice(1).map((point, i) => {
+        const [ax, ay] = points[i] ?? point
+        const [bx, by] = point
+
+        return [ax, ay, bx - ax, by - ay, (bx - ax) * (bx - ax) + (by - ay) * (by - ay)] as const
+      })
+
+      return (x, y) => {
+        let nearest = Infinity
+        for (const [ax, ay, dx, dy, length] of stretches) {
+          const t = length > 0 ? Math.max(0, Math.min(1, ((x - ax) * dx + (y - ay) * dy) / length)) : 0
+          const ex = x - ax - t * dx
+          const ey = y - ay - t * dy
+          nearest = Math.min(nearest, ex * ex + ey * ey)
+        }
+
+        return Math.sqrt(nearest) - half
       }
     }
     case 'rect': {
@@ -207,11 +258,12 @@ const distanceTo = (shape: Shape): ((x: number, y: number) => number) => {
 
 /** The local box a shape covers, for its pixels' bounds. */
 const boundsOf = (shape: Shape): [number, number, number, number] => {
-  if (shape.kind === 'poly') {
+  if (shape.kind === 'poly' || shape.kind === 'line') {
     const xs = (shape.points ?? []).map(one => one[0])
     const ys = (shape.points ?? []).map(one => one[1])
+    const pad = shape.kind === 'line' ? (shape.stroke ?? 0) / 2 : (shape.grow ?? 0) + (shape.outline?.width ?? 0)
 
-    return [Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)]
+    return [Math.min(...xs) - pad, Math.min(...ys) - pad, Math.max(...xs) + pad, Math.max(...ys) + pad]
   }
   const pad = shape.ring ?? 0
 
@@ -278,6 +330,8 @@ export const rasterOf = (shapes: readonly Shape[], width: number, height: number
       for (const one of glyphs?.(shape) ?? []) layShape(pixels, width, height, one, multiply(m, one.m ?? IDENTITY), scheme)
       continue
     }
+    // Outlined: its outline first, the polygon grown that far in the outline's colour.
+    if (shape.kind === 'poly' && shape.outline !== undefined) layShape(pixels, width, height, { ...shape, grow: (shape.grow ?? 0) + shape.outline.width, fill: shape.outline.fill }, m, scheme)
     layShape(pixels, width, height, shape, m, scheme)
   }
 

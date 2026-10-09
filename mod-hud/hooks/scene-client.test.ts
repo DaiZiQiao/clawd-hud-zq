@@ -363,8 +363,9 @@ describe('the vector art', () => {
     expect(source).toMatch(new RegExp(`<ellipse [^>]*fill='${USAGI.line}'`))
     expect(source).toMatch(new RegExp(`<rect [^>]*fill='${USAGI.ear}'`))
     expect(source).toMatch(new RegExp(`<ellipse [^>]*fill='${USAGI.blush}'`))
-    // Its cheeks' strokes, brows and cat's mouth in its line.
-    expect(source).toMatch(new RegExp(`<polygon [^>]*fill='${USAGI.line}'`))
+    // Its brows and cat's mouth, lines in its line; its cheeks' strokes.
+    expect(source).toMatch(new RegExp(`<polyline [^>]*stroke='${USAGI.line}'[^>]*stroke-linecap='round'`))
+    expect(source).toMatch(new RegExp(`<rect [^>]*fill='${USAGI.line}'`))
     await ui.unmount()
   })
 

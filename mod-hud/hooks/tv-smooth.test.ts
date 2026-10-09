@@ -46,7 +46,7 @@ const boundsOf = (shapes: readonly Shape[]): { left: number; top: number; right:
   for (const shape of shapes) {
     if ((shape.alpha ?? 1) < 0.05 || shape.kind === 'text') continue
     const m = shape.m ?? [1, 0, 0, 1, 0, 0]
-    const corners: (readonly [number, number])[] = shape.kind === 'poly' ? [...(shape.points ?? [])] : [[shape.x, shape.y], [shape.x + shape.w, shape.y], [shape.x, shape.y + shape.h], [shape.x + shape.w, shape.y + shape.h]]
+    const corners: (readonly [number, number])[] = shape.kind === 'poly' || shape.kind === 'line' ? [...(shape.points ?? [])] : [[shape.x, shape.y], [shape.x + shape.w, shape.y], [shape.x, shape.y + shape.h], [shape.x + shape.w, shape.y + shape.h]]
     for (const [x, y] of corners) {
       const px = m[0] * x + m[2] * y + m[4]
       const py = m[1] * x + m[3] * y + m[5]
