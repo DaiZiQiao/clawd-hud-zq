@@ -622,7 +622,7 @@ its line over its head
 out, its line in a spiky balloon.
 
 **Its stroll and its bounds.** On foot Usagi strolls at Clawd's pace, a
-cell a frame, then bounds: one walking frame in five rather than ten it
+cell a frame, then bounds: one walking frame in seven rather than ten it
 springs as far as 18 cells (`BOUND_REACH`, against a hop's 10), six frames
 in the air (`BOUND_AIR`) and low, two rows of sky enough, so it bounds in
 the band above the prompt too (`Mover.springy`, set by `mascotPlan` for a

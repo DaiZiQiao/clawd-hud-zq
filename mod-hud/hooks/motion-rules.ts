@@ -133,8 +133,8 @@ export const towardDepth = (from: number, to: number, tick: number): number => (
 
 export const pauseOf = (id: string, tick: number): number => PAUSE_MIN + roll(id, 'pause', tick, PAUSE_SPAN)
 
-/** Usagi strolls at Clawd's pace, then bounds: a leap one walking frame in five, as far as BOUND_REACH, BOUND_AIR frames in the air, low enough for two rows of sky. */
-export const BOUND_ONE_IN = 5
+/** Usagi strolls at Clawd's pace, then bounds: a leap one walking frame in seven, as far as BOUND_REACH, BOUND_AIR frames in the air, low enough for two rows of sky. */
+export const BOUND_ONE_IN = 7
 export const BOUND_REACH = 18
 export const BOUND_AIR = 6
 
