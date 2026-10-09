@@ -45,6 +45,8 @@ export type Look = {
   hatOff?: boolean
   /** Under the blanket: which of the quilt's two patterns, a breath apart. */
   breath?: number
+  /** Usagi's eyes half lidded: bored (idle a while), drowsy (about to nap), or unimpressed, `hmph` (failed); Clawd's eyes are its own. */
+  lids?: 'bored' | 'drowsy' | 'hmph'
 }
 export type MiniLook = { head: MiniHead; legs: MiniLegs; overlays: readonly Overlay[]; lift: number; sit: boolean }
 
@@ -143,6 +145,13 @@ const cheerLook = (frame: number): Look => {
 
 const LOOK_AROUND: readonly Head[] = ['left', 'left', 'open', 'open', 'right', 'right', 'up', 'open']
 
+/** Idle this long, Usagi's lids come down, bored; this long before its nap, drowsy. */
+export const BORED_MS = 30_000
+export const DROWSY_MS = 12_000
+
+/** Its lids, idle `idleMs`: drowsy just before the blanket, bored a while before that, else up. */
+const lidsOf = (idleMs: number): Look['lids'] => (idleMs >= BLANKET_AFTER_MS - DROWSY_MS ? 'drowsy' : idleMs >= BORED_MS ? 'bored' : undefined)
+
 /**
  * An idle mascot's look: its bit for the slot, keyed by its idle time so a
  * bit starts at its first frame; the blanket breathes and its `z`s rise by
@@ -152,13 +161,19 @@ const idleLook = (id: string, idleMs: number, tick: number): Look => {
   const bit = idleBitOf(id, idleMs)
   const frame = Math.floor((Math.max(0, idleMs) % IDLE_SLOT_MS) / SCENE_FRAME_MS)
   switch (bit) {
-    case 'look':
-      return { ...STAND, head: at(LOOK_AROUND, frame) }
+    case 'look': {
+      const lids = lidsOf(idleMs)
+
+      return { ...STAND, head: at(LOOK_AROUND, frame), ...(lids === undefined ? {} : { lids }) }
+    }
     case 'stretch':
       // Once a slot, then at rest.
       return stretchLook(Math.min(frame, 7))
-    case 'sit':
-      return { ...STAND, pose: 'sit', arms: 'low', head: frame % 16 === 12 || frame % 16 === 13 ? 'shut' : 'open' }
+    case 'sit': {
+      const lids = lidsOf(idleMs)
+
+      return { ...STAND, pose: 'sit', arms: 'low', head: frame % 16 === 12 || frame % 16 === 13 ? 'shut' : 'open', ...(lids === undefined ? {} : { lids }) }
+    }
     case 'puff':
       return { ...STAND, head: 'shut', overlays: [...OVERLAYS.cigarette, at(OVERLAYS.smoke, frame)] }
     case 'blanket':
@@ -276,7 +291,7 @@ const FALL_LOOK: Look = { ...STAND, head: 'wide', arms: 'up', armsUp: true, legs
 
 /** The pipe coming down over it: done, eyes up at it under its `✓`; failed, still slumped under its `✗`. */
 const lowerLook = (agent: MascotAgent): Look =>
-  agent.status === 'failed' ? { ...STAND, head: 'shut', arms: 'low', pose: 'sit', overlays: OVERLAYS.cross } : { ...STAND, head: 'up', overlays: OVERLAYS.tick }
+  agent.status === 'failed' ? { ...STAND, head: 'shut', arms: 'low', pose: 'sit', overlays: OVERLAYS.cross, lids: 'hmph' } : { ...STAND, head: 'up', overlays: OVERLAYS.tick }
 
 /** Sucked up the pipe: stretched, arms up beside its head and legs long, eyes up (shut, failed); nothing beside it. */
 const suckLook = (agent: MascotAgent): Look => ({ ...STAND, head: agent.status === 'failed' ? 'shut' : 'up', arms: 'up', armsUp: true, legs: 'stretch' })
@@ -304,7 +319,7 @@ const phaseLook = (agent: MascotAgent, phase: Phase, tick: number, facing: 'left
     case 'cheer':
       return cheerLook(phase.step)
     case 'sit':
-      return { ...STAND, head: 'shut', arms: 'low', pose: 'sit', overlays: OVERLAYS.cross }
+      return { ...STAND, head: 'shut', arms: 'low', pose: 'sit', overlays: OVERLAYS.cross, lids: 'hmph' }
     case 'leave':
       return (pipe ?? leaveStage(phase.step)) === 'lower' ? lowerLook(agent) : suckLook(agent)
     case 'work':

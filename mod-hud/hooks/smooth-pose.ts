@@ -315,8 +315,10 @@ export const fullTarget = (look: Look, context: PoseContext): FigurePose => {
     case 'stand':
       break
   }
-  // Usagi slumped under its cross: its ears droop, where no hat or crown holds them up (hooks/smooth-art.ts).
-  if (usagi && look.pose === 'sit' && beside.some(one => one.kind === 'cross')) pose.droop = 1
+  // Usagi slumped under its cross: its ears droop, where no hat or crown holds them up (hooks/smooth-art.ts); unimpressed (`hmph`), they stay up.
+  if (usagi && look.pose === 'sit' && look.lids !== 'hmph' && beside.some(one => one.kind === 'cross')) pose.droop = 1
+  // Usagi's lids half down: bored, drowsy (eyes low), or unimpressed, `hmph`, a smug smile with them.
+  if (usagi && look.lids !== undefined) Object.assign(pose, { eyes: 'half', eyeOpen: 1, eyeX: 0, eyeY: look.lids === 'drowsy' ? 0.2 : 0, ...(look.lids === 'hmph' ? { mouthShape: 'smirk', mouth: 0 } : {}) })
   if (tidy && context.tidyMs === undefined) pose.beside = [...pose.beside, { kind: 'props', props: tidyPose(0).props }]
 
   return pose

@@ -13,6 +13,8 @@ The mascots are drawn smooth.
 
 ## Usagi, chaotic and cute (new)
 - Drawn as Chiikawa draws it: a big round head on a smaller round body, long ears together and pink inside, little feet and stubby arms sticking out of its sides, small dot eyes with a glint under high brows that curve down to the side (never squeezed shut), pink cheeks with four short dark strokes, a mouth like a flat 3 with its chin's short slanted curve under one side (its cheeky look) (wide open and tall when it shouts, a smug hooked smile, a grin), and a white tufted tail that shows as it runs, all cream with a bold near-black outline. Its hats sit on its head with its ears through them. In the TV its ears stand up as the set's rabbit-ear antenna.
+- In a burst its eyes become spirals, turning, and knocked flat they are crosses; it shouts with a wide open mouth, its tongue in it.
+- Its lids come half down: bored when it has been idle a while, drowsy just before it naps, and an unimpressed "hmph" with a smug smile when one of its agents fails.
 - In block characters too its ears now stand together and its body is narrower than its head.
 - Like Chiikawa's Usagi, it bursts into something out of nowhere, about once every six or seven seconds, each Usagi on a clock of its own: the Yaha! dance, an Ura! leap, a HUHHH? lean-in, a smug Fuun, zoomies, a twirl, a backflip, or an UNA! shake. At its laptop it bashes the keys with both hands. Its line bursts out in a spiky balloon.
 - It sprints: on foot it covers twice Clawd's ground, rests half as long and leaps more often. Its legs become a spinning cartoon wheel, it leans hard into its run with arms pumping and ears streaming back, kicking up dust behind speed lines. In block characters, four feet flurry instead.

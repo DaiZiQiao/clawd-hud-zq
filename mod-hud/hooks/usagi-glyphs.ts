@@ -115,8 +115,10 @@ const mouthOf = (look: Look, shouting: boolean): readonly number[] => {
 
 /** Its face's two rows: the eyes (row 4, or 5 looking down), the cheeks and the mouth (row 5). */
 const faceOf = (look: Look, shouting: boolean): [string, string] => {
-  const eyes = EYES[look.head]
-  const low = look.head === 'down'
+  // Half lidded (bored, drowsy, unimpressed): its eyes low, as looking down.
+  const head = look.lids !== undefined ? 'down' : look.head
+  const eyes = EYES[head]
+  const low = head === 'down'
   const cheeks = marked(marked(FACE, CHEEKS, 'P'), mouthOf(look, shouting), 'M')
 
   return [low ? FACE : marked(FACE, eyes, 'K'), low ? marked(cheeks, eyes, 'K') : cheeks]

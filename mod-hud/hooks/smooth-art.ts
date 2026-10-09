@@ -362,12 +362,23 @@ export const usagiMouthShapes = (m: Matrix, kind: UsagiMouth, open = 1): Shape[]
       ]
     }
     case 'scream': {
+      // Wide open shouting: a D on its back, flat along its top, round below, outlined, its tongue at the bottom.
       const size = Math.max(0.6, open)
-      const w = 1.5 * size
-      const h = 2 * size
-      const mouth: Shape = { kind: 'rect', x: -w / 2, y: -0.55, w, h, r: w * 0.48, fill: USAGI.mouth, m }
+      const d = (w: number, h: number, top: number): (readonly [number, number])[] =>
+        Array.from({ length: 19 }, (_, index) => {
+          const a = (index / 18) * Math.PI
 
-      return [grownBy(mouth, 0.2, USAGI.line), mouth, { kind: 'ellipse', x: -w * 0.33, y: -0.55 + h * 0.6, w: w * 0.66, h: h * 0.32, fill: USAGI.blush, m }]
+          return [(w / 2) * Math.cos(a), top + h * Math.sin(a)] as const
+        })
+      const w = 2 * size
+      const h = 1.25 * size
+      const top = -0.4
+
+      return [
+        { kind: 'poly', x: 0, y: 0, w: 0, h: 0, points: d(w + 0.4, h + 0.4, top - 0.2), fill: USAGI.line, m },
+        { kind: 'poly', x: 0, y: 0, w: 0, h: 0, points: d(w, h, top), fill: USAGI.mouth, m },
+        { kind: 'ellipse', x: -w * 0.27, y: top + h * 0.5, w: w * 0.54, h: h * 0.42, fill: USAGI.blush, m },
+      ]
     }
     case 'o': {
       const mouth: Shape = { kind: 'rect', x: -0.45, y: -0.5, w: 0.9, h: 1.15, r: 0.45, fill: USAGI.mouth, m }
@@ -453,6 +464,29 @@ export const browLine = (inner: number, outer: number, top: number, drop: number
     return [inner + (outer - inner) * Math.sin(turn), top + drop * (1 - Math.cos(turn))] as const
   })
 
+/** Usagi's eyes in a burst: spirals in its line, turning (`t` ms), each the other way; ~0.55 units out. */
+const spiralEyeShapes = (m: Matrix, cx: readonly [number, number], cy: number, t: number): Shape[] =>
+  cx.flatMap((x, index) => {
+    const way = index === 0 ? -1 : 1
+    const spin = way * (t / 1000) * 2 * Math.PI * 1.3
+    const turns = 2.2
+    const points = Array.from({ length: 44 }, (_, step) => {
+      const u = step / 43
+      const a = way * u * turns * 2 * Math.PI + spin
+
+      return [x + (0.06 + 0.5 * u) * Math.cos(a), cy + (0.06 + 0.5 * u) * Math.sin(a)] as const
+    })
+
+    return strokeShapes(m, points, 0.13, USAGI.line)
+  })
+
+/** Usagi's eyes knocked flat: crosses, `× ×`. */
+const crossEyeShapes = (m: Matrix, cx: readonly [number, number], cy: number): Shape[] =>
+  cx.flatMap(x => [
+    ...strokeShapes(m, [[x - 0.4, cy - 0.4], [x + 0.4, cy + 0.4]], 0.18, USAGI.line),
+    ...strokeShapes(m, [[x + 0.4, cy - 0.4], [x - 0.4, cy + 0.4]], 0.18, USAGI.line),
+  ])
+
 /** A cheek's blush: a pink oval, four short dark strokes on it. */
 const blushShapes = (m: Matrix, cx: number, cy: number): Shape[] => [
   { kind: 'ellipse', x: cx - 1.25, y: cy - 0.72, w: 2.5, h: 1.44, fill: USAGI.blush, alpha: 0.95, m },
@@ -531,8 +565,12 @@ const usagiShapes = (pose: FigurePose, info: FigureInfo, t: number): Shape[] => 
   shapes.push(
     ...blushShapes(body, -3.7, -6.85),
     ...blushShapes(body, 3.7, -6.85),
-    // Usagi never squeezes its eyes shut `> <`: through a burst its dots stay.
-    ...eyeShapes(body, pose.eyes === 'squeeze' ? { ...pose, eyes: 'normal' } : pose, [-2.25, 2.25], -8.15, 0.95, 1.2, USAGI.eye, true),
+    // Usagi never squeezes its eyes shut `> <`: in a burst (and dizzy) its eyes are spirals, turning; knocked flat, crosses.
+    ...(pose.flat > 0.5
+      ? crossEyeShapes(body, [-2.25 + pose.eyeX, 2.25 + pose.eyeX], -8.15)
+      : pose.eyes === 'squeeze' || pose.eyes === 'spiral'
+        ? spiralEyeShapes(body, [-2.25 + pose.eyeX, 2.25 + pose.eyeX], -8.15 + pose.eyeY, t)
+        : eyeShapes(body, pose, [-2.25, 2.25], -8.15, 0.95, 1.2, USAGI.eye, true)),
     ...[-1, 1].flatMap(side => strokeShapes(body, browLine(side * 1.5 + pose.eyeX, side * 3.95 + pose.eyeX, browTop, 1.75), 0.3, USAGI.line)),
   )
   // Its mouth, turned with its eyes: small and open, wide open screaming, a round `o`, a smirk.

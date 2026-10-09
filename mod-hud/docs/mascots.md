@@ -179,13 +179,14 @@ the stretch, pick up, dangle, throw and tumble.
   sticking out of its sides (their line the silhouette's at rest, over it
   raised); its dot eyes with a small glint in their top right under brows
   high over them (a quarter of an ellipse each, level by the face's middle,
-  curving down to the side, apart over its nose), never squeezed shut, its
-  cheeks pink with four short dark strokes, its mouth a flat `3` (a short
-  tick up from its middle, either side a wide shallow lobe) and its chin, the
-  cheeky look: a short curve hanging slanted from under its left lobe, all
-  but joined to it; wide open and
-  tall, its tongue at the bottom, on a shout; a small
-  `o`, a smug hooked smile, a grin of two peaks; going, its tail, a white
+  curving down to the side, apart over its nose), never squeezed shut (in a
+  burst spirals, knocked flat crosses), its lids half down bored, drowsy or
+  unimpressed, its cheeks pink with four short dark strokes, its mouth a flat
+  `3` (a short tick up from its middle, either side a wide shallow lobe) and
+  its chin, the cheeky look: a short curve from under its left lobe, down
+  then round to the right, all but joined to it; wide open on a shout, a D
+  on its back, its tongue in it; a small `o`, a smug hooked smile, a grin of
+  two peaks; going, its tail, a white
   puff tufted in short strokes, out of its back; its hat, side crown and
   energy. Its laptop stands nearer it than Clawd's, its body being narrower.
   Its thoughts are its phrases (`Yahaa!`, `HUHHH?`) in the cloud, its
@@ -565,12 +566,18 @@ arms pumping, ears streaming back, dust kicked up and speed lines behind.
 
 **The face** (vector art). Small dot eyes with a glint under brows high over
 them, level by the middle and curving down to the side (higher when it is
-startled); its dots kept through a burst (never `> <`), half lidded when
-smug, wide when startled; its cheeks pink with four short dark strokes; its
-mouth a flat `3` with its chin's short slanted curve under its left side,
-open wide and tall
-when it screams, a round `o`, a smug hooked smile, a grin of two peaks with
-its eyes happy. Its ears twitch,
+startled); never squeezed shut `> <`: in a burst (the Yaha! dance, Ura!,
+UNA!, zoomies, bashing its keys) and dizzy, spirals turning, each the other
+way; knocked flat, crosses `× ×`; wide when startled. Its lids come half
+down (`Look.lids`): bored, idle 30 seconds as it looks about or sits;
+drowsy, the last 12 before its nap; unimpressed, `hmph`, when it fails, a
+smug smile with them and its ears up under its cross (it is never sad); and
+smug through its Fuun. In its cells, half lidded, its eyes sit low. Its
+cheeks pink with four short dark strokes; its mouth a flat `3` with its
+chin's short curve under its left side (down, then round to the right),
+wide open when it shouts (a D on its back, flat along its top, its tongue
+in it), a round `o`, a smug hooked smile, a grin of two peaks with its eyes
+happy. Its ears twitch,
 one at a time, every three to six seconds. Asleep, a bubble swells and
 shrinks from its nose. Its shouts (the cigarette's puffs, `HUHHH?` dazed,
 `HUHHH?!` startled, its quirks) burst out in the same spiky balloon.
