@@ -8,7 +8,8 @@ import type { SceneInputs } from './scene-types'
 import { layoutAt, sceneAt, viewOf } from './scene-view'
 import { clockMs, createWorld, pointer, receive, tick } from './scene-world'
 import type { World } from './scene-world'
-import { prefetchScenery, workScenery } from './scenery-pixels'
+import { prefetchScenery, sceneryPicture, workScenery } from './scenery-pixels'
+import type { SceneryPicture } from './scenery-pixels'
 import { createSmoother } from './smooth-pose'
 import type { Smoother } from './smooth-pose'
 
@@ -70,13 +71,14 @@ const AHEAD_MS = 4
 
 /**
  * One scene drawn as a picture: its world, its eased poses, its tiles as last
- * drawn and the frame they were cut from; when its scenery last moved on (the
- * scene's time); the timer's frames it waits to draw, and the bytes it may
- * still send.
+ * drawn and the frame they were cut from; its scenery's pixels, and when its
+ * scenery last moved on (the scene's time); the timer's frames it waits to
+ * draw, and the bytes it may still send.
  */
 export type Stage = {
   world: World
   smoother: Smoother
+  scenery: SceneryPicture
   cell: { width: number; height: number }
   tiles?: Tile[]
   pixels?: Uint8Array
@@ -96,6 +98,7 @@ export type Stage = {
 export const createStage = (inputs: SceneInputs): Stage => ({
   world: createWorld(inputs),
   smoother: createSmoother(),
+  scenery: sceneryPicture(),
   cell: cellPixels(inputs.columns, inputs.rows),
   wait: 0,
   allowance: BYTES_AT_ONCE,
@@ -136,12 +139,12 @@ const stageFrame = (stage: Stage, scheme: 'dark' | 'light'): { pixels: Uint8Arra
     frame = smoothFrame(scene, layout, plan, view.sprites, stage.smoother, world.sceneNow, daylight === undefined ? false : { daylight, held: stage.held ?? world.sceneNow, pans: false }, false)
   }
   stage.still = (frame === undefined || frame.still) && world.carried.size === 0
-  const { pixels, width } = smoothPixels(frame ?? { shapes: [], wholes: [], width: 0, height: 0, still: true }, columns, rows, stage.cell, scheme)
-  // Once a leg, the next leg's land queued to be drawn ahead.
+  const { pixels, width } = smoothPixels(frame ?? { shapes: [], wholes: [], width: 0, height: 0, still: true }, columns, rows, stage.cell, scheme, stage.scenery)
+  // Once a leg (or in another scheme), the next leg's land queued to be drawn ahead.
   const scenery = frame?.scenery
-  if (scenery !== undefined && stage.ahead !== scenery.land.key) {
-    stage.ahead = scenery.land.key
-    prefetchScenery(scenery.upcoming(), columns, rows, stage.cell, scheme)
+  if (scenery !== undefined && stage.ahead !== `${scenery.land.key}:${scheme}`) {
+    stage.ahead = `${scenery.land.key}:${scheme}`
+    prefetchScenery(stage.scenery, scenery.upcoming(), columns, rows, stage.cell, scheme)
   }
 
   return { pixels, width }
@@ -187,10 +190,10 @@ export const refusedTiles = (tiles: readonly Tile[]): void => {
   for (const tile of tiles) tile.sent = false
 }
 
-/** The scenery's work ahead (the next leg's land, a new hour's light) on for AHEAD_MS: once a timer's frame, after its pictures are drawn. */
-export const workAhead = (): void => {
+/** The stages' scenery's work ahead (the next leg's land, a new hour's light) on for AHEAD_MS: once a timer's frame, after its pictures are drawn. */
+export const workAhead = (stages: readonly Stage[]): void => {
   const at = clockMs()
-  if (at !== undefined) workScenery(at + AHEAD_MS)
+  if (at !== undefined) workScenery(stages.map(stage => stage.scenery), at + AHEAD_MS)
 }
 
 /**
@@ -265,15 +268,16 @@ export const stageHits = (stage: Stage, post: HitPost, send: (data: JsonValue) =
     stage.seq = taken?.get(post.layer) ?? 0
   }
   let took = false
+  let changed = false
   for (const hit of post.hits) {
     if (hit.seq <= stage.seq) continue
     stage.seq = hit.seq
     const { seq: _, ...event } = hit
-    pointer(stage.world, event as ClientPointerEvent, send)
+    if (pointer(stage.world, event as ClientPointerEvent, send) || hit.type === 'down' || hit.type === 'up') changed = true
     took = true
   }
-  // Drawn at the next frame, whatever it waited for.
-  if (took) {
+  // A press, a release or a drag drawn at the next frame, whatever it waited for; the pointer passing over, as it comes.
+  if (changed) {
     stage.still = false
     stage.skipped = STILL_EVERY
     stage.wait = 0

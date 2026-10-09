@@ -1366,7 +1366,7 @@ const startPictures = ($: EngineInterface): void => {
             })(),
           )
         }
-        workAhead()
+        workAhead([...pictures.values()].map(picture => picture.stage))
         for (const [site, giant] of giantPictures) {
           giant.ms += IMAGE_FRAME_MS
           const frame = giantFrameOf(giant)
@@ -1440,10 +1440,12 @@ const picturedOn = async ($: EngineInterface, settings: Settings, surface: strin
   && columns >= 1 && rows >= 1 && columns <= PICTURE_MOST && rows <= PICTURE_MOST
   && (await terminalShowsPictures($))
 
-/** A picture's stage handed the props while it is not drawn (paused while inspecting): it keeps its world for when it is back. */
+/** A picture's stage handed the props while it is not drawn (paused while inspecting): it keeps its world for when it is back, and no refusal from before, which says nothing of the drawing it comes back in. */
 const holdPicture = (requestId: string, surface: string, inputs: SceneInputs): void => {
   const picture = pictures.get(`${requestId}:${surface}`)
-  if (picture !== undefined) restage(picture.stage, { ...inputs, paused: true })
+  if (picture === undefined) return
+  restage(picture.stage, { ...inputs, paused: true })
+  picture.refusedSince = undefined
 }
 
 /**

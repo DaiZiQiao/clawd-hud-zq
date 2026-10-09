@@ -183,7 +183,10 @@ describe('the stage', () => {
     stage.wait = 5
     expect(stageTick(stage, IMAGE_FRAME_MS, 'dark')).toEqual([tile])
     expect(stageTick(stage, IMAGE_FRAME_MS, 'dark')).toEqual([])
+    // The pointer passing over leaves it waiting; a press draws at once.
     expect(stageHits(stage, { layer: 'pace', hits: [{ seq: 1, type: 'move', x: 1, y: 1 }] }, () => undefined)).toBe(true)
+    expect(stage.wait).toBeGreaterThan(0)
+    expect(stageHits(stage, { layer: 'pace', hits: [{ seq: 2, type: 'down', x: 1, y: 1, button: 'left' }] }, () => undefined)).toBe(true)
     expect(stage.wait).toBe(0)
     // Its bytes spent: nothing drawn, though a mascot was just pressed, until a second's worth comes back (any frame drawn then sends every tile).
     stage.allowance = -BYTES_A_SECOND

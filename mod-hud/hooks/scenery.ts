@@ -231,14 +231,22 @@ const floorShapes = (stop: Stop, at: At, j: number, from: number, to: number): S
 
 /** A colour along the strip, `span` across from `left`, `stretch` a stop: each stop's own over its middle, blended into the next's over the seam between them. */
 const groundOf = (left: number, span: number, stretch: number): Gradient => {
-  const stops: [number, string, number][] = []
+  // Each seam's two stops along the world's strip, at their offsets into this one (the first before it, the last past it).
+  const world: [number, string][] = []
   for (let j = Math.floor(left / stretch) - 1; j * stretch <= left + span + stretch; j += 1) {
     const edge = (j + 1) * stretch
-    for (const [x, colour] of [[edge - stretch * 0.13, stopAt(j).ground], [edge + stretch * 0.13, stopAt(j + 1).ground]] as const) stops.push([Math.max(0, Math.min(1, (x - left) / span)), colour, 1])
+    world.push([(edge - stretch * 0.13 - left) / span, stopAt(j).ground], [(edge + stretch * 0.13 - left) / span, stopAt(j + 1).ground])
+  }
+  // The colour at an end: between the stops either side of it, so the strip's ends are as its neighbours' would draw them.
+  const at = (t: number): string => {
+    const after = world.findIndex(([x]) => x >= t)
+    const [x0, c0] = world[Math.max(0, after - 1)] ?? [t, '#000000']
+    const [x1, c1] = world[after < 0 ? world.length - 1 : after] ?? [x0, c0]
+
+    return x1 > x0 ? mix(c0, c1, (t - x0) / (x1 - x0)) : c1
   }
 
-  // Of those before the strip's left, only the last: its colour where the strip begins.
-  return { x1: 0, y1: 0, x2: span, y2: 0, stops: stops.slice(Math.max(0, stops.findLastIndex(([at]) => at === 0))) }
+  return { x1: 0, y1: 0, x2: span, y2: 0, stops: [[0, at(0), 1], ...world.filter(([x]) => x > 0 && x < 1).map(([x, colour]): [number, string, number] => [x, colour, 1]), [1, at(1), 1]] }
 }
 
 /** The first of the land's still shapes that run the strip's whole width: the ground, its shading and its edge. */

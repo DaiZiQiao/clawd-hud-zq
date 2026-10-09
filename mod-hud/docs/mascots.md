@@ -348,11 +348,11 @@ now by its sun). From the hour comes the sun's height, and from that:
   (`hooks/scenery-pixels.ts`). The still land is rasterized once a leg in
   daylight colours, graded for the hour column by column with its lights
   laid over, and kept until its light changes (`Land.litKey`, a
-  two-hundredth of the sun's height). That work is done sixteen rows at a
-  time, 4 ms of each timer's frame (`workScenery`): the next leg's land and
-  its light drawn ahead (`prefetchScenery`), a new light drawn while the last
-  is shown, one at a time. Each picture keeps its leg's land and the next
-  one's, no other.
+  two-hundredth of the sun's height). That work is done a few shapes or
+  sixteen rows at a time, 4 ms of each timer's frame (`workScenery`): the
+  next leg's land and its light drawn ahead first (`prefetchScenery`), then a
+  new light while the last is shown, one at a time. Each picture keeps its
+  own (`SceneryPicture`): its leg's land and the next one's, no other.
 - **On the desktop** (`smoothSvg`) the scenery is two `Svg`s under the
   mascots' (`pixelsOf`): the sky and the still land of the stops in view
   (`Land.parts`) with their lights, a document that changes only as the sky

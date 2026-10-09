@@ -8,7 +8,8 @@ import type { Cell, MascotLayout, MascotPlan, MascotScene, PlacedSprite, SceneVi
 import { glyphShapes } from './raster-font'
 import { keptIn, litLights, litStill, sceneryOf } from './scenery'
 import type { Daylight, Scenery } from './scenery'
-import { behindPixels } from './scenery-pixels'
+import { behindPixels, sceneryPicture } from './scenery-pixels'
+import type { SceneryPicture } from './scenery-pixels'
 import { crossShapes, figureShapes, markShapes, pipeShapes, tickShapes } from './smooth-art'
 import { livelyOf, targetOf } from './smooth-pose'
 import { TODDLE_MS, quirkPose } from './usagi-moves'
@@ -179,17 +180,25 @@ const stillMarkup = (key: string, shapes: () => readonly Shape[], shift: number,
 /** The units a desktop CSS pixel is: a cell is 8 by 16 pixels, 2 by 4 units. */
 const PIXELS_PER_UNIT = CELL_WIDTH / 2
 
-/** The scenery's documents as last made, by what they show and the room they had: the same strings while nothing behind the mascots moves on. */
+/** The scenery's choices of layers as last made (`sceneryChoices`), by what they show and the size. */
+const choiceMarkups = new Map<string, readonly (readonly (readonly Markup[])[])[]>()
+
+/** The scenery's documents as last made, by what they show, the size and the choice: the same strings while nothing behind the mascots moves on. */
 const sceneryDocuments = new Map<string, readonly string[]>()
 
-/** The room the scenery is given, kept in steps this big so that a mascot's markup growing a little does not make it again. */
+/**
+ * Each size's last choice of the scenery's layers: a fuller one is taken only
+ * with ROOM_STEP characters to spare, so the mascots' markup growing and
+ * shrinking a little does not flip the ground's texture on and off.
+ */
+const chosen = new Map<string, number>()
 const ROOM_STEP = 4096
 
 /**
  * The frame as the desktop's `Svg` sources, `columns` by `rows` cells of
  * CELL_WIDTH by CELL_HEIGHT pixels, under `limit` characters together: the
  * mascots (`source`) and, laid under them, the scenery's layers (`scenery`,
- * back to front, as `sceneryLayers` makes them).
+ * back to front: the fullest of `sceneryChoices` with room).
  */
 export const smoothSvg = (frame: SmoothFrame, columns: number, rows: number, limit: number): { source: string; scenery?: readonly string[]; width: number; height: number } => {
   const width = Math.max(1, Math.floor(columns)) * CELL_WIDTH
@@ -214,26 +223,33 @@ export const smoothSvg = (frame: SmoothFrame, columns: number, rows: number, lim
   }
   const document = (parts: readonly Markup[]): string => documentOf({ markup: viewed(parts.map(part => part.markup).join(''), view), used: new Set(parts.flatMap(part => [...part.used])) }, width, height, extra)
   if (scenery === undefined) return { source: document([mascots]), width, height }
-  // The weather nearest the eye over the mascots, when it fits; the scenery in the room left, in steps.
+  // The weather nearest the eye over the mascots, when it fits; the scenery in the room left.
   const front = partMarkup(scenery.front, Infinity, () => true, 'f')
   const near = mascots.markup.length + front.markup.length <= budget - ROOM_STEP ? [mascots, front] : [mascots]
-  const room = Math.floor((budget - near.reduce((sum, part) => sum + part.markup.length, 0)) / ROOM_STEP) * ROOM_STEP
-  const behind = keptIn(sceneryDocuments, `${scenery.behind}:${columns}x${rows}:${room}`, () => sceneryLayers(scenery, frame.width, frame.height, room, document), 4)
+  const room = budget - near.reduce((sum, part) => sum + part.markup.length, 0)
+  const size = `${columns}x${rows}`
+  const choices = keptIn(choiceMarkups, `${scenery.behind}:${size}`, () => sceneryChoices(scenery, frame.width, frame.height), 4)
+  const last = chosen.get(size) ?? choices.length
+  const fits = choices.findIndex((layers, index) => layers.flat().reduce((sum, part) => sum + part.markup.length, 0) <= room - (index < last ? ROOM_STEP : 0))
+  const choice = fits < 0 ? choices.length : fits
+  chosen.delete(size)
+  chosen.set(size, choice)
+  for (const old of chosen.keys()) if (chosen.size > 8) chosen.delete(old)
+  const behind = keptIn(sceneryDocuments, `${scenery.behind}:${size}:${choice}`, () => (choices[choice] ?? []).filter(parts => parts.some(part => part.markup !== '')).map(document), 4)
 
   return { source: document(near), ...(behind.length === 0 ? {} : { scenery: behind }), width, height }
 }
 
 /**
- * The scenery behind the mascots as documents under `room` characters
- * together, alike shapes merged into paths: the sky and the still land of
- * the stops in view lit for the hour, with its lights, made again only as the
- * sky or the light moves on (or a pan does); over them what moves on the
- * land, the stop's name and the weather, at each of the scenery's steps. All
- * of it, else without (one by one) the ground's texture, the weather, the
- * sky's sun, moon, stars and clouds, what moves on the land, then the
- * lights; else none.
+ * The scenery behind the mascots as layers, alike shapes merged into paths:
+ * the sky and the still land of the stops in view lit for the hour, with its
+ * lights, made again only as the sky or the light moves on (or a pan does);
+ * over them what moves on the land, the stop's name and the weather, at each
+ * of the scenery's steps. Fullest first: all of it, then without (one by
+ * one) the ground's texture, the weather, the sky's sun, moon, stars and
+ * clouds, what moves on the land, then the lights.
  */
-const sceneryLayers = (scenery: Scenery, width: number, height: number, room: number, document: (parts: readonly Markup[]) => string): readonly string[] => {
+const sceneryChoices = (scenery: Scenery, width: number, height: number): readonly (readonly (readonly Markup[])[])[] => {
   const { land } = scenery
   const moving = (shapes: readonly Shape[], prefix: string): Markup => partMarkup(shapes, Infinity, () => true, prefix)
   // The sky's colours, fading in from the page at the top: masked by a ramp down, from 0.3 to whole.
@@ -250,7 +266,8 @@ const sceneryLayers = (scenery: Scenery, width: number, height: number, room: nu
   const landMoving = moving(land.moving, 'n')
   const caption = moving(land.caption, 'c')
   const weather = moving(scenery.weather, 'w')
-  const choices: (readonly Markup[])[][] = [
+
+  return [
     [[sky, skyMoving, still(true), lights], [landMoving, caption, weather]],
     [[sky, skyMoving, still(false), lights], [landMoving, caption, weather]],
     [[sky, skyMoving, still(false), lights], [landMoving, caption]],
@@ -258,9 +275,6 @@ const sceneryLayers = (scenery: Scenery, width: number, height: number, room: nu
     [[sky, still(false), lights], [caption]],
     [[sky, still(false)], [caption]],
   ]
-  const chosen = choices.find(layers => layers.flat().reduce((sum, part) => sum + part.markup.length, 0) <= room) ?? []
-
-  return chosen.filter(parts => parts.some(part => part.markup !== '')).map(document)
 }
 
 /**
@@ -269,8 +283,9 @@ const sceneryLayers = (scenery: Scenery, width: number, height: number, room: nu
  * (hooks/raster-font.ts) and its theme keys in `scheme`'s colours: a terminal
  * Image's picture. With scenery, what is behind the mascots is drawn again
  * only when it moves on (`Scenery.behind`), the sky and the still land only
- * when they do (`Scenery.still`): a frame between is those pixels kept, and
- * the mascots over them.
+ * when they do (`Scenery.still`), each kept in `kept` (the picture's own; by
+ * default one for this frame alone): a frame between is those pixels kept,
+ * and the mascots over them.
  */
 export const smoothPixels = (
   frame: SmoothFrame,
@@ -278,13 +293,14 @@ export const smoothPixels = (
   rows: number,
   cell: { width: number; height: number },
   scheme: 'dark' | 'light' = 'dark',
+  kept: SceneryPicture = sceneryPicture(),
 ): { pixels: Uint8Array; width: number; height: number } => {
   const width = Math.max(1, Math.floor(columns)) * cell.width
   const height = Math.max(1, Math.floor(rows)) * cell.height
   const view = scale(cell.width / 2, cell.height / 4)
   const scenery = frame.scenery
   if (scenery === undefined) return { pixels: rasterOf(frame.shapes, width, height, view, glyphShapes, scheme), width, height }
-  const behind = behindPixels(scenery, width, height, cell, scheme)
+  const behind = behindPixels(kept, scenery, width, height, cell, scheme)
 
   // The stop's name over it as it is now, fading in and out while the rest holds.
   return { pixels: rasterOf([...frame.shapes, ...scenery.land.caption, ...scenery.front], width, height, view, glyphShapes, scheme, behind.slice()), width, height }

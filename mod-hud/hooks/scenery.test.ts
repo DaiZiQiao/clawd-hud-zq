@@ -5,7 +5,7 @@ import type { Shape } from './clawd-vector'
 import { SCENERY_STEP_MS, smoothPixels, smoothSvg } from './scene-smooth'
 import { SKY_MS, STAY_MS, litLights, litStill, sceneryOf } from './scenery'
 import type { Scenery } from './scenery'
-import { workScenery } from './scenery-pixels'
+import { sceneryPicture, workScenery } from './scenery-pixels'
 import { STOPS } from './scenery-stops'
 
 // The world tour behind the smooth scene (hooks/scenery.ts): where it is at
@@ -62,7 +62,7 @@ describe('the tour', () => {
     for (let step = 1; step < shifts.length; step += 1) expect(shifts[step]!.shift).toBeGreaterThan(shifts[step - 1]!.shift)
     expect(Math.abs(shifts[shifts.length - 1]!.shift - (shifts[0]!.span - 240))).toBeLessThan(0.1)
     // No name while it pans.
-    expect(shifts.every(one => !one.moving.some(shape => shape.kind === 'text'))).toBe(true)
+    expect(shifts.every(one => one.caption.length === 0)).toBe(true)
   })
 })
 
@@ -227,19 +227,17 @@ describe('on the desktop', () => {
 
   test('drawn again as the light changes: in a picture the last light standing in till the next is lit, on the desktop at once', () => {
     const dusk = visit('ROME · ITALY', 18, 2000, 'fast')
+    const kept = sceneryPicture()
     const ground = (now: number): number => {
-      const { pixels, width } = smoothPixels({ shapes: [], wholes: [], width: 240, height: 24, still: false, scenery: sceneryAt(now) }, 120, 6, { width: 8, height: 16 })
+      const { pixels, width } = smoothPixels({ shapes: [], wholes: [], width: 240, height: 24, still: false, scenery: sceneryAt(now) }, 120, 6, { width: 8, height: 16 }, 'dark', kept)
       const p = ((96 - 8) * width + 480) * 4
 
       return (pixels[p] ?? 0) + (pixels[p + 1] ?? 0) + (pixels[p + 2] ?? 0)
     }
-    // Lit for the hour (whatever this land was lit for before).
-    ground(dusk)
-    workScenery(Infinity)
     const first = ground(dusk)
     // Half an hour on at the stop: the light of the hour lit while the last stands in, then shown.
     expect(ground(dusk + 30_000)).toBe(first)
-    workScenery(Infinity)
+    workScenery([kept], Infinity)
     expect(ground(dusk + 30_000)).toBeLessThan(first - 30)
     // On the desktop, the ground's colours.
     const land = (now: number): string => /<linearGradient id='l1'.*?<\/linearGradient>/.exec(smoothSvg({ shapes: [], wholes: [], width: 240, height: 24, still: false, scenery: sceneryAt(now) }, 120, 6, 90_000).scenery?.[0] ?? '')?.[0] ?? ''
