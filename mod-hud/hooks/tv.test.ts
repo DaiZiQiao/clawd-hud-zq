@@ -642,7 +642,7 @@ describe('back from the TV', () => {
     expect(layoutAt(world, 0)).toMatchObject({ away: 'a', held: ['a'] })
   })
 
-  test('in the scene: the mascot in the TV is not drawn; back, it is shaken till three seconds are up; Usagi shouts HUHHH?!', () => {
+  test('in the scene: the mascot in the TV is not drawn; back, it is shaken till three seconds are up; Usagi shouts Haa?!', () => {
     const scene = sceneOf([TYPIST], idleHud, idleHud.now ?? 0)
     const layout = { columns: 40, rows: 6, tick: 0 }
     const drawn = (extra: object) => (mascotLines(scene, { ...layout, ...extra }) ?? []).join('\n')

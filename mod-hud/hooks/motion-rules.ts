@@ -133,15 +133,10 @@ export const towardDepth = (from: number, to: number, tick: number): number => (
 
 export const pauseOf = (id: string, tick: number): number => PAUSE_MIN + roll(id, 'pause', tick, PAUSE_SPAN)
 
-/** Usagi on foot: two cells a frame, twice Clawd's pace; half the rest between walks; a leap one walking frame in six. */
-export const ZIPPY_CELLS = 2
-export const ZIPPY_LEAP_ONE_IN = 6
-
-/** Up to `cells` toward `to`, never past it. */
-export const towardBy = (from: number, to: number, cells: number): number => from + Math.max(-cells, Math.min(cells, to - from))
-
-/** A mover's rest between walks: half as long for Usagi. */
-export const pauseFor = (mover: { id: string; zippy?: true }, tick: number): number => (mover.zippy === true ? Math.ceil(pauseOf(mover.id, tick) / 2) : pauseOf(mover.id, tick))
+/** Usagi strolls at Clawd's pace, then bounds: a leap one walking frame in five, as far as BOUND_REACH, BOUND_AIR frames in the air, low enough for two rows of sky. */
+export const BOUND_ONE_IN = 5
+export const BOUND_REACH = 18
+export const BOUND_AIR = 6
 
 export const clamp = (value: number, lo: number, hi: number): number => Math.max(lo, Math.min(hi, value))
 

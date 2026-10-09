@@ -135,7 +135,7 @@ export const viewOf = (world: World): { sprites: Map<string, SpriteView>; seen: 
           x = arc.x
           lift = arc.lift
           vy = arc.vy
-          motion = { kind: 'hop', step: Math.floor(t - hop.from), lift: Math.round(lift), pose: arc.pose }
+          motion = { kind: 'hop', step: Math.floor(t - hop.from), lift: Math.round(lift), pose: arc.pose, from: hop.from, u: clamp((t - hop.from) / (hop.air + 1), 0, 1) }
         }
         break
       }

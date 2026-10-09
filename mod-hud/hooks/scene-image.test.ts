@@ -260,8 +260,10 @@ describe('in a terminal that shows pictures', () => {
     expect(image?.key).toBe('session:picture')
     expect((await ui.find({ type: 'Client' }))?.key).toBe('session')
     const picture = pngPixels(String((image?.props.source as { png: string }).png))
-    expect(picture.width).toBe(Number(image?.props.columns) * 16)
+    expect(picture.width).toBe(Number(image?.props.columns) * 8)
     expect(countColour(picture, CROWN.colour)).toBeGreaterThan(5)
+    // The world behind it: the ground under its feet is drawn, edge to edge.
+    for (const x of [0, picture.width - 1]) expect(picture.pixels[((picture.height - 1) * picture.width + x) * 4 + 3]).toBe(255)
     await ui.unmount()
   })
 

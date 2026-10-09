@@ -12,14 +12,14 @@ import type { MascotScene } from './scene-types'
 import { inputs } from './scene-world.fixtures'
 import { figureShapes } from './smooth-art'
 import { NEUTRAL, createSmoother, targetOf } from './smooth-pose'
-import { earTwitch, quirkPose, sprintPose } from './usagi-moves'
+import { earTwitch, quirkPose } from './usagi-moves'
 import { QUIRK_MS, QUIRK_SAYS, QUIRK_WINDOW_MS, quirkAt, quirkLook, quirkPlaceOf } from './usagi-quirks'
 import type { QuirkKind } from './usagi-quirks'
 import { QUIRK_SHOUTS, USAGI } from './usagi-sprites'
 
 // Usagi's chaos: its quirks out of nowhere (which, when, how long, where it
-// may), as the cells draw them and as the shapes do; its sprint at twice
-// Clawd's pace on wheel legs; its ears' twitches.
+// may), as the cells draw them and as the shapes do; its toddle and its far
+// bounds; its ears' twitches.
 
 const STAND: Look = { head: 'open', arms: 'rest', legs: 'stand', pose: 'stand', overlays: [], lift: 0 }
 const INFO = { character: 'usagi' as const, colour: USAGI.body, energy: 0 as const }
@@ -39,7 +39,7 @@ describe('its quirks', () => {
   test('out of nowhere: most five-second windows bring one, each its own length; every kind turns up; at its laptop only what it can do there', () => {
     const windows = 120
     const free = quirksOver('u1', windows * QUIRK_WINDOW_MS, 'free')
-    expect([...free.keys()].sort()).toEqual(['flip', 'fuun', 'huh', 'shake', 'twirl', 'ura', 'yaha', 'zoom'])
+    expect([...free.keys()].sort()).toEqual(['flip', 'fuun', 'huh', 'shake', 'twirl', 'ura', 'yaha'])
     const busy = [...free.values()].reduce((sum, ms) => sum + ms, 0)
     // Three windows in four, each a second or two: between a tenth and two fifths of the time.
     expect(busy).toBeGreaterThan(windows * QUIRK_WINDOW_MS * 0.1)
@@ -95,8 +95,8 @@ describe('its quirks', () => {
 
       return seen
     }
-    expect([...kinds(1)].sort()).toEqual(['fuun', 'shake', 'zoom'])
-    expect([...kinds(2)].sort()).toEqual(['fuun', 'huh', 'shake', 'twirl', 'yaha', 'zoom'])
+    expect([...kinds(1)].sort()).toEqual(['fuun', 'shake'])
+    expect([...kinds(2)].sort()).toEqual(['fuun', 'huh', 'shake', 'twirl', 'yaha'])
     expect(kinds(4).has('ura') && kinds(4).has('flip')).toBe(true)
     // At its laptop, a cramped one bashes the keys or shakes.
     const desk = new Set(Array.from({ length: 4000 }, (_, step) => quirkAt('u1', step * 250, 'desk', 1)?.kind).filter(Boolean))
@@ -128,7 +128,7 @@ describe('its quirks', () => {
     expect(placedSprites(clawd, layout, clawdPlan)?.sprites.find(one => one.id === 'main')?.figure?.quirk).toBe(undefined)
   })
 
-  test('as shapes: each eases in from the pose under it and back out; the dance squeezes its eyes shut and opens its mouth wide; HUHHH? looms', () => {
+  test('as shapes: each eases in from the pose under it and back out; the dance squeezes its eyes shut and opens its mouth wide; Haa? looms', () => {
     for (const kind of Object.keys(QUIRK_MS) as QuirkKind[]) {
       const start = quirkPose(NEUTRAL, { kind, at: 0 }, 'right')
       expect(Math.abs(start.dx)).toBeLessThan(0.01)
@@ -147,37 +147,49 @@ describe('its quirks', () => {
   })
 })
 
-describe('its sprint', () => {
-  test('on foot Usagi covers two cells a frame where Clawd covers one; it rests less and leaps more', () => {
-    const steps = (character?: 'usagi'): number[] => {
+describe('its stroll and its bounds', () => {
+  test('on foot Usagi strolls at Clawd\'s pace, a cell a frame, and bounds further than Clawd hops', () => {
+    const moves = (character?: 'usagi'): { steps: number[]; hops: number[] } => {
       const scene = (): MascotScene => ({ ...wanderers, ...(character === undefined ? {} : { character }) })
-      const { plans } = run(scene, tick => room(120, 8, T0 + tick, { wander: true }), 200)
-      return plans.slice(1).flatMap((plan, index) => plan.placements.filter(one => one.motion?.kind === 'walk').map(one => Math.abs(one.drawnX - (plans[index]!.placements.find(before => before.id === one.id)?.drawnX ?? one.drawnX))))
+      const { plans } = run(scene, tick => room(120, 8, T0 + tick, { wander: true }), 300)
+      const steps = plans.slice(1).flatMap((plan, index) => plan.placements.filter(one => one.motion?.kind === 'walk').map(one => Math.abs(one.drawnX - (plans[index]!.placements.find(before => before.id === one.id)?.drawnX ?? one.drawnX))))
+      // Each hop once, by its id and first frame: how far it went.
+      const hops = new Map(plans.flatMap(plan => [...plan.memo.entries()].flatMap(([id, memo]) => (memo.hop === undefined ? [] : [[`${id}:${memo.hop.from}`, Math.abs(memo.hop.x1 - memo.hop.x0)] as const]))))
+
+      return { steps, hops: [...hops.values()].filter(reach => reach > 0) }
     }
-    const clawd = steps()
-    const usagi = steps('usagi')
-    expect(Math.max(...clawd)).toBeLessThanOrEqual(1)
-    expect(usagi.filter(step => step === 2).length).toBeGreaterThan(10)
-    expect(usagi.reduce((sum, one) => sum + one, 0)).toBeGreaterThan(clawd.reduce((sum, one) => sum + one, 0))
+    const clawd = moves()
+    const usagi = moves('usagi')
+    expect(Math.max(...clawd.steps, ...usagi.steps)).toBeLessThanOrEqual(1)
+    // It bounds more often than Clawd hops, and its bounds go past a hop's reach (10 cells).
+    expect(usagi.hops.length).toBeGreaterThan(clawd.hops.length)
+    expect(usagi.hops.filter(reach => reach > 10).length).toBeGreaterThan(clawd.hops.filter(reach => reach > 10).length)
   })
 
-  test('drawn as a cartoon run: wheel legs under it, leaning hard into its way, arms pumping, ears streaming back, its tail at its back, dust and speed lines behind', () => {
-    const walking = targetOf({ head: 'right', arms: 'rest', legs: 'step', pose: 'stand', overlays: [], lift: 0 }, { character: 'usagi', now: 1000, seed: 0.3, motion: { kind: 'walk' }, facing: 'right' }, false)
-    expect(walking.run).toBe(1)
-    expect(walking.tilt).toBeGreaterThan(0.15)
-    expect(walking.trail).toBeLessThan(-2)
-    expect(walking.beside.map(one => one.kind)).toEqual(expect.arrayContaining(['speed', 'dust']))
-    const shapes = figureShapes(walking, INFO, [1, 0, 0, 1, 0, 0], 1000)
-    // The wheel's pale blur, its legs turning over the frames.
-    expect(shapes.some(shape => shape.fill === '#FFF7DC')).toBe(true)
-    // Its tail: a white puff out of its back (its left, going right); none standing still.
-    const puff = (shape: (typeof shapes)[number]): boolean => shape.kind === 'ellipse' && shape.fill === '#FFFFFF' && shape.w > 1.5
-    expect(shapes.some(shape => puff(shape) && shape.x + shape.w / 2 < -1.5)).toBe(true)
-    expect(figureShapes(NEUTRAL, INFO, [1, 0, 0, 1, 0, 0], 1000).some(puff)).toBe(false)
-    const legAt = (t: number) => figureShapes(sprintPose(walking, t, 'right', 0.3), INFO, [1, 0, 0, 1, 0, 0], t).filter(shape => shape.kind === 'rect' && shape.h === 2.9).map(shape => shape.m)
-    expect(legAt(1000)).not.toEqual(legAt(1050))
-    // Clawd walks as it did.
-    expect(targetOf({ head: 'right', arms: 'rest', legs: 'step', pose: 'stand', overlays: [], lift: 0 }, { character: 'clawd', now: 1000, seed: 0.3, motion: { kind: 'walk' }, facing: 'right' }, false).run).toBe(0)
+  test('drawn as a toddle: short quick steps, a waddle, hands swinging, ears a touch behind; no wheel, no speed lines', () => {
+    const walk = (t: number) => targetOf({ head: 'right', arms: 'rest', legs: 'step', pose: 'stand', overlays: [], lift: 0 }, { character: 'usagi', now: t, seed: 0.3, motion: { kind: 'walk' }, facing: 'right' }, false)
+    const steps = Array.from({ length: 20 }, (_, index) => walk(index * 40))
+    expect(steps.some(pose => (pose.legs[0] ?? 0) > 0.3)).toBe(true)
+    expect(steps.some(pose => (pose.legs[1] ?? 0) > 0.3)).toBe(true)
+    expect(Math.max(...steps.map(pose => Math.abs(pose.tilt)))).toBeLessThan(0.15)
+    expect(steps.every(pose => pose.trail < 0 && pose.trail > -1)).toBe(true)
+    expect(steps.flatMap(pose => pose.beside.map(one => one.kind))).not.toContain('dust')
+  })
+
+  test('bounding: crouched to spring, then up with legs tucked and hands flung up crying Yaha!, one bound in three turned over, down in a puff of dust', () => {
+    const bound = (u: number, from = 1) => targetOf(STAND, { character: 'usagi', now: 1000, seed: 0.3, motion: { kind: 'hop', step: 0, lift: 0, pose: 'apex', from, u }, facing: 'right' }, false)
+    expect(bound(0.03).sy).toBeLessThan(1)
+    const up = bound(0.4)
+    expect(up.tuck).toBe(1)
+    expect(up.armL).toBeGreaterThan(1)
+    expect(up.mouthShape).toBe('scream')
+    expect(up.beside.find(one => one.kind === 'shout')).toMatchObject({ text: expect.stringMatching(/^(Yaha!|Iyaha!|Ura!)$/) })
+    expect(bound(0.97).beside.map(one => one.kind)).toContain('dust')
+    const spins = Array.from({ length: 9 }, (_, from) => Math.abs(bound(0.5, from).spin))
+    expect(spins.filter(spin => spin > 1).length).toBeGreaterThan(0)
+    expect(spins.filter(spin => spin === 0).length).toBeGreaterThan(0)
+    // Clawd hops as it did.
+    expect(targetOf(STAND, { character: 'clawd', now: 1000, seed: 0.3, motion: { kind: 'hop', step: 0, lift: 0, pose: 'apex', from: 1, u: 0.4 }, facing: 'right' }, false).beside).toEqual([])
   })
 
   test('its ears twitch now and then, one at a time', () => {

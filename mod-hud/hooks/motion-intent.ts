@@ -2,6 +2,9 @@ import {
   AIRBORNE,
   AIR_MARGIN,
   BOB,
+  BOUND_AIR,
+  BOUND_ONE_IN,
+  BOUND_REACH,
   CRUISE_MIN,
   CRUISE_SPAN,
   ERRAND_CELLS,
@@ -26,16 +29,13 @@ import {
   SMOOTH_LANDING_PATIENCE,
   TURN_MIN,
   TURN_SPAN,
-  ZIPPY_CELLS,
-  ZIPPY_LEAP_ONE_IN,
   clamp,
   hopLift,
   hopPose,
   nearDepth,
-  pauseFor,
+  pauseOf,
   roll,
   toward,
-  towardBy,
   towardDepth,
 } from './motion-rules'
 import { altitudesFor, clearAbove, clearOnGround, depthsOf, gapBetween, gapSpot, nearestClear, rollDepth } from './motion-space'
@@ -47,9 +47,9 @@ import type { Flight, FlightReason, Hop, Memo, Moved, Mover, Rules } from './mot
 // flight, a walk toward its goal or a wander. No randomness: every choice is
 // a hash of (id, what is chosen, frame).
 
-/** A hop starting this frame: its first, squashed frame. */
-const startHop = (memo: Memo, tick: number, x: number, d: number, x1: number, height: number): Moved => {
-  const air = x1 === x ? 1 : HOP_AIR
+/** A hop starting this frame, `air` frames in the air: its first, squashed frame. */
+const startHop = (memo: Memo, tick: number, x: number, d: number, x1: number, height: number, air = HOP_AIR): Moved => {
+  air = x1 === x ? 1 : air
   const hop: Hop = { from: tick, x0: x, x1, air, height }
 
   return { x, d, lift: 0, memo: { x, d, lift: 0, ...(memo.target === undefined ? {} : { target: memo.target }), ...(memo.targetD === undefined ? {} : { targetD: memo.targetD }), pauseUntil: tick, hop }, motion: { kind: 'hop', step: 0, lift: 0, pose: 'squash' } }
@@ -200,7 +200,7 @@ const flySmooth = (mover: Mover, memo: Memo, fly: Flight, tick: number, others: 
     }
   }
   if (lift <= 0) {
-    return { x, d, lift: 0, memo: { x, d, lift: 0, pauseUntil: tick + pauseFor(mover, tick) }, motion: { kind: 'land' } }
+    return { x, d, lift: 0, memo: { x, d, lift: 0, pauseUntil: tick + pauseOf(mover.id, tick) }, motion: { kind: 'land' } }
   }
   const flight: Flight = {
     ...fly,
@@ -221,7 +221,7 @@ const flySmooth = (mover: Mover, memo: Memo, fly: Flight, tick: number, others: 
 /** What one mover means to do this frame, before anyone bumps. `others` is everyone else on the field. */
 export const intend = (mover: Mover, tick: number, others: readonly Other[], rules: Rules, slack = Infinity): Moved => {
   const { d, dLo, dHi } = depthsOf(mover)
-  const memo = mover.memo ?? { x: mover.x, d, pauseUntil: tick + pauseFor(mover, tick) }
+  const memo = mover.memo ?? { x: mover.x, d, pauseUntil: tick + pauseOf(mover.id, tick) }
   const x = clamp(mover.x, mover.lo, mover.hi)
   const mode = rules.collisions ?? 'off'
   const wanders = mover.free && mover.goal === undefined
@@ -321,7 +321,7 @@ export const intend = (mover: Mover, tick: number, others: readonly Other[], rul
       }
     }
     if (lift <= 0) {
-      return { x, d, lift: 0, memo: { x, d, lift: 0, pauseUntil: tick + pauseFor(mover, tick) }, motion: { kind: 'land' } }
+      return { x, d, lift: 0, memo: { x, d, lift: 0, pauseUntil: tick + pauseOf(mover.id, tick) }, motion: { kind: 'land' } }
     }
     const flight: Flight = { ...fly, stage, since, ...(waited === undefined ? {} : { waited }), ...(gap === undefined ? {} : { gap }), ...(gap === undefined || gapD === undefined ? {} : { gapD }) }
 
@@ -340,11 +340,10 @@ export const intend = (mover: Mover, tick: number, others: readonly Other[], rul
       const targetD = rollDepth(mover, 'target-depth', tick)
       return { x, d, lift: 0, memo: { x, d, lift: 0, pauseUntil: tick, target: mover.lo + roll(mover.id, 'target', tick, mover.hi - mover.lo + 1), ...(targetD === undefined ? {} : { targetD }) } }
     }
-    if (memo.target === x && aimD === d) return { x, d, lift: 0, memo: { x, d, lift: 0, pauseUntil: tick + pauseFor(mover, tick) } }
+    if (memo.target === x && aimD === d) return { x, d, lift: 0, memo: { x, d, lift: 0, pauseUntil: tick + pauseOf(mover.id, tick) } }
   }
   if (aim === undefined || (aim === x && aimD === d)) return { x, d, lift: 0, memo: { x, d, lift: 0, pauseUntil: tick } }
-  // Usagi covers two cells a frame on foot; everyone else one.
-  const next = mover.zippy === true ? towardBy(x, aim, ZIPPY_CELLS) : toward(x, aim)
+  const next = toward(x, aim)
   const nextD = towardDepth(d, aimD, tick)
   const direction = Math.sign(aim - x)
   // The smooth scene with collisions on: a hop need not keep clear of fliers; the surface plays their meeting.
@@ -370,7 +369,7 @@ export const intend = (mover: Mover, tick: number, others: readonly Other[], rul
   // a hop that goes anywhere, or a flight, only with room to land. Walking
   // only in depth, or with no room, a spring in place: up a row and down.
   const roomy = slack >= 2 * mover.width
-  if (mover.goal === undefined && roll(mover.id, 'leap', tick, mover.zippy === true ? ZIPPY_LEAP_ONE_IN : LEAP_ONE_IN) === 0) {
+  if (mover.goal === undefined && roll(mover.id, 'leap', tick, mover.springy === true ? BOUND_ONE_IN : LEAP_ONE_IN) === 0) {
     // A flight takes an altitude of its own: three rows or more from any other flier's near it, so they pass over each other;
     // never so high its propeller leaves the sky.
     const heights = Array.from({ length: Math.max(0, mover.sky - PROPELLER_ROWS) }, (_, index) => index + 1)
@@ -387,13 +386,15 @@ export const intend = (mover: Mover, tick: number, others: readonly Other[], rul
 
       return { x: next, d, lift: 1, memo: { x: next, d, lift: 1, target: memo.target ?? aim, targetD: memo.targetD ?? aimD, pauseUntil: tick, fly }, motion: { kind: 'fly', step: 0, lift: 1 } }
     }
+    // Usagi bounds far and low, two rows of sky enough; anyone else hops.
+    const springy = mover.springy === true
     const height = Math.min(HOP_HEIGHT, mover.sky)
-    const reach = Math.min(HOP_REACH, Math.abs(aim - x))
+    const reach = Math.min(springy ? BOUND_REACH : HOP_REACH, Math.abs(aim - x))
     const x1 = x + direction * reach
     const path = { x: Math.min(x, x1), width: Math.abs(x1 - x) + mover.width }
-    const open = reach > 0 && roomy && mover.sky >= FLY_SKY && height >= AIRBORNE && near.every(one => one.lift >= AIRBORNE || gapBetween(path, one) >= need) && (meets || clearAbove(others, x, x1, mover.body ?? mover.width, d))
+    const open = reach > 0 && roomy && mover.sky >= (springy ? AIRBORNE : FLY_SKY) && height >= AIRBORNE && near.every(one => one.lift >= AIRBORNE || gapBetween(path, one) >= need) && (meets || clearAbove(others, x, x1, mover.body ?? mover.width, d))
 
-    return startHop(memo, tick, x, d, open ? x1 : x, open ? height : Math.min(1, mover.sky))
+    return startHop(memo, tick, x, d, open ? x1 : x, open ? height : Math.min(1, mover.sky), springy ? BOUND_AIR : HOP_AIR)
   }
 
   return { x: next, d: nextD, lift: 0, memo: walking, motion: { kind: 'walk' } }

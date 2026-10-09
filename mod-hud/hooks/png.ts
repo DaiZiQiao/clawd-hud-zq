@@ -267,24 +267,5 @@ export const pngOf = (pixels: Uint8Array, width: number, height: number): Uint8A
   return out.view().slice()
 }
 
-const ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
-
-/** Bytes as base64, padded. */
-export const base64Of = (bytes: Uint8Array): string => {
-  const parts: string[] = []
-  let line = ''
-  for (let index = 0; index < bytes.length; index += 3) {
-    const a = bytes[index] ?? 0
-    const b = bytes[index + 1] ?? 0
-    const c = bytes[index + 2] ?? 0
-    const left = bytes.length - index
-    line += ALPHABET[a >> 2]! + ALPHABET[((a & 3) << 4) | (b >> 4)]! + (left > 1 ? ALPHABET[((b & 15) << 2) | (c >> 6)]! : '=') + (left > 2 ? ALPHABET[c & 63]! : '=')
-    if (line.length >= 4096) {
-      parts.push(line)
-      line = ''
-    }
-  }
-  parts.push(line)
-
-  return parts.join('')
-}
+/** Bytes as base64, padded: the hooks' own `Uint8Array.prototype.toBase64` (not in TypeScript's es2023 lib, hence the cast). */
+export const base64Of = (bytes: Uint8Array): string => (bytes as Uint8Array & { toBase64: () => string }).toBase64()

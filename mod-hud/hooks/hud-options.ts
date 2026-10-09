@@ -47,6 +47,8 @@ export type Settings = {
    * characters. Text-only terminals draw the blocks either way.
    */
   mascotArt: 'vector' | 'blocks'
+  /** The vector art's mascots on a tour of the world's wonders, behind them in the band and the pane (hooks/scenery.ts). */
+  scenery: boolean
   /**
    * Where the session's own mascot lives: `band`, in the band above the
    * prompt where the surface draws one (terminal, desktop), the subagents in
@@ -84,6 +86,7 @@ export const settingsOf = (options: PluginOptions): Settings => ({
   collisions: options.collisions === 'off' || options.collisions === 'normal' ? options.collisions : 'rare',
   motion: options.motion === 'classic' ? 'classic' : 'smooth',
   mascotArt: options.mascotArt === 'blocks' ? 'blocks' : 'vector',
+  scenery: options.scenery !== false,
   cacheTtl: options.cacheTtl === '5m' || options.cacheTtl === '1h' ? options.cacheTtl : 'auto',
   sessionMascot: options.sessionMascot === 'pane' ? 'pane' : 'band',
   tidy: options.tidy === 'auto' || options.tidy === 'off' ? options.tidy : 'ask',

@@ -175,7 +175,7 @@ describe('what it says', () => {
       said.add(phrase)
     }
     expect(said.size).toBeGreaterThan(1)
-    for (const line of ['HUHHH?', 'UNA!']) expect(USAGI_THOUGHTS as readonly string[]).toContain(line)
+    for (const line of ['Haa?', 'Pururu!']) expect(USAGI_THOUGHTS as readonly string[]).toContain(line)
   })
 
   test('its cross and its shout over its head, or beside its ears with no sky row free', () => {
@@ -189,16 +189,16 @@ describe('what it says', () => {
     expect(rowText(drawUsagi(puff, dress, 0), SKY).indexOf('Ura!')).toBe(11)
   })
 
-  test('no cigarette: on each puff, hands up and mouth wide, it shouts in turn Ura!, HUHHH?, UNA!, then a breath', () => {
+  test('no cigarette: on each puff, hands up and mouth wide, it shouts in turn Ura!, Haa?, Pururu!, then a breath', () => {
     const entry = spriteSheet('usagi').find(one => one.name.startsWith('idle · a shout'))
-    const said = (entry?.frames ?? []).map(frame => ['Ura!', 'HUHHH?', 'UNA!'].filter(line => frame.join('\n').includes(line)))
-    expect(said).toEqual([['Ura!'], ['HUHHH?'], ['UNA!'], []])
+    const said = (entry?.frames ?? []).map(frame => ['Ura!', 'Haa?', 'Pururu!'].filter(line => frame.join('\n').includes(line)))
+    expect(said).toEqual([['Ura!'], ['Haa?'], ['Pururu!'], []])
     for (const frame of entry?.frames ?? []) expect(frame.join('\n').includes('╼')).toBe(false)
   })
 
-  test('getting up after a fall, dazed: HUHHH?', () => {
+  test('getting up after a fall, dazed: Haa?', () => {
     const entry = spriteSheet('usagi').find(one => one.name.startsWith('agent · knocked over'))
-    const dazed = (entry?.frames ?? []).map(frame => frame.join('\n').includes('HUHHH?'))
+    const dazed = (entry?.frames ?? []).map(frame => frame.join('\n').includes('Haa?'))
     expect(dazed).toEqual([false, false, false, false, false, false, false, false, false, false, true, false])
   })
 })

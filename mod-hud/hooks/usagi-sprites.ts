@@ -212,22 +212,22 @@ export const MINI_SAT = ['..........', '..........', '...#..#...', '..######..',
 
 // --- what it says --------------------------------------------------------------------
 
-/** Usagi barely talks: its thoughts are its shouts and its lines (`HUHHH?`, `UNA!`), one per spell as Clawd's phrases are. */
-export const USAGI_THOUGHTS = ['Ura!', 'Yaha!', 'HUHHH?', 'UNA!', 'Puruya', 'Haa?', 'Fuun', 'Yahaa!', 'Uraa!', 'HUHHH?!', 'UNA UNA', 'Yaha ha', 'Puruu', 'Ura ura', 'Puru…'] as const
+/** Usagi barely talks: its thoughts are its cries (`Ura!`, `Haa?`, its `Pururu` trill), one per spell as Clawd's phrases are. */
+export const USAGI_THOUGHTS = ['Ura!', 'Yaha!', 'Haa?', 'Pururu!', 'Purya', 'Fuun', 'Yahaa!', 'Uraa!', 'Haa?!', 'Iyaha!', 'Yaha ha', 'Puruu', 'Ura ura', 'Hyubo', 'Puru…'] as const
 
 export const USAGI_THOUGHT_FRAMES: readonly (readonly Overlay[])[] = thoughtFrames(USAGI_THOUGHTS)
 
-/** A line shouted over its head; a row lower, beside its ears, with no sky row free. */
-const shout = (line: string): Overlay => ({ art: placed([-1, 11, line]), ink: 'f' })
+/** A line shouted over its head, from column 11, a longer one further left so it fits the slot as its head sways a cell either way; a row lower, beside its ears, with no sky row free. */
+const shout = (line: string): Overlay => ({ art: placed([-1, Math.min(11, SLOT - 1 - line.length), line]), ink: 'f' })
 
 /** Instead of the cigarette: on each of the puff bit's three puffs, hands up and mouth wide, a shout in turn. */
-export const SHOUTS: readonly Overlay[] = ['Ura!', 'HUHHH?', 'UNA!'].map(shout)
+export const SHOUTS: readonly Overlay[] = ['Ura!', 'Haa?', 'Pururu!'].map(shout)
 
 /** Up again after a fall, crouched, dazed. */
-export const DAZED: Overlay = shout('HUHHH?')
+export const DAZED: Overlay = shout('Haa?')
 
-/** Back from the TV, shaken: what just happened? Two cells further left than a shout, so its seven fit as its head shakes a cell either way. */
-export const STARTLED: Overlay = { art: placed([-1, 9, 'HUHHH?!']), ink: 'f' }
+/** Back from the TV, shaken: what just happened? A cell further left than a shout, so it fits as its head shakes a cell either way. */
+export const STARTLED: Overlay = { art: placed([-1, 10, 'Haa?!']), ink: 'f' }
 
 /**
  * Failed, slumped: the cross over its head (its head stays up, so in the sky
@@ -236,14 +236,8 @@ export const STARTLED: Overlay = { art: placed([-1, 9, 'HUHHH?!']), ink: 'f' }
  */
 export const CROSS: Overlay = { art: placed([-1, 6, '✗']), lowArt: placed([-1, 11, '✗']), ink: 'r' }
 
-/**
- * Its outbursts out of nowhere (hooks/usagi-quirks.ts), each line over its
- * head: from column 11 as a shout is, a longer one further left, so it fits
- * the slot as its head sways a cell either way.
- */
-export const QUIRK_SHOUTS: Readonly<Record<string, Overlay>> = Object.fromEntries(
-  ['Yaha!', 'Ura!', 'HUHHH?', 'Fuun', 'Uraaa!', 'Puruya', 'UNA!'].map(line => [line, { art: placed([-1, Math.min(11, SLOT - 1 - line.length), line]), ink: 'f' as const }]),
-)
+/** Its outbursts out of nowhere (hooks/usagi-quirks.ts), each a shout over its head. */
+export const QUIRK_SHOUTS: Readonly<Record<string, Overlay>> = Object.fromEntries(['Yaha!', 'Ura!', 'Haa?', 'Fuun', 'Purya', 'Iyaha!', 'Pururu!'].map(line => [line, shout(line)]))
 
 /** What Usagi says or shows over its head: a row lower with no sky row free. */
 export const USAGI_LINES: readonly Overlay[] = [...SHOUTS, DAZED, STARTLED, CROSS, ...Object.values(QUIRK_SHOUTS)]

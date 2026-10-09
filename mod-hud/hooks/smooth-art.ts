@@ -243,33 +243,6 @@ const clawdShapes = (pose: FigurePose, info: FigureInfo, t: number): Shape[] => 
   return shapes
 }
 
-/**
- * Usagi's legs sprinting, as a cartoon's run: a pale blur of a wheel under
- * it, dashes turning round its rim, and four legs turning about its hip five
- * times a second, each a foot's darker tip; `run` strong.
- */
-const wheelShapes = (body: Matrix, run: number, t: number): Shape[] => {
-  const turn = (t / 1000) * 2 * Math.PI * 5
-  const hip = chain(body, translate(0, -2.2))
-  const tip = shade(USAGI.cream, 0.2)
-
-  return [
-    { kind: 'ellipse', x: -3.3, y: -5.3, w: 6.6, h: 6.4, fill: '#FFF7DC', alpha: 0.55 * run, m: body },
-    // Dashes round the rim, turning with it.
-    ...[0, 1, 2, 3, 4, 5].map((one): Shape => ({ kind: 'rect', x: -0.6, y: -3.45, w: 1.2, h: 0.3, r: 0.15, fill: tip, alpha: 0.6 * run, m: multiply(hip, rotate(turn * 0.8 + (one * Math.PI) / 3)) })),
-    ...[0, 1, 2, 3].flatMap((leg): Shape[] => {
-      const m = multiply(hip, rotate(turn + (leg * Math.PI) / 2))
-      const alpha = run * (leg % 2 === 0 ? 1 : 0.6)
-
-      return [
-        { kind: 'rect', x: -1.1, y: -0.25, w: 2.2, h: 3.4, r: 1.1, fill: USAGI.line, alpha, m },
-        { kind: 'rect', x: -0.85, y: 0, w: 1.7, h: 2.9, r: 0.85, fill: USAGI.cream, alpha, m },
-        { kind: 'ellipse', x: -0.8, y: 2.2, w: 1.6, h: 1, fill: tip, alpha, m },
-      ]
-    }),
-  ]
-}
-
 /** Usagi's mouths as Chiikawa draws them: its cat's `ω` at rest, wide open shouting, a small round `o`, smug, a grin. */
 export type UsagiMouth = 'cat' | 'scream' | 'o' | 'smirk' | 'grin'
 
@@ -895,7 +868,7 @@ const usagiShapes = (pose: FigurePose, info: FigureInfo, t: number): Shape[] => 
     part({ kind: 'rect', x: side * 1.45 - 0.85, y: -11.4 - earLength, w: 1.7, h: earLength + 0.4, r: 0.85, fill: USAGI.cream, m: ear })
     inside.push({ kind: 'rect', x: side * 1.45 - 0.45, y: -10.95 - earLength, w: 0.9, h: Math.max(0.6, earLength - 2.2), r: 0.45, fill: USAGI.ear, m: ear })
   }
-  const footHeight = Math.max(0, 1.2 * (1 - 0.45 * pose.tuck) * (1 - pose.hideLegs) * (1 - pose.run))
+  const footHeight = Math.max(0, 1.2 * (1 - 0.45 * pose.tuck) * (1 - pose.hideLegs))
   for (const [index, x] of [[0, -1.55], [1, 1.55]] as const) {
     if (footHeight > 0.05) part({ kind: 'rect', x: x - 0.92, y: -footHeight - (pose.legs[index] ?? 0), w: 1.85, h: footHeight, r: Math.min(0.7, footHeight / 2), fill: USAGI.cream, m: body })
   }
@@ -917,8 +890,6 @@ const usagiShapes = (pose: FigurePose, info: FigureInfo, t: number): Shape[] => 
   // Going, its tail shows at its back: a white puff out of its side.
   const going = Math.min(1, Math.abs(pose.trail) / 1.5)
   if (going > 0.05) shapes.push(...tailShapes(body, Math.sign(pose.trail) * 3.5, -2.8, going))
-  // Sprinting: its legs a spinning wheel under it, a blur and four legs turning five times a second.
-  if (pose.run > 0.05) shapes.unshift(...wheelShapes(body, pose.run, t))
   // What it wears on its head sits on it, its opening round its head's top just over its brows, a soft shade under it.
   const seat = chain(body, translate(0, HAT_SEAT))
   const capTone = info.role !== undefined ? HATS[ROLE_HATS[info.role]].colour : info.crown === true ? CROWN.colour : CAP.colour
@@ -1161,14 +1132,6 @@ const besideShapes = (one: Beside, m: Matrix, info: FigureInfo, t: number, usagi
         const twinkle = 1.2 + 0.6 * Math.abs(wave(t + index * 170, 420))
 
         return sparkShapes(8.5 * Math.cos(a), row(0) + 2 + 3.2 * Math.sin(a), twinkle, a, index === 1 ? '#F2A0AE' : 'warning').map(shape => ({ ...shape, m: multiply(m, shape.m ?? [1, 0, 0, 1, 0, 0]) }))
-      })
-    case 'speed':
-      // Streaks behind it, flickering.
-      return [-8.6, -5.8, -3].map((y, index): Shape => {
-        const flicker = 0.35 + 0.45 * Math.abs(wave(t + index * 90, 260))
-        const length = 3.4 + 1.6 * Math.abs(wave(t + index * 130, 340))
-
-        return { kind: 'rect', x: one.dir > 0 ? -8.6 - length : 8.6, y, w: length, h: 0.32, r: 0.16, fill: 'inactive', alpha: flicker, m }
       })
     case 'dust': {
       // Puffs kicked up behind its feet (both sides, landing), each growing and fading.

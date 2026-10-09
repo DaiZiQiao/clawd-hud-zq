@@ -4,7 +4,7 @@ import { AIRBORNE, CATCH_UP, CROWD_OBSTACLES, FAR_CELLS, FLY_SKY, GAP, READING_S
 import type { CollisionMode, Memo, Motion, Mover } from './motion-types'
 import { clearOf, depthsFor, dottedOf, fieldLayout, fieldOf, stripText } from './scene-layout'
 import { ACCENT, isNumber } from './scene-model'
-import { FAREWELL_TICKS, REVIEW_STAND_TICKS, REVIEW_WALK_TICKS, SCENE_FRAME_MS, SPARK_EVERY, arriveTicksOf, phaseOf, workTicks } from './scene-phases'
+import { BLANKET_AFTER_MS, FAREWELL_TICKS, REVIEW_STAND_TICKS, REVIEW_WALK_TICKS, SCENE_FRAME_MS, SPARK_EVERY, arriveTicksOf, phaseOf, workTicks } from './scene-phases'
 import type { Cue, Mark, MascotAgent, MascotLayout, MascotPlan, MascotScene, Phase, Placement, Slot } from './scene-types'
 
 // Where everything stands at a frame (`mascotPlan`): the field laid out
@@ -89,10 +89,10 @@ export const mascotPlan = (scene: MascotScene, layout: MascotLayout, previous?: 
   }
   const rangeOf = (one: Placement): [number, number] => depthsFor(one.kind, depth, laid.minis, isChild(one))
 
-  // Who may wander: the session's mascot while awake, an agent thinking away from its laptop; never one idle.
+  // Who may wander: the session's mascot while awake (idle too, till its blanket), an agent thinking away from its laptop; never one idle.
   const isFree = (one: Placement): boolean => {
     if (!wander) return false
-    if (one.kind === 'main') return scene.main.mood !== 'idle' && scene.main.stretchMs === undefined && scene.main.tidyMs === undefined
+    if (one.kind === 'main') return (scene.main.mood !== 'idle' || (scene.main.idleMs ?? 0) < BLANKET_AFTER_MS) && scene.main.stretchMs === undefined && scene.main.tidyMs === undefined
     const agent = byId.get(one.id)
 
     return one.phase?.kind === 'work' && agent?.status === 'running' && agent.activity === 'thinking' && agent.idleMs === undefined
@@ -238,7 +238,7 @@ export const mascotPlan = (scene: MascotScene, layout: MascotLayout, previous?: 
           ...(memo.has(one.id) ? { memo: memo.get(one.id) } : {}),
           ...(ask === undefined ? {} : { ask }),
           // Usagi dashes everywhere: twice the pace on foot, shorter rests, more leaps.
-          ...(scene.character === 'usagi' ? { zippy: true as const } : {}),
+          ...(scene.character === 'usagi' ? { springy: true as const } : {}),
         }
       }),
       ...fixedOnes.map((one): Mover => ({ id: one.id, width: one.width, body: one.body, x: one.drawnX, d: one.d, lo: 0, hi: columns - one.width, free: false, sky: 0, fixed: true })),

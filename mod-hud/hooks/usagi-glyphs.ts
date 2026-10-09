@@ -78,16 +78,13 @@ const besideOf = (look: Look, shout: Overlay | undefined): Overlay[] => [
   ...(look.pose === 'crouch' ? [DAZED] : []),
 ]
 
-/** On a puff of the cigarette's idle bit, that puff's shout (`Ura!`, `HUHHH?`, `UNA!`): Usagi throws its hands up instead of smoking. */
+/** On a puff of the cigarette's idle bit, that puff's shout (`Ura!`, `Haa?`, `Pururu!`): Usagi throws its hands up instead of smoking. */
 const shoutOf = (look: Look): Overlay | undefined => {
   if (!look.overlays.some(one => CIGARETTE.has(one))) return undefined
   const puff = look.overlays.find(one => SMOKE.has(one) && one.art.some(row => row.trim() !== ''))
 
   return puff === undefined ? undefined : SHOUTS[Math.floor(OVERLAYS.smoke.indexOf(puff) / 2)]
 }
-
-/** Usagi's strides as a cartoon's run: four feet in a flurry, shifted each frame, where Clawd takes a step. */
-const RUN_FEET: Partial<Record<Look['legs'], readonly number[]>> = { step: [4, 7, 10, 13], pass: [5, 7, 10, 12], back: [4, 8, 9, 13] }
 
 /** Its ears for a look: through its hat's brim they stand; else lowered squatting or asleep, trailing a walk, drooping slumped (bare). */
 const earsOf = (look: Look, hatted: boolean, crowned: boolean): Ears => {
@@ -150,7 +147,7 @@ export const usagiFigure = (look: Look, dress: Dress): { bitmap: string[]; palet
       break
     }
     case 'stand':
-      rows = [...ears, TOP, eyes, cheeks, BASE, marked(blankRow(FIGURE_W), RUN_FEET[look.legs] ?? FEET[look.legs], '#')]
+      rows = [...ears, TOP, eyes, cheeks, BASE, marked(blankRow(FIGURE_W), FEET[look.legs], '#')]
       break
   }
   const arms = look.pose === 'stand' || look.pose === 'blanket'

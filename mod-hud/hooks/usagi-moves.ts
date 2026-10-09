@@ -4,10 +4,9 @@ import type { Quirk } from './usagi-quirks'
 
 // Usagi's own motion in the smooth scene, over its eased pose
 // (hooks/smooth-pose.ts): its quirks played out by time (hooks/usagi-quirks.ts
-// says which and when), its sprint (wheel legs, arms pumping, ears
-// streaming), and its ears' twitches. Each quirk eases in and out of the
-// pose under it, so it starts from whatever Usagi was doing and goes back to
-// it.
+// says which and when), its toddle and its bounds, and its ears' twitches.
+// Each quirk eases in and out of the pose under it, so it starts from
+// whatever Usagi was doing and goes back to it.
 
 const wave = (t: number, period: number, phase = 0): number => Math.sin((2 * Math.PI * t) / period + phase)
 
@@ -30,12 +29,12 @@ const toward = (base: number, to: number, weight: number): number => base + (to 
  * Usagi's pose `quirk.at` ms into a quirk, over its own: the Yaha! dance
  * (arms waving in turn, swaying and bouncing, eyes squeezed shut, mouth
  * wide); the Ura! leap (a crouch, a jump with arms flung up, a landing that
- * squashes and wobbles); HUHHH? (it looms at you, head tilted, eyes wide);
- * Fuun (lids down, a smirk, leaning back, hands on hips, a huff); zoomies
- * (dashing either way on wheel legs, leaning into it); the twirl (two turns
- * on the spot, arms out); the backflip (a crouch, a turn over in the air, a
- * landing with arms up); the UNA! shake (a blur either way); at its laptop,
- * both hands hammering the keys. Its line burst out over its head.
+ * squashes and wobbles); Haa? (it looms at you, head tilted, eyes wide);
+ * Fuun (lids down, a smirk, leaning back, hands on hips, a huff); the twirl
+ * (two turns on the spot, arms out); the backflip (a crouch, a turn over in
+ * the air, a landing with arms up); the Pururu! shake (a trembling blur
+ * either way); at its laptop, both hands hammering the keys. Its line burst
+ * out over its head.
  */
 export const quirkPose = (pose: FigurePose, quirk: Quirk, facing: 'left' | 'right' | undefined): FigurePose => {
   const { kind, at } = quirk
@@ -138,23 +137,6 @@ export const quirkPose = (pose: FigurePose, quirk: Quirk, facing: 'left' | 'righ
         mouthShape: weight > 0.4 ? 'smirk' : pose.mouthShape,
         beside: loud(at > 500 && at < 1300 ? [{ kind: 'huff' }] : []),
       }
-    case 'zoom': {
-      // Dashing either way and back, leaning into it on wheel legs.
-      const go = Math.cos((2 * Math.PI * at) / 530)
-      const way = go >= 0 ? 1 : -1
-
-      return {
-        ...pose,
-        dx: pose.dx + 3.6 * weight * Math.sin((2 * Math.PI * at) / 530),
-        tilt: pose.tilt + 0.24 * weight * go,
-        run: Math.max(pose.run, weight),
-        trail: -way * 3 * weight,
-        eyes: weight > 0.5 ? 'squeeze' : pose.eyes,
-        mouth: toward(pose.mouth, 1, weight),
-        mouthShape: weight > 0.5 ? 'scream' : pose.mouthShape,
-        beside: loud([{ kind: 'speed', dir: way }, { kind: 'dust', dir: way }]),
-      }
-    }
     case 'twirl': {
       const turn = 2 * 2 * Math.PI * smooth(at / length)
 
@@ -201,23 +183,69 @@ export const quirkPose = (pose: FigurePose, quirk: Quirk, facing: 'left' | 'righ
 }
 
 /**
- * Usagi's walk as a sprint (it covers twice Clawd's ground): wheel legs
- * (hooks/smooth-art.ts), leaning hard into its way, arms pumping, ears
- * streaming back, mouth open, dust kicked up and speed lines behind.
+ * Usagi's walk, an unhurried toddle: short quick steps, a waddle side to
+ * side, its hands swinging a little and its ears lagging a touch behind.
  */
-export const sprintPose = (pose: FigurePose, t: number, facing: 'left' | 'right' | undefined, seed: number): FigurePose => {
+export const toddlePose = (pose: FigurePose, t: number, facing: 'left' | 'right' | undefined, seed: number): FigurePose => {
   const dir = facing === 'left' ? -1 : 1
-  const pump = wave(t, 180, seed)
+  const step = wave(t, TODDLE_MS, seed)
 
   return {
     ...pose,
-    run: 1,
-    tilt: pose.tilt + 0.2 * dir,
-    armL: 0.2 + 0.9 * pump,
-    armR: 0.2 - 0.9 * pump,
-    trail: -dir * 3,
-    mouth: Math.max(pose.mouth, 0.55),
-    beside: [...pose.beside, { kind: 'speed', dir }, { kind: 'dust', dir }],
+    legs: [0.55 * Math.max(0, step), 0.55 * Math.max(0, -step), 0, 0],
+    tilt: pose.tilt + 0.07 * step + 0.03 * dir,
+    armL: pose.armL + 0.3 * step,
+    armR: pose.armR - 0.3 * step,
+    trail: -0.6 * dir,
+    earL: pose.earL + 0.06 * step,
+    earR: pose.earR - 0.06 * step,
+  }
+}
+
+/** A toddle's two steps, ms. */
+export const TODDLE_MS = 440
+
+/** How far over its hips (the art's spin) its middle is, in units. */
+const FLIP_RISE = 2.8
+
+/** What it cries as it bounds, by the bound: mostly its Yaha!, as it does leaping out in the anime. */
+const BOUND_CRIES = ['Yaha!', 'Iyaha!', 'Yaha!', 'Ura!'] as const
+
+/**
+ * Usagi bounding (its hop, far and low): crouched to spring, then off the
+ * ground stretched, legs tucked, hands flung up, ears streaming back, eyes
+ * squeezed and mouth wide on its Yaha!; one bound in three turned over in
+ * the air; down again squashed, dust kicked up either side. `u` how far
+ * through the bound (take-off to landing, 0 to 1), `from` its first frame.
+ */
+export const boundPose = (pose: FigurePose, u: number, from: number, facing: 'left' | 'right' | undefined, seed: number): FigurePose => {
+  const dir = facing === 'left' ? -1 : 1
+  const air = (u - 0.08) / 0.84
+  if (air <= 0) return { ...pose, sx: pose.sx * 1.14, sy: pose.sy * 0.84, drop: pose.drop + 0.6, armL: -0.5, armR: -0.5, eyes: 'squeeze', tuck: 0 }
+  if (air >= 1) {
+    const since = (u - 0.92) / 0.08
+
+    return { ...pose, sx: pose.sx * (1 + 0.16 * (1 - since)), sy: pose.sy * (1 - 0.2 * (1 - since)), tuck: 0, beside: [...pose.beside, { kind: 'dust', dir: 0 }] }
+  }
+  // A forward flip high in the arc, turned about its middle (its big head and small body), not its hips as a tumble is.
+  const turn = Math.floor(seed * 97 + from) % 3 === 0 ? dir * 2 * Math.PI * smooth((air - 0.1) / 0.6) : 0
+  const rising = air < 0.5
+
+  return {
+    ...pose,
+    dx: pose.dx - FLIP_RISE * Math.sin(turn),
+    drop: pose.drop + FLIP_RISE * (Math.cos(turn) - 1),
+    sx: pose.sx * (rising ? 0.92 : 1),
+    sy: pose.sy * (rising ? 1.1 : 1),
+    spin: pose.spin + turn,
+    tuck: 1,
+    armL: 1.35,
+    armR: 1.35,
+    trail: -1.8 * dir,
+    eyes: 'squeeze',
+    mouth: 1,
+    mouthShape: 'scream',
+    beside: [...pose.beside.filter(one => one.kind !== 'shout'), ...(air < 0.8 ? [{ kind: 'shout' as const, text: BOUND_CRIES[Math.abs(from) % BOUND_CRIES.length] ?? 'Yaha!' }] : [])],
   }
 }
 

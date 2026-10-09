@@ -1,4 +1,4 @@
-import { chain, rasterOf, scale, shapesMarkup, svgOf, translate } from './clawd-vector'
+import { chain, overlay, rasterOf, scale, shapesMarkup, svgOf, translate } from './clawd-vector'
 import type { Shape } from './clawd-vector'
 import { BODY_WIDTH, BODY_X, BOX_ROWS, MINI, MINI_SCALE, SKY } from './mascot-sprites'
 import { ACCENT } from './scene-model'
@@ -6,9 +6,11 @@ import { PIPE_COLOUR, PIPE_SHINE, PIPE_WIDTH } from './scene-pipe'
 import { placedSprites } from './scene-placement'
 import type { Cell, MascotLayout, MascotPlan, MascotScene, PlacedSprite, SceneView } from './scene-types'
 import { glyphShapes } from './raster-font'
+import { sceneryOf } from './scenery'
+import type { Layer, Scenery } from './scenery'
 import { crossShapes, figureShapes, markShapes, pipeShapes, tickShapes } from './smooth-art'
 import { livelyOf, targetOf } from './smooth-pose'
-import { quirkPose } from './usagi-moves'
+import { TODDLE_MS, quirkPose } from './usagi-moves'
 import { quirkAt } from './usagi-quirks'
 import type { PoseContext, Smoother } from './smooth-pose'
 import { CELL_HEIGHT, CELL_WIDTH } from './svg-style'
@@ -21,13 +23,13 @@ import { CELL_HEIGHT, CELL_WIDTH } from './svg-style'
 // across and 4 down, the canvas's top-left (the sky's first row) the origin.
 
 /**
- * A frame of the smooth scene: its shapes, back to front, its size in units,
- * and whether all its mascots stand still (none moving, held or thrown, in
- * a scene's step, tidying up; no pipe, no mark): only a breath or a blink
- * between this frame and the next.
+ * A frame of the smooth scene: its shapes, back to front, each mascot's run
+ * of them (`wholes`, from and to), its size in units, whether all its mascots
+ * stand still (none moving, held or thrown, in a scene's step, tidying up; no
+ * pipe, no mark: only a breath or a blink between this frame and the next),
+ * and the scenery it stands in, when it has one (hooks/scenery.ts).
  */
-/** A frame of the smooth scene: its shapes, each mascot's run of them (`wholes`, from and to), its size in units, and whether all of it stands still. */
-export type SmoothFrame = { shapes: Shape[]; wholes: (readonly [number, number])[]; width: number; height: number; still: boolean }
+export type SmoothFrame = { shapes: Shape[]; wholes: (readonly [number, number])[]; width: number; height: number; still: boolean; scenery?: Scenery }
 
 /** The phases a mascot keeps still in: at work, stalled, slumped. */
 const RESTING: ReadonlySet<string> = new Set(['work', 'stalled', 'sit'])
@@ -69,10 +71,11 @@ const stripShapes = (sprite: PlacedSprite, room: number): Shape[] => {
 
 /**
  * The scene's frame at `now` (the scene's time, ms): each mascot's pose eased
- * by `smoother` (kept by the caller from frame to frame); undefined when
- * nothing fits.
+ * by `smoother` (kept by the caller from frame to frame), and with `scenery`
+ * the land it stands in, each mascot's shadow on the ground under it;
+ * undefined when nothing fits.
  */
-export const smoothFrame = (scene: MascotScene, layout: MascotLayout, plan: MascotPlan | undefined, view: SceneView | undefined, smoother: Smoother, now: number): SmoothFrame | undefined => {
+export const smoothFrame = (scene: MascotScene, layout: MascotLayout, plan: MascotPlan | undefined, view: SceneView | undefined, smoother: Smoother, now: number, scenery = false): SmoothFrame | undefined => {
   const placed = placedSprites(scene, layout, plan, view)
   if (placed === undefined || plan === undefined) return undefined
   const room = placed.headroom
@@ -113,10 +116,9 @@ export const smoothFrame = (scene: MascotScene, layout: MascotLayout, plan: Masc
     if (look === undefined) continue
     if (sprite.moving || context.motion !== undefined || context.pose !== undefined || context.tidyMs !== undefined || context.stretchMs !== undefined || (figure.phase !== undefined && !RESTING.has(figure.phase.kind))) still = false
     let pose = smoother.ease(sprite.id, targetOf(look, context, mini), now)
-    // A walk's bounce and the cheer's dance as arcs, rather than a row's jump every other frame; Usagi's sprint bounces twice as fast.
-    const sprint = usagi && context.motion?.kind === 'walk'
-    const bounce = context.motion?.kind === 'walk' ? (sprint ? 0.8 : 0.5) : figure.phase?.kind === 'cheer' ? 1.4 : 0
-    if (bounce > 0) pose = { ...pose, drop: pose.drop - bounce * Math.abs(Math.sin((2 * Math.PI * now) / (sprint ? 260 : 520) + context.seed)) }
+    // A walk's bounce and the cheer's dance as arcs, rather than a row's jump every other frame; Usagi's toddle a bob a step.
+    const bounce = context.motion?.kind === 'walk' ? (usagi ? 0.4 : 0.5) : figure.phase?.kind === 'cheer' ? 1.4 : 0
+    if (bounce > 0) pose = { ...pose, drop: pose.drop - bounce * Math.abs(Math.sin((2 * Math.PI * now) / (usagi ? TODDLE_MS : 520) + context.seed)) }
     // Usagi's quirk, if one has come over it (hooks/usagi-quirks.ts): over the eased pose, by time.
     const quirk = figure.quirk === undefined ? undefined : quirkAt(sprite.id, now, figure.quirk.place, figure.quirk.sky)
     if (quirk !== undefined) {
@@ -127,6 +129,13 @@ export const smoothFrame = (scene: MascotScene, layout: MascotLayout, plan: Masc
     const info = mini ? { ...figure.info, energy: 0 as const, letter: undefined } : figure.info
     // The room's top is the canvas's: its feet's height over it, in the figure's units.
     const from = shapes.length
+    if (scenery) {
+      // Its shadow on its floor, smaller and fainter the higher it is.
+      const lift = Math.max(0, sprite.d - SKY - (sprite.exact?.top ?? sprite.top))
+      const floor = (room + sprite.d + (usagi ? BOX_ROWS : BOX_ROWS - 0.5)) * 4
+      const size = (mini ? MINI_SCALE : 1) * Math.max(0.45, 1 - lift * 0.1)
+      shapes.push({ kind: 'ellipse', x: middle * 2 - 5.5 * size, y: floor - 0.8 * size, w: 11 * size, h: 1.6 * size, fill: '#000000', alpha: 0.3 * Math.max(0.3, 1 - lift * 0.15) })
+    }
     shapes.push(...figureShapes(pose, info, chain(translate(middle * 2, feet * 4), scale(mini ? MINI_SCALE : 1)), now, (feet * 4) / (mini ? MINI_SCALE : 1)))
     wholes.push([from, shapes.length])
   }
@@ -135,8 +144,20 @@ export const smoothFrame = (scene: MascotScene, layout: MascotLayout, plan: Masc
     shapes.push(...pipeShapes(pipe.x * 2, PIPE_WIDTH[pipe.kind] * 2, -4, (room + pipe.lip + 1) * 4, PIPE_COLOUR, PIPE_SHINE))
   }
   for (const mark of placed.marks) shapes.push(...markShapes(mark.ch, (mark.x + 0.5) * 2, (room + mark.row + 0.5) * 4, mark.colour, now))
+  const width = plan.columns * 2
+  const height = rows * 4
+  // The field begins a little behind the back row's feet.
+  const land = scenery ? { scenery: sceneryOf(width, height, (room + BOX_ROWS - 0.5) * 4 - 2, now) } : {}
 
-  return { shapes, wholes, width: plan.columns * 2, height: rows * 4, still }
+  return { shapes, wholes, width, height, still, ...land }
+}
+
+/** A layer's still shapes where the view sees them: moved back by its shift. */
+const stillShapes = (layer: Layer): readonly Shape[] => {
+  if (layer.shift === 0) return layer.still
+  const back = translate(-layer.shift, 0)
+
+  return layer.still.map(shape => ({ ...shape, m: shape.m === undefined ? back : chain(back, shape.m) }))
 }
 
 /** The units a desktop CSS pixel is: a cell is 8 by 16 pixels, 2 by 4 units. */
@@ -152,11 +173,15 @@ export const smoothSvg = (frame: SmoothFrame, columns: number, rows: number, lim
   const view = scale(PIXELS_PER_UNIT)
   const extra = ` font-family='ui-monospace,Menlo,Consolas,monospace' text-anchor='middle'`
   const budget = limit - 400
+  // The scenery's alike shapes merged into paths: its many small ones (windows, tufts, tulips) cost little.
+  const scenic = new Set<Shape>()
+  const merged = (shape: Shape): boolean => scenic.has(shape)
+  const size = (all: readonly Shape[]): number => shapesMarkup(all, view, Infinity, merged).markup.length
   let shapes: readonly Shape[] = frame.shapes
   // Past the limit, whole mascots are left out, the last drawn first: never one drawn in part.
-  if (shapesMarkup(shapes, view).markup.length > budget) {
-    const sizes = frame.wholes.map(([from, to]) => shapesMarkup(frame.shapes.slice(from, to), view).markup.length)
-    let over = shapesMarkup(shapes, view).markup.length - budget
+  if (size(shapes) > budget) {
+    const sizes = frame.wholes.map(([from, to]) => size(frame.shapes.slice(from, to)))
+    let over = size(shapes) - budget
     const dropped = new Set<number>()
     for (let index = frame.wholes.length - 1; index >= 0 && over > 0; index -= 1) {
       dropped.add(index)
@@ -165,7 +190,17 @@ export const smoothSvg = (frame: SmoothFrame, columns: number, rows: number, lim
     const gone = new Set(frame.wholes.flatMap(([from, to], index) => (dropped.has(index) ? Array.from({ length: to - from }, (_, at) => from + at) : [])))
     shapes = frame.shapes.filter((_, index) => !gone.has(index))
   }
-  const source = svgOf(shapes, width, height, view, budget, extra)
+  // The scenery in what the mascots leave: all of it, else without the ground's texture, else its still layers alone, else none.
+  const land = frame.scenery
+  if (land !== undefined) {
+    const sky = stillShapes(land.sky)
+    const ground = stillShapes(land.land)
+    const bare = ground.slice(0, ground.length - land.land.detail)
+    for (const shape of [...sky, ...land.sky.moving, ...ground, ...land.land.moving, ...land.front]) scenic.add(shape)
+    const choices = [[...sky, ...land.sky.moving, ...ground, ...land.land.moving, ...shapes, ...land.front], [...sky, ...land.sky.moving, ...bare, ...land.land.moving, ...shapes, ...land.front], [...sky, ...bare, ...shapes]]
+    shapes = choices.find(all => size(all) <= budget) ?? shapes
+  }
+  const source = svgOf(shapes, width, height, view, budget, extra, merged)
 
   return { source, width, height }
 }
@@ -185,6 +220,30 @@ export const smoothPixels = (
 ): { pixels: Uint8Array; width: number; height: number } => {
   const width = Math.max(1, Math.floor(columns)) * cell.width
   const height = Math.max(1, Math.floor(rows)) * cell.height
+  const view = scale(cell.width / 2, cell.height / 4)
+  const land = frame.scenery
+  if (land === undefined) return { pixels: rasterOf(frame.shapes, width, height, view, glyphShapes, scheme), width, height }
+  // The still layers from the cache, each seen from its shift; what moves laid over them.
+  const still = (layer: Layer): Uint8Array => {
+    const across = Math.max(width, Math.round((layer.span * cell.width) / 2))
+    const key = `${layer.key}:${across}x${height}:${scheme}`
+    const kept = stills.get(key) ?? rasterOf(layer.still, across, height, view, glyphShapes, scheme)
+    stills.delete(key)
+    stills.set(key, kept)
+    for (const old of stills.keys()) if (stills.size > STILLS) stills.delete(old)
+    const from = Math.min(across - width, Math.max(0, Math.round((layer.shift * cell.width) / 2)))
+    if (across === width) return kept.slice()
+    const seen = new Uint8Array(width * height * 4)
+    for (let row = 0; row < height; row += 1) seen.set(kept.subarray((row * across + from) * 4, (row * across + from + width) * 4), row * width * 4)
 
-  return { pixels: rasterOf(frame.shapes, width, height, scale(cell.width / 2, cell.height / 4), glyphShapes, scheme), width, height }
+    return seen
+  }
+  const pixels = rasterOf(land.sky.moving, width, height, view, glyphShapes, scheme, still(land.sky))
+  overlay(pixels, still(land.land))
+
+  return { pixels: rasterOf([...land.land.moving, ...frame.shapes, ...land.front], width, height, view, glyphShapes, scheme, pixels), width, height }
 }
+
+/** The scenery's still layers as last drawn, by what they show, their size and scheme: the band's and a pane's two each, and their next. */
+const stills = new Map<string, Uint8Array>()
+const STILLS = 8

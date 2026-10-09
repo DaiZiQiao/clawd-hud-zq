@@ -116,6 +116,12 @@
       "description": "vector (default): in the desktop app, and in Ghostty or kitty (known by their own environment variables, never under tmux), the mascots are drawn shapes that move smoothly at 30 frames a second, every pose eased into the next; blocks: the block characters there too. Other terminals (macOS Terminal, Windows Terminal) and VS Code draw the blocks either way, as does a terminal that refuses a picture. The scene needs motion smooth for it; the TV is drawn smooth with either motion.",
       "default": "vector"
     },
+    "scenery": {
+      "type": "boolean",
+      "title": "World tour",
+      "description": "With the vector art, the mascots tour the world's wonders behind them, in the band and the pane: a stop at each landmark in its own light and weather (the Eiffel Tower at dusk, Big Ben in the rain, Mount Fuji in cherry blossom, the northern lights over Tromsø, and more), its name shown as it arrives, then a pan to the next.",
+      "default": true
+    },
     "todoRows": {
       "type": "number",
       "title": "Most todos listed",

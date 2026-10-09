@@ -133,7 +133,7 @@ export const spriteSheet = (character: Character = 'clawd'): SheetEntry[] => {
     bit('idle · look around (8 frames, a 6 s slot loops it)', 'look', 8),
     bit('idle · stretch (8 frames, once a slot, then the rest frame)', 'stretch', 8),
     bit('idle · sit (16 frames, a blink on 12 and 13)', 'sit', 16),
-    bit(usagi ? 'idle · a shout (on each of the puff bit\'s puffs of 500 ms, hands up, mouth wide: Ura!, HUHHH?, UNA!, then a breath; shown every other frame)' : 'idle · a puff (4 puffs of 500 ms, shown every other frame)', 'puff', 4, 2),
+    bit(usagi ? 'idle · a shout (on each of the puff bit\'s puffs of 500 ms, hands up, mouth wide: Ura!, Haa?, Pururu!, then a breath; shown every other frame)' : 'idle · a puff (4 puffs of 500 ms, shown every other frame)', 'puff', 4, 2),
     work('idle · asleep under the blanket, from 90 s (z, z z, z z Z, held; the quilt breathes every 4 frames)', 'thinking', 8, { idleMs: BLANKET_AFTER_MS }),
     work('idle · asleep, idle 10 minutes (the moon)', 'thinking', 8, { idleMs: LONG_IDLE_MS }),
     work('idle · asleep with no sky row free (the z z Z a row lower)', 'thinking', 8, { idleMs: BLANKET_AFTER_MS }, 0),
@@ -149,7 +149,7 @@ export const spriteSheet = (character: Character = 'clawd'): SheetEntry[] => {
     framesOf('agent · walking left', motions([{ kind: 'walk' }, { kind: 'walk' }, { kind: 'walk' }, { kind: 'walk' }], {}, 'left')),
     framesOf('agent · hop (6 frames, lifts 0 2 4 4 2 0: squash, stretch, apex, apex, air, squash)', motions([hop(0, 0, 'squash'), hop(1, 2, 'stretch'), hop(2, 4, 'apex'), hop(3, 4, 'apex'), hop(4, 2, 'air'), hop(5, 0, 'squash')])),
     framesOf('agent · flying under the propeller cap (climb two rows a second, cruise, come down, land with a bounce)', motions([fly(0, 1), fly(1, 1), fly(2, 2), fly(3, 2), fly(4, 3), fly(5, 3), fly(6, 2), fly(7, 1), { kind: 'land' }])),
-    framesOf(usagi ? 'agent · knocked over (a stagger, flat with its hat knocked off, dizzy ×8: eyes crossing and rolling apart under three blinking stars; a crouch, dazed: HUHHH?; up at its laptop)' : 'agent · knocked over (a stagger, flat on its back with its hat knocked off, dizzy ×8: eyes crossing and rolling apart under three blinking stars; a crouch, up at its laptop)',
+    framesOf(usagi ? 'agent · knocked over (a stagger, flat with its hat knocked off, dizzy ×8: eyes crossing and rolling apart under three blinking stars; a crouch, dazed: Haa?; up at its laptop)' : 'agent · knocked over (a stagger, flat on its back with its hat knocked off, dizzy ×8: eyes crossing and rolling apart under three blinking stars; a crouch, up at its laptop)',
       ticks(12).map(step => full(agent('typing'), { kind: 'work' }, step, { motion: { kind: 'fallen', step } }))),
     framesOf('main · knocked over (the crown knocked off beside it, back on as it gets up)', [1, 2, 3, 10, 11].map(step => session({ mood: 'watching' }, step, { motion: { kind: 'fallen', step } }))),
     framesOf('agent · arriving by the pipe: it drops out of the mouth (eyes wide, arms up, legs tucked), falling ever faster to its floor; then it turns to its desk', [

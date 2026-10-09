@@ -77,7 +77,7 @@ export type Memo = {
 export type Motion =
   | { kind: 'walk' }
   /** A hop: squashed on take-off and landing, stretched leaving the ground, legs tucked at the apex, down again in the air. */
-  | { kind: 'hop'; step: number; lift: number; pose: 'squash' | 'stretch' | 'apex' | 'air' }
+  | { kind: 'hop'; step: number; lift: number; pose: 'squash' | 'stretch' | 'apex' | 'air'; from?: number; u?: number }
   | { kind: 'fly'; step: number; lift: number }
   /** The bounce of a flight's landing: squashed. */
   | { kind: 'land' }
@@ -113,8 +113,8 @@ export type Mover = {
   ask?: { reason: FlightReason; home?: number; homeD?: number }
   /** Standing where it is whatever happens (arriving or leaving by the pipe): an obstacle, never moved, never knocked. */
   fixed?: boolean
-  /** Usagi: on foot it covers ZIPPY_CELLS a frame, rests half as long between walks and leaps one walking frame in ZIPPY_LEAP_ONE_IN (hooks/motion-rules.ts). */
-  zippy?: true
+  /** Usagi: it strolls, and bounds one walking frame in BOUND_ONE_IN, far and low (hooks/motion-rules.ts). */
+  springy?: true
 }
 
 export type Moved = { x: number; d: number; lift: number; memo: Memo; motion?: Motion; bumped?: boolean; collided?: boolean }

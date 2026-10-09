@@ -6,33 +6,33 @@ import { SCENE_FRAME_MS } from './scene-phases'
 import { QUIRK_SHOUTS } from './usagi-sprites'
 
 // Usagi's quirks: as Chiikawa's Usagi does, out of nowhere, a burst of
-// something. Standing free: the Yaha! dance, an Ura! leap, a HUHHH? lean-in,
-// a smug Fuun, zoomies, a twirl, a backflip, an UNA! shake; at its laptop,
+// something. Standing free: the Yaha! dance, an Ura! leap, a Haa? lean-in,
+// a smug Fuun, a twirl, a backflip, a Pururu! shake; at its laptop,
 // bashing the keys. Which, when and for how long by its id and the scene's
 // time alone, so the cells (`quirkLook`, hooks/scene-placement.ts) and the
 // shapes (hooks/usagi-moves.ts) play the same one at the same moment.
 
-export type QuirkKind = 'yaha' | 'ura' | 'huh' | 'fuun' | 'zoom' | 'twirl' | 'flip' | 'shake' | 'bash'
+export type QuirkKind = 'yaha' | 'ura' | 'huh' | 'fuun' | 'twirl' | 'flip' | 'shake' | 'bash'
 
 /** How long each lasts, ms. */
-export const QUIRK_MS: Readonly<Record<QuirkKind, number>> = { yaha: 2000, ura: 1400, huh: 1300, fuun: 1700, zoom: 1600, twirl: 1200, flip: 1300, shake: 1000, bash: 1500 }
+export const QUIRK_MS: Readonly<Record<QuirkKind, number>> = { yaha: 2000, ura: 1400, huh: 1300, fuun: 1700, twirl: 1200, flip: 1300, shake: 1000, bash: 1500 }
 
-/** What it shouts through each. */
-export const QUIRK_SAYS: Readonly<Record<QuirkKind, string>> = { yaha: 'Yaha!', ura: 'Ura!', huh: 'HUHHH?', fuun: 'Fuun', zoom: 'Uraaa!', twirl: 'Puruya', flip: 'Yaha!', shake: 'UNA!', bash: 'Ura!' }
+/** What it shouts through each: its own cries, as the anime has them (Ura!, Yaha!, Haa?, Fuun, Purya, its Pururu trill). */
+export const QUIRK_SAYS: Readonly<Record<QuirkKind, string>> = { yaha: 'Yaha!', ura: 'Ura!', huh: 'Haa?', fuun: 'Fuun', twirl: 'Purya', flip: 'Iyaha!', shake: 'Pururu!', bash: 'Ura!' }
 
 /** Where it is when one comes over it: standing free (anything goes), or at its laptop (what it can do there). */
 export type QuirkPlace = 'free' | 'desk'
 
 /** Each place's quirks and how likely each is. */
 const KINDS: Readonly<Record<QuirkPlace, readonly (readonly [QuirkKind, number])[]>> = {
-  free: [['yaha', 3], ['ura', 3], ['huh', 2], ['fuun', 2], ['zoom', 2], ['twirl', 2], ['flip', 1], ['shake', 2]],
+  free: [['yaha', 3], ['ura', 3], ['huh', 2], ['fuun', 2], ['twirl', 2], ['flip', 1], ['shake', 2]],
   desk: [['bash', 4], ['huh', 2], ['shake', 2], ['yaha', 1]],
 }
 
 /**
  * The rows of sky over its box each quirk that rises needs, for the shapes
  * to stay in the room (its leap and its line up with it, the backflip's arc,
- * HUHHH?'s lean-in, Yaha!'s bounce, the twirl's lift): with fewer (the band
+ * Haa?'s lean-in, Yaha!'s bounce, the twirl's lift): with fewer (the band
  * above the prompt has one), it is never picked, in the cells or the shapes.
  */
 const SKY_NEEDED: Readonly<Partial<Record<QuirkKind, number>>> = { ura: 4, flip: 4, huh: 2, yaha: 2, twirl: 2 }
@@ -89,8 +89,7 @@ export const quirkPlaceOf = (look: Look): QuirkPlace | undefined => {
  * A quirk as the cells draw it: the look it changes, frame by frame (a
  * SCENE_FRAME_MS each), its line over its head. The Yaha! dance and the
  * shake a cell either way in turn; the leap and the backflip a row up where
- * the sky has one, a squash either side; zoomies a cell either way in
- * stride; the twirl its head and arms either way; at the laptop, its hands
+ * the sky has one, a squash either side; the twirl its head and arms either way; at the laptop, its hands
  * up and down on the keys.
  */
 export const quirkLook = (look: Look, quirk: Quirk): Look => {
@@ -108,8 +107,6 @@ export const quirkLook = (look: Look, quirk: Quirk): Look => {
       return { ...look, head: 'wide', overlays }
     case 'fuun':
       return { ...look, head: 'shut', arms: 'low', overlays }
-    case 'zoom':
-      return { ...look, nudge: turn ? -1 : 1, legs: turn ? 'step' : 'back', lean: turn ? -1 : 1, overlays }
     case 'twirl':
       return { ...look, head: turn ? 'left' : 'right', arms: turn ? 'point' : 'rest', overlays }
     case 'flip':
