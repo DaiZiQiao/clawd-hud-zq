@@ -209,8 +209,8 @@ export type SceneInputs = {
   art?: 'vector'
   /** Usagi for the mascots (the `character` option); absent, Clawd. */
   character?: 'usagi'
-  /** The vector art stands in a landscape (the `scenery` option, hooks/scenery.ts). */
-  scenery?: true
+  /** The vector art stands in the world on tour (the `scenery` option, hooks/scenery.ts), its days going by as the `daylight` option says. */
+  scenery?: 'fast' | 'real'
   /** The mascot grown into the TV: not drawn, out of the choreography, its place kept. */
   away?: string
   /** The mascot back from the TV, and when (the hooks' clock): shaken for STARTLED_MS. */

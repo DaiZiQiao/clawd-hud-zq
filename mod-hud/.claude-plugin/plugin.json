@@ -119,8 +119,14 @@
     "scenery": {
       "type": "boolean",
       "title": "World tour",
-      "description": "With the vector art, the mascots tour the world's wonders behind them, in the band and the pane: a stop at each landmark in its own light and weather (the Eiffel Tower at dusk, Big Ben in the rain, Mount Fuji in cherry blossom, the northern lights over Tromsø, and more), its name shown as it arrives, then a pan to the next.",
+      "description": "With the vector art, the mascots tour the world's wonders behind them, in the band and the pane: a stop at each landmark in its own weather (Big Ben in the rain, Mount Fuji in cherry blossom, snow in Tromsø, and more) and at its own time of day (see daylight), its name and hour shown as it arrives, then a pan to the next.",
       "default": true
+    },
+    "daylight": {
+      "type": "string",
+      "title": "World tour's days",
+      "description": "fast (default): a world day goes by in 24 minutes, each stop at its own hour by its longitude, so the tour sees each one at a new time of day each time round: dawn, the golden hour, noon, sunset, dusk and night (its lights on, the moon at its real phase and the stars out). real: each stop at its time of day now, by its sun.",
+      "default": "fast"
     },
     "todoRows": {
       "type": "number",

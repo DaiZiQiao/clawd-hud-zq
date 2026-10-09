@@ -49,6 +49,8 @@ export type Settings = {
   mascotArt: 'vector' | 'blocks'
   /** The vector art's mascots on a tour of the world's wonders, behind them in the band and the pane (hooks/scenery.ts). */
   scenery: boolean
+  /** The tour's days: `fast`, a world day in 24 minutes; `real`, each stop at its own time of day now. */
+  daylight: 'fast' | 'real'
   /**
    * Where the session's own mascot lives: `band`, in the band above the
    * prompt where the surface draws one (terminal, desktop), the subagents in
@@ -87,6 +89,7 @@ export const settingsOf = (options: PluginOptions): Settings => ({
   motion: options.motion === 'classic' ? 'classic' : 'smooth',
   mascotArt: options.mascotArt === 'blocks' ? 'blocks' : 'vector',
   scenery: options.scenery !== false,
+  daylight: options.daylight === 'real' ? 'real' : 'fast',
   cacheTtl: options.cacheTtl === '5m' || options.cacheTtl === '1h' ? options.cacheTtl : 'auto',
   sessionMascot: options.sessionMascot === 'pane' ? 'pane' : 'band',
   tidy: options.tidy === 'auto' || options.tidy === 'off' ? options.tidy : 'ask',

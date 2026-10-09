@@ -118,7 +118,7 @@ export const draw = (world: World, elements: SceneElements): RenderElement => {
   if (!pixels) return renderCanvas(elements, canvas.grid, 'scene')
   const alt = sceneAlt(scene, canvas.layers, plan.collapsed.length)
   // The vector art: the same plan and view, each mascot's pose eased from its last frame.
-  const frame = world.props.art === 'vector' ? smoothFrame(scene, layout, plan, view.sprites, smootherOf(world), world.sceneNow, world.props.scenery === true) : undefined
+  const frame = world.props.art === 'vector' ? smoothFrame(scene, layout, plan, view.sprites, smootherOf(world), world.sceneNow, world.props.scenery ?? false) : undefined
   if (frame !== undefined) return pixelsOf(elements, { ...smoothSvg(frame, room.columns, room.rows, SVG_MAX), alt }, room)
 
   return pixelsOf(elements, sceneSvg(canvas.layers, room, alt), room)

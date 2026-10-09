@@ -1,4 +1,4 @@
-import { chain, documentOf, overlay, partMarkup, rasterOf, scale, translate, viewed } from './clawd-vector'
+import { chain, documentOf, overlay, paintRects, partMarkup, rasterOf, scale, translate, viewed } from './clawd-vector'
 import type { Markup, Shape } from './clawd-vector'
 import { BODY_WIDTH, BODY_X, BOX_ROWS, MINI, MINI_SCALE, SKY } from './mascot-sprites'
 import { ACCENT } from './scene-model'
@@ -6,8 +6,8 @@ import { PIPE_COLOUR, PIPE_SHINE, PIPE_WIDTH } from './scene-pipe'
 import { placedSprites } from './scene-placement'
 import type { Cell, MascotLayout, MascotPlan, MascotScene, PlacedSprite, SceneView } from './scene-types'
 import { glyphShapes } from './raster-font'
-import { keptIn, sceneryOf } from './scenery'
-import type { Layer, Scenery } from './scenery'
+import { keptIn, litLights, litStill, sceneryOf } from './scenery'
+import type { Daylight, Scenery } from './scenery'
 import { crossShapes, figureShapes, markShapes, pipeShapes, tickShapes } from './smooth-art'
 import { livelyOf, targetOf } from './smooth-pose'
 import { TODDLE_MS, quirkPose } from './usagi-moves'
@@ -72,10 +72,10 @@ const stripShapes = (sprite: PlacedSprite, room: number): Shape[] => {
 /**
  * The scene's frame at `now` (the scene's time, ms): each mascot's pose eased
  * by `smoother` (kept by the caller from frame to frame), and with `scenery`
- * the land it stands in, each mascot's shadow on the ground under it;
- * undefined when nothing fits.
+ * the land it stands in, its days going by so, each mascot's shadow on the
+ * ground under it; undefined when nothing fits.
  */
-export const smoothFrame = (scene: MascotScene, layout: MascotLayout, plan: MascotPlan | undefined, view: SceneView | undefined, smoother: Smoother, now: number, scenery = false): SmoothFrame | undefined => {
+export const smoothFrame = (scene: MascotScene, layout: MascotLayout, plan: MascotPlan | undefined, view: SceneView | undefined, smoother: Smoother, now: number, scenery: Daylight | false = false): SmoothFrame | undefined => {
   const placed = placedSprites(scene, layout, plan, view)
   if (placed === undefined || plan === undefined) return undefined
   const room = placed.headroom
@@ -129,7 +129,7 @@ export const smoothFrame = (scene: MascotScene, layout: MascotLayout, plan: Masc
     const info = mini ? { ...figure.info, energy: 0 as const, letter: undefined } : figure.info
     // The room's top is the canvas's: its feet's height over it, in the figure's units.
     const from = shapes.length
-    if (scenery) {
+    if (scenery !== false) {
       // Its shadow on its floor, smaller and fainter the higher it is.
       const lift = Math.max(0, sprite.d - SKY - (sprite.exact?.top ?? sprite.top))
       const floor = (room + sprite.d + (usagi ? BOX_ROWS : BOX_ROWS - 0.5)) * 4
@@ -147,20 +147,20 @@ export const smoothFrame = (scene: MascotScene, layout: MascotLayout, plan: Masc
   const width = plan.columns * 2
   const height = rows * 4
   // The field begins a little behind the back row's feet.
-  const land = scenery ? sceneryOf(width, height, (room + BOX_ROWS - 0.5) * 4 - 2, now) : undefined
+  const land = scenery === false ? undefined : sceneryOf(width, height, (room + BOX_ROWS - 0.5) * 4 - 2, now, scenery)
 
   // Panning on to the next stop, every frame drawn, as while a mascot moves.
   return { shapes, wholes, width, height, still: still && land?.panning !== true, ...(land === undefined ? {} : { scenery: land }) }
 }
 
-/** The still layers' markup as last made, by what they show and whether with their texture: made once, not every frame. */
+/** The still land's markup as last made, by what it shows and in what light: made once, not every frame. */
 const stillMarkups = new Map<string, Markup>()
 
-/** A layer's still shapes as markup (all of them, or without its texture), seen from its shift: kept, then moved back by it. */
-const stillMarkup = (layer: Layer, prefix: string, texture = true): Markup => {
-  const kept = keptIn(stillMarkups, `${layer.key}:${texture}`, () => partMarkup(texture ? layer.still : layer.still.slice(0, layer.still.length - layer.detail), Infinity, () => true, prefix))
+/** Still shapes as markup, kept by `key`, seen from `shift` units into them: moved back by it. */
+const stillMarkup = (key: string, shapes: () => readonly Shape[], shift: number, prefix: string): Markup => {
+  const kept = keptIn(stillMarkups, key, () => partMarkup(shapes(), Infinity, () => true, prefix))
 
-  return layer.shift === 0 ? kept : { markup: `<g transform='translate(${num(-layer.shift)} 0)'>${kept.markup}</g>`, used: kept.used }
+  return shift === 0 ? kept : { markup: `<g transform='translate(${num(-shift)} 0)'>${kept.markup}</g>`, used: kept.used }
 }
 
 /** The units a desktop CSS pixel is: a cell is 8 by 16 pixels, 2 by 4 units. */
@@ -189,20 +189,26 @@ export const smoothSvg = (frame: SmoothFrame, columns: number, rows: number, lim
     const gone = new Set(frame.wholes.flatMap(([from, to], index) => (dropped.has(index) ? Array.from({ length: to - from }, (_, at) => from + at) : [])))
     mascots = partMarkup(frame.shapes.filter((_, index) => !gone.has(index)), budget)
   }
-  // The scenery in what the mascots leave, its alike shapes merged into paths: all of it, else without the ground's
-  // texture, else its still layers alone, else none.
-  const land = frame.scenery
+  // The scenery in what the mascots leave, its alike shapes merged into paths, the still land lit for the hour: all
+  // of it, else without the ground's texture, else the sky's colours and the still land and its lights alone, else none.
+  const scenery = frame.scenery
   let parts: { behind: Markup[]; front: Markup[] } = { behind: [], front: [] }
-  if (land !== undefined) {
+  if (scenery !== undefined) {
+    const { land } = scenery
     const moving = (shapes: readonly Shape[], prefix: string): Markup => partMarkup(shapes, Infinity, () => true, prefix)
-    const sky = stillMarkup(land.sky, 's')
-    const skyMoving = moving(land.sky.moving, 'm')
-    const landMoving = moving(land.land.moving, 'n')
-    const front = moving(land.front, 'f')
+    // The sky's colours, fading in from the page at the top: masked by a ramp down, from 0.3 to whole.
+    const top = num(scenery.sky.top)
+    const fill = moving(scenery.sky.fill, 's')
+    const sky = { markup: `<linearGradient id='sky-top' gradientUnits='userSpaceOnUse' x1='0' y1='0' x2='0' y2='${top}'><stop offset='0' stop-color='#ffffff' stop-opacity='0.3'/><stop offset='1' stop-color='#ffffff'/></linearGradient><mask id='sky'><rect width='${num(frame.width)}' height='${num(frame.height)}' fill='url(#sky-top)'/></mask><g mask='url(#sky)'>${fill.markup}</g>`, used: fill.used }
+    const skyMoving = moving(scenery.sky.moving, 'm')
+    const still = (texture: boolean): Markup => stillMarkup(`${land.key}:${land.litKey}:${texture}`, () => litStill(land, texture), land.shift, 'l')
+    const lights = stillMarkup(`${land.key}:${land.litKey}:lights`, () => litLights(land), land.shift, 'o')
+    const landMoving = moving(land.moving, 'n')
+    const front = moving(scenery.front, 'f')
     const choices = [
-      { behind: [sky, skyMoving, stillMarkup(land.land, 'l'), landMoving], front: [front] },
-      { behind: [sky, skyMoving, stillMarkup(land.land, 'l', false), landMoving], front: [front] },
-      { behind: [sky, stillMarkup(land.land, 'l', false)], front: [] },
+      { behind: [sky, skyMoving, still(true), lights, landMoving], front: [front] },
+      { behind: [sky, skyMoving, still(false), lights, landMoving], front: [front] },
+      { behind: [sky, still(false), lights], front: [] },
     ]
     const length = (choice: (typeof choices)[number]): number => [...choice.behind, ...choice.front].reduce((sum, part) => sum + part.markup.length, mascots.markup.length)
     parts = choices.find(choice => length(choice) <= budget) ?? parts
@@ -229,24 +235,35 @@ export const smoothPixels = (
   const width = Math.max(1, Math.floor(columns)) * cell.width
   const height = Math.max(1, Math.floor(rows)) * cell.height
   const view = scale(cell.width / 2, cell.height / 4)
-  const land = frame.scenery
-  if (land === undefined) return { pixels: rasterOf(frame.shapes, width, height, view, glyphShapes, scheme), width, height }
-  // The still layers from the cache, each seen from its shift: the sky's copied to draw over, the land's laid over that.
-  const still = (layer: Layer): { kept: Uint8Array; across: number; from: number } => {
-    const across = Math.max(width, Math.round((layer.span * cell.width) / 2))
-    const kept = keptIn(stills, `${layer.key}:${across}x${height}:${scheme}`, () => rasterOf(layer.still, across, height, view, glyphShapes, scheme))
-
-    return { kept, across, from: Math.min(across - width, Math.max(0, Math.round((layer.shift * cell.width) / 2))) }
-  }
-  const sky = still(land.sky)
+  const scenery = frame.scenery
+  if (scenery === undefined) return { pixels: rasterOf(frame.shapes, width, height, view, glyphShapes, scheme), width, height }
+  const { land } = scenery
+  // The sky; over it the still land from the cache, drawn in daylight, then lit for the hour column by column with its
+  // lights laid over (again each time the light has changed); then what moves on it, the mascots and the weather.
   const pixels = new Uint8Array(width * height * 4)
-  for (let row = 0; row < height; row += 1) pixels.set(sky.kept.subarray((row * sky.across + sky.from) * 4, (row * sky.across + sky.from + width) * 4), row * width * 4)
-  rasterOf(land.sky.moving, width, height, view, glyphShapes, scheme, pixels)
-  const ground = still(land.land)
-  overlay(pixels, ground.kept, width, ground.across, ground.from)
+  paintRects(pixels, width, height, view, scenery.sky.fill, scheme)
+  // The sky fading in from the terminal's background at the top, from 0.3 to whole.
+  for (let row = 0, rows = Math.min(height, Math.round(scenery.sky.top * view[3])); row < rows; row += 1) for (let at = row * width * 4 + 3; at < (row + 1) * width * 4; at += 4) pixels[at] = Math.round((pixels[at] ?? 0) * (0.3 + (0.7 * (row + 0.5)) / rows))
+  rasterOf(scenery.sky.moving, width, height, view, glyphShapes, scheme, pixels)
+  const across = Math.max(width, Math.round((land.span * cell.width) / 2))
+  const size = `${across}x${height}:${scheme}`
+  const drawn = (key: string, shapes: readonly Shape[]): Uint8Array => keptIn(stills, `${key}:${size}`, () => rasterOf(shapes, across, height, view, glyphShapes, scheme), 10)
+  const lit = keptIn(stills, `${land.key}:${land.litKey}:${size}`, () => {
+    const columns = Array.from({ length: across }, (_, x) => land.litAt(((x + 0.5) * 2) / cell.width))
+    const strip = new Uint8Array(across * height * 4)
+    overlay(strip, drawn(land.key, land.still), across, across, 0, columns.map(one => one.grade))
+    if (land.lights.length > 0 && columns.some(one => one.glow > 0.01)) overlay(strip, drawn(`${land.key}:lights`, land.lights), across, across, 0, columns.map(one => ({ m: [[1, 0, 0], [0, 1, 0], [0, 0, 1]], add: [0, 0, 0], alpha: one.glow })))
 
-  return { pixels: rasterOf([...land.land.moving, ...frame.shapes, ...land.front], width, height, view, glyphShapes, scheme, pixels), width, height }
+    return strip
+  }, 10)
+  overlay(pixels, lit, width, across, Math.min(across - width, Math.max(0, Math.round((land.shift * cell.width) / 2))))
+
+  return { pixels: rasterOf([...land.moving, ...frame.shapes, ...scenery.front], width, height, view, glyphShapes, scheme, pixels), width, height }
 }
 
-/** The scenery's still layers as last drawn, by what they show, their size and scheme: the band's and a pane's two each, and their next. */
+/**
+ * The still land as last drawn, by what it shows, its size and scheme: in
+ * daylight, its lights, and the two lit for the hour; the band's and a
+ * pane's, and their next.
+ */
 const stills = new Map<string, Uint8Array>()

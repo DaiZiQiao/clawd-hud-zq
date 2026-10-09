@@ -74,7 +74,7 @@ export const stageFrame = (stage: Stage, scheme: 'dark' | 'light'): string => {
     const scene = sceneAt(world, world.sceneNow)
     const layout = layoutAt(world, plan.tick)
     world.owners = sceneCanvas(scene, layout, plan, view.sprites)?.owners
-    frame = smoothFrame(scene, layout, plan, view.sprites, stage.smoother, world.sceneNow, world.props.scenery === true)
+    frame = smoothFrame(scene, layout, plan, view.sprites, stage.smoother, world.sceneNow, world.props.scenery ?? false)
   }
   stage.still = (frame === undefined || frame.still) && world.carried.size === 0
   const { pixels, width, height } = smoothPixels(frame ?? { shapes: [], wholes: [], width: 0, height: 0, still: true }, columns, rows, stage.cell, scheme)

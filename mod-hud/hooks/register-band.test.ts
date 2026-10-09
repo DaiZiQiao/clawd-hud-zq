@@ -79,7 +79,7 @@ describe('the session mascot in the band', () => {
       const inputs = yard?.props.props as SceneInputs
       expect(inputs.only).toBe('main')
       expect(inputs.rows).toBe(rows)
-      expect(inputs.scenery).toBe(true)
+      expect(inputs.scenery).toBe('fast')
       // The board rides along for its mood (watching a subagent at work), never drawn there.
       expect(inputs.agents.map(one => one.id)).toEqual(['sub-1'])
       // Nothing to say about tidying: no text beside it.

@@ -1714,7 +1714,7 @@ const bandYard = async (
       ...(tidyingSince === undefined ? {} : { tidyingSince }),
       ...(svg === undefined ? {} : { svg: true as const }),
       ...(settings.mascotArt === 'vector' ? { art: 'vector' as const } : {}),
-      ...(settings.mascotArt === 'vector' && settings.scenery ? { scenery: true as const } : {}),
+      ...(settings.mascotArt === 'vector' && settings.scenery ? { scenery: settings.daylight } : {}),
       ...(settings.character === 'usagi' ? { character: 'usagi' as const } : {}),
     })
     // A terminal that shows pictures: the vector art as one, swapped frame by frame.
@@ -2451,7 +2451,7 @@ export const register: Register = (on, options) => {
               ...(inspecting === undefined ? {} : { paused: true }),
               ...(svg === undefined ? {} : { svg: true as const }),
               ...(settings.mascotArt === 'vector' ? { art: 'vector' as const } : {}),
-              ...(settings.mascotArt === 'vector' && settings.scenery ? { scenery: true as const } : {}),
+              ...(settings.mascotArt === 'vector' && settings.scenery ? { scenery: settings.daylight } : {}),
               ...(settings.character === 'usagi' ? { character: 'usagi' as const } : {}),
               ...(away === undefined ? {} : { away }),
               ...(shaken === undefined ? {} : { startled: shaken }),

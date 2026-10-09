@@ -69,7 +69,9 @@ export type Gradient = { x1: number; y1: number; x2: number; y2: number; stops: 
  * a line of text (its baseline's middle, start or end at `x`, `y`; `size` its
  * height in units). Filled with `fill` at `alpha`; an outline's colour, and
  * a grown polygon's or a line's, raw (no theme key). A rectangle, an ellipse
- * or a plain polygon may be filled with a gradient (`grad`) instead.
+ * or a plain polygon may be filled with a gradient (`grad`) instead, and a
+ * rectangle faded in across (`fade`: clear at its first x, whole at its
+ * second, eased between, in its own units).
  */
 export type Shape = {
   kind: 'rect' | 'ellipse' | 'poly' | 'line' | 'text'
@@ -89,6 +91,7 @@ export type Shape = {
   bold?: boolean
   fill: Paint
   grad?: Gradient
+  fade?: readonly [number, number]
   alpha?: number
   m?: Matrix
 }
@@ -149,7 +152,7 @@ const elementOf = (shape: Shape, grad?: string): string => {
  * path's nonzero fill fills both, as their own elements would.
  */
 const pathOf = (shape: Shape): string | undefined => {
-  if (shape.grad !== undefined) return undefined
+  if (shape.grad !== undefined || shape.fade !== undefined) return undefined
   const given = shape.points ?? []
   // A polygon's area signed by its turning: negative running anticlockwise (y down).
   const turning = given.reduce((sum, [x, y], index) => {
@@ -217,13 +220,22 @@ export const partMarkup = (shapes: readonly Shape[], limit = Infinity, merged?: 
   let index = 0
   let grads = 0
   // A gradient's own element, just before the shape it fills (in that shape's units).
-  const filled = (shape: Shape): string => {
-    const grad = shape.kind === 'line' || shape.ring !== undefined || shape.grow !== undefined || shape.outline !== undefined ? undefined : shape.grad
-    if (grad === undefined) return elementOf(shape)
+  const gradient = (grad: Gradient): { id: string; element: string } => {
     const id = `${prefix}${(grads += 1)}`
     const stops = grad.stops.map(([at, colour, alpha]) => `<stop offset='${num(at)}' stop-color='${colour}'${alpha < 1 ? ` stop-opacity='${num(alpha)}'` : ''}/>`).join('')
 
-    return `<linearGradient id='${id}' gradientUnits='userSpaceOnUse' x1='${num(grad.x1)}' y1='${num(grad.y1)}' x2='${num(grad.x2)}' y2='${num(grad.y2)}'>${stops}</linearGradient>${elementOf(shape, id)}`
+    return { id, element: `<linearGradient id='${id}' gradientUnits='userSpaceOnUse' x1='${num(grad.x1)}' y1='${num(grad.y1)}' x2='${num(grad.x2)}' y2='${num(grad.y2)}'>${stops}</linearGradient>` }
+  }
+  const filled = (shape: Shape): string => {
+    const grad = shape.kind === 'line' || shape.ring !== undefined || shape.grow !== undefined || shape.outline !== undefined || shape.grad === undefined ? undefined : gradient(shape.grad)
+    const element = elementOf(shape, grad?.id)
+    if (shape.fade === undefined || shape.kind !== 'rect') return `${grad?.element ?? ''}${element}`
+    // Faded in: masked by a ramp of white, clear to whole, eased as `smooth` is.
+    const [from, to] = shape.fade
+    const ramp = gradient({ x1: from, y1: 0, x2: to, y2: 0, stops: [0, 0.25, 0.5, 0.75, 1].map(at => [at, '#ffffff', smooth(at)] as const) })
+    const mask = `${prefix}${(grads += 1)}`
+
+    return `${grad?.element ?? ''}${ramp.element}<mask id='${mask}'><rect x='${num(shape.x)}' y='${num(shape.y)}' width='${num(shape.w)}' height='${num(shape.h)}' fill='url(#${ramp.id})'/></mask>${element.replace(/\/>$/, ` mask='url(#${mask})'/>`)}`
   }
   const drawn = shapes.filter(visible)
   while (index < drawn.length) {
@@ -278,6 +290,20 @@ export const rgbOf = (hex: string): [number, number, number] => {
   const n = Number.parseInt(hex.slice(1, 7), 16)
 
   return Number.isFinite(n) ? [(n >> 16) & 255, (n >> 8) & 255, n & 255] : [255, 255, 255]
+}
+
+type Rgb = readonly [number, number, number]
+
+/** A colour grade: each channel a row of `m` times the colour (0 to 255) plus that channel's `add`; its alpha times `alpha`. */
+export type Grade = { m: readonly [Rgb, Rgb, Rgb]; add: Rgb; alpha?: number }
+
+const channel = (v: number): number => (v <= 0 ? 0 : v >= 255 ? 255 : Math.round(v))
+
+/** A raw colour graded. */
+export const graded = (hex: string, { m, add }: Grade): string => {
+  const [r, g, b] = rgbOf(hex)
+
+  return `#${m.map((row, i) => channel(row[0] * r + row[1] * g + row[2] * b + (add[i] ?? 0)).toString(16).padStart(2, '0')).join('')}`
 }
 
 /**
@@ -418,14 +444,63 @@ const layPixel = (pixels: Uint8Array, at: number, r: number, g: number, b: numbe
   pixels[at + 3] = Math.round(out * 255)
 }
 
-/** `above` laid over `below` in place (straight alpha): `below` `width` pixels a row, `above` `stride` a row, read from its column `from` on. */
-export const overlay = (below: Uint8Array, above: Uint8Array, width: number, stride = width, from = 0): void => {
+/**
+ * `above` laid over `below` in place (straight alpha): `below` `width`
+ * pixels a row, `above` `stride` a row, read from its column `from` on; each
+ * of `below`'s columns graded by its `grades`' grade, when it has one.
+ */
+export const overlay = (below: Uint8Array, above: Uint8Array, width: number, stride = width, from = 0, grades?: readonly (Grade | undefined)[]): void => {
   const rows = below.length / (4 * width)
-  for (let y = 0; y < rows; y += 1) {
-    for (let x = 0; x < width; x += 1) {
-      const at = (y * stride + from + x) * 4
+  // A column at a time, its grade's numbers at hand.
+  for (let x = 0; x < width; x += 1) {
+    const grade = grades?.[x]
+    const [[rr, rg, rb], [gr, gg, gb], [br, bg, bb]] = grade?.m ?? [[1, 0, 0], [0, 1, 0], [0, 0, 1]]
+    const [ar, ag, ab] = grade?.add ?? [0, 0, 0]
+    const scale = (grade?.alpha ?? 1) / 255
+    for (let y = 0, at = (from + x) * 4, to = x * 4; y < rows; y += 1, at += stride * 4, to += width * 4) {
       const a = above[at + 3] ?? 0
-      if (a > 0) layPixel(below, (y * width + x) * 4, above[at] ?? 0, above[at + 1] ?? 0, above[at + 2] ?? 0, a / 255)
+      if (a === 0) continue
+      const r = above[at] ?? 0
+      const g = above[at + 1] ?? 0
+      const b = above[at + 2] ?? 0
+      if (grade === undefined) layPixel(below, to, r, g, b, a / 255)
+      else layPixel(below, to, channel(rr * r + rg * g + rb * b + ar), channel(gr * r + gg * g + gb * b + ag), channel(br * r + bg * g + bb * b + ab), a * scale)
+    }
+  }
+}
+
+/**
+ * Rects, each its fill or a gradient down it, laid over `pixels` whole pixels
+ * at a time through `view` (one that only scales): their edges unsmoothed,
+ * so rects side by side tile, and the colour there before them gone, but
+ * where one fades in (`Shape.fade`), laid over it. A sky's colours, far
+ * quicker than `rasterOf`.
+ */
+export const paintRects = (pixels: Uint8Array, width: number, height: number, view: Matrix, rects: readonly Shape[], scheme: 'dark' | 'light' = 'dark'): void => {
+  const words = new Uint32Array(pixels.buffer, pixels.byteOffset, width * height)
+  const one = new Uint8Array(4)
+  const word = new Uint32Array(one.buffer)
+  for (const shape of rects) {
+    const left = Math.max(0, Math.round(shape.x * view[0]))
+    const right = Math.min(width, Math.round((shape.x + shape.w) * view[0]))
+    const grad = shape.grad
+    // How far faded in each column is, when it fades.
+    const fade = shape.fade
+    const faded = fade === undefined ? undefined : Array.from({ length: Math.max(0, right - left) }, (_, x) => smooth(((left + x + 0.5) / view[0] - fade[0]) / (fade[1] - fade[0])))
+    // Its colours, each where down it.
+    const stops = (grad?.stops ?? [[0, hexOf(shape.fill, scheme), 1]]).map(([at, colour, alpha]) => [grad === undefined ? 0 : grad.y1 + at * (grad.y2 - grad.y1), ...rgbOf(colour), alpha] as const)
+    for (let py = Math.max(0, Math.round(shape.y * view[3])), bottom = Math.min(height, Math.round((shape.y + shape.h) * view[3])); py < bottom && right > left; py += 1) {
+      const y = (py + 0.5) / view[3]
+      const after = stops.findIndex(([at]) => at >= y)
+      const [y0, r0, g0, b0, a0] = stops[after <= 0 ? Math.max(0, after) : after - 1] ?? stops[stops.length - 1] ?? [0, 0, 0, 0, 0]
+      const [y1, r1, g1, b1, a1] = after < 0 ? [y0, r0, g0, b0, a0] : stops[after] ?? [y0, r0, g0, b0, a0]
+      const k = y1 > y0 ? (y - y0) / (y1 - y0) : 0
+      one[0] = r0 + (r1 - r0) * k
+      one[1] = g0 + (g1 - g0) * k
+      one[2] = b0 + (b1 - b0) * k
+      one[3] = 255 * (a0 + (a1 - a0) * k) * (shape.alpha ?? 1)
+      if (faded === undefined) words.fill(word[0] ?? 0, py * width + left, py * width + right)
+      else for (let px = left; px < right; px += 1) layPixel(pixels, (py * width + px) * 4, one[0] ?? 0, one[1] ?? 0, one[2] ?? 0, ((one[3] ?? 0) / 255) * (faded[px - left] ?? 1))
     }
   }
 }
@@ -475,7 +550,8 @@ const layShape = (pixels: Uint8Array, width: number, height: number, shape: Shap
   const distance = distanceTo(shape)
   const [b0, b1, b2, b3, b4, b5] = back
   const ramp = shape.outline === undefined && shape.grow === undefined && shape.ring === undefined && shape.kind !== 'line' && shape.grad !== undefined ? rampOf(shape.grad) : undefined
-  const lay = (at: number, r: number, g: number, b: number, a: number): void => layPixel(pixels, at, r, g, b, a)
+  const fade = shape.kind === 'rect' ? shape.fade : undefined
+  const lay = (at: number, r: number, g: number, b: number, a: number, lx: number): void => layPixel(pixels, at, r, g, b, fade === undefined ? a : a * smooth((lx - fade[0]) / (fade[1] - fade[0])))
   for (let py = y0; py <= y1; py += 1) {
     // The row's first pixel's middle, back in local units; each pixel on, a step along the row.
     let lx = b0 * (x0 + 0.5) + b2 * (py + 0.5) + b4
@@ -487,15 +563,15 @@ const layShape = (pixels: Uint8Array, width: number, height: number, shape: Shap
       // Its outline where its fill does not cover the pixel whole.
       if (outline !== undefined && (cover < 1 || alpha < 1)) {
         const under = 0.5 - (d - reach) / pixel
-        if (under > 0) lay(at, lineRed, lineGreen, lineBlue, (under >= 1 ? 1 : under) * alpha)
+        if (under > 0) lay(at, lineRed, lineGreen, lineBlue, (under >= 1 ? 1 : under) * alpha, lx)
       }
       if (cover <= 0) continue
       if (ramp === undefined) {
-        lay(at, red, green, blue, (cover >= 1 ? 1 : cover) * alpha)
+        lay(at, red, green, blue, (cover >= 1 ? 1 : cover) * alpha, lx)
         continue
       }
       const step = 4 * Math.round(255 * Math.max(0, Math.min(1, (lx - ramp.x) * ramp.dx + (ly - ramp.y) * ramp.dy)))
-      lay(at, ramp.rgba[step] ?? 0, ramp.rgba[step + 1] ?? 0, ramp.rgba[step + 2] ?? 0, (cover >= 1 ? 1 : cover) * alpha * (ramp.rgba[step + 3] ?? 0) / 255)
+      lay(at, ramp.rgba[step] ?? 0, ramp.rgba[step + 1] ?? 0, ramp.rgba[step + 2] ?? 0, ((cover >= 1 ? 1 : cover) * alpha * (ramp.rgba[step + 3] ?? 0)) / 255, lx)
     }
   }
 }
