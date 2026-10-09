@@ -143,11 +143,11 @@ describe('what it wears', () => {
     for (const colour of colours) expect(SCENE_COLOURS).toContain(colour)
   })
 
-  test('the session wears the crown, small, tilted on the left of its head; knocked down, it lies beside it', () => {
+  test('the session wears the crown, small, tilted on the left of its head, in front of its ear; knocked down, it lies beside it', () => {
     const gold = SIDE_CROWN.palette.G
     const crowned = cellsIn(drawUsagi(STAND, dressOfMain(MAIN))).filter(({ cell }) => paints(cell, gold))
     expect(crowned.map(({ row }) => row)).toEqual([SKY + 1, SKY + 1, SKY + 1])
-    expect(crowned.map(({ column }) => column)).toEqual([2, 3, 4])
+    expect(crowned.map(({ column }) => column)).toEqual([3, 4, 5])
     const down = drawUsagi({ ...STAND, pose: 'flat', hatOff: true }, dressOfMain(MAIN))
     expect(rowText(down, SKY + 3).slice(12, 15)).toBe(SIDE_CROWN.floor)
     expect(cellsIn(drawUsagi(STAND, dressOfAgent(working('a', 'thinking')))).some(({ cell }) => paints(cell, gold))).toBe(false)

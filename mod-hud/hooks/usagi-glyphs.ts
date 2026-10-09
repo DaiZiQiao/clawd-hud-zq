@@ -87,7 +87,7 @@ const shoutOf = (look: Look): Overlay | undefined => {
 }
 
 /** Usagi's strides as a cartoon's run: four feet in a flurry, shifted each frame, where Clawd takes a step. */
-const RUN_FEET: Partial<Record<Look['legs'], readonly number[]>> = { step: [3, 6, 11, 14], pass: [4, 7, 10, 13], back: [5, 8, 11, 12] }
+const RUN_FEET: Partial<Record<Look['legs'], readonly number[]>> = { step: [4, 7, 10, 13], pass: [5, 7, 10, 12], back: [4, 8, 9, 13] }
 
 /** Its ears for a look: through its hat's brim they stand; else lowered squatting or asleep, trailing a walk, drooping slumped (bare). */
 const earsOf = (look: Look, hatted: boolean, crowned: boolean): Ears => {
@@ -160,7 +160,7 @@ export const usagiFigure = (look: Look, dress: Dress): { bitmap: string[]; palet
     palette = { ...palette, ...hat.palette }
   }
   if (dress.crown === true && look.hatOff !== true && look.pose !== 'flat') {
-    rows = laid(rows, SIDE_CROWN.art, 0, 2)
+    rows = laid(rows, SIDE_CROWN.art, 2, 2)
     palette = { ...palette, ...SIDE_CROWN.palette }
   }
   if (capped) {

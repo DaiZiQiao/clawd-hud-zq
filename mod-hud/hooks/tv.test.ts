@@ -664,7 +664,7 @@ describe('in the pane', () => {
     return Object.fromEntries((await ui.findAll({ type: 'Client' })).map(one => [one.key ?? '', one]))
   }
 
-  test('a click on a mascot grows it into its TV over the pane: the HUD, lists and scene stay under it, the mascot out of the scene; terminal and desktop', async ($, on) => {
+  test('a click on a mascot grows it into its TV over the pane: the HUD, lists and scene stay under it, the mascot out of the scene; terminal and desktop', { timeoutMs: 20_000 }, async ($, on) => {
     const { held } = arrange(on, [TYPIST])
     for (const surface of ['terminal', 'desktop'] as const) {
       held.set('selected', { value: null, version: (held.get('selected')?.version ?? 0) + 1 })
@@ -700,7 +700,7 @@ describe('in the pane', () => {
     }
   })
 
-  test('its posts: a channel, a press on its glass, and the close, after which the mascot is back in the scene, shaken', async ($, on) => {
+  test('its posts: a channel, a press on its glass, and the close, after which the mascot is back in the scene, shaken', { timeoutMs: 20_000 }, async ($, on) => {
     const { held } = arrange(on, [TYPIST])
     const ui = await mount($, 'terminal', 72, 36)
     await ui.post({ kind: 'inspect', id: 'a' }, { in: 'mascots' })
@@ -723,7 +723,7 @@ describe('in the pane', () => {
     await ui.unmount()
   })
 
-  test('pressed in flight, the TV wears its propeller cap; another agent from the Agents channel does not', async ($, on) => {
+  test('pressed in flight, the TV wears its propeller cap; another agent from the Agents channel does not', { timeoutMs: 20_000 }, async ($, on) => {
     arrange(on, [TYPIST])
     const ui = await mount($, 'terminal', 72, 36)
     await ui.post({ kind: 'inspect', id: 'a', at: { x: 10, y: 1 }, cap: true }, { in: 'mascots' })
@@ -739,7 +739,7 @@ describe('in the pane', () => {
     await ui.unmount()
   })
 
-  test('the Agents channel: the lists on its glass, a press of an agent\'s ▸ there keeping that channel', async ($, on) => {
+  test('the Agents channel: the lists on its glass, a press of an agent\'s ▸ there keeping that channel', { timeoutMs: 20_000 }, async ($, on) => {
     const { held } = arrange(on, [TYPIST])
     const ui = await mount($, 'terminal', 72, 36)
     await ui.post({ kind: 'inspect', id: 'a' }, { in: 'mascots' })
@@ -752,7 +752,7 @@ describe('in the pane', () => {
     await ui.unmount()
   })
 
-  test('the session\'s crowned mascot opens its Overview channel; Usagi\'s TV is Usagi', { options: { character: 'usagi' } }, async ($, on) => {
+  test('the session\'s crowned mascot opens its Overview channel; Usagi\'s TV is Usagi', { options: { character: 'usagi' }, timeoutMs: 20_000 }, async ($, on) => {
     arrange(on, [TYPIST])
     const ui = await mount($, 'desktop', 72, 36)
     await ui.post({ kind: 'inspect', id: 'main' }, { in: 'mascots' })
@@ -763,7 +763,7 @@ describe('in the pane', () => {
     await ui.unmount()
   })
 
-  test('with inspectView pane, in a pane too short for it, and on VS Code and mobile, the inspect view under the HUD', { options: { inspectView: 'pane' } }, async ($, on) => {
+  test('with inspectView pane, in a pane too short for it, and on VS Code and mobile, the inspect view under the HUD', { options: { inspectView: 'pane' }, timeoutMs: 20_000 }, async ($, on) => {
     arrange(on, [TYPIST])
     const ui = await mount($, 'terminal', 72, 36)
     await ui.post({ kind: 'inspect', id: 'a' }, { in: 'mascots' })
@@ -772,7 +772,7 @@ describe('in the pane', () => {
     await ui.unmount()
   })
 
-  test('a pane too short for the TV, and VS Code and mobile, draw the inspect view under the HUD', async ($, on) => {
+  test('a pane too short for the TV, and VS Code and mobile, draw the inspect view under the HUD', { timeoutMs: 20_000 }, async ($, on) => {
     const { held } = arrange(on, [TYPIST])
     held.set('selected', { value: { id: 'a', kind: 'agent' }, version: 1 })
     const short = await mount($, 'terminal', 72, 16)

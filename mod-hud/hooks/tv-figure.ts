@@ -487,9 +487,9 @@ const giantUsagi = (who: Who, shape: Shape, eyes: Eyes, spin: number): Figure =>
   // The scene's face is 14 quarters across (its columns 2 to 15): the body's width, a quarter of it `kx` across.
   const kx = bw / 14
   const across = (column: number): number => x0 + (column - 2) * kx
-  // The ears (the scene's columns 4 and 5, 12 and 13), from the box's top into the head, their tips round.
+  // The ears (the scene's columns 6 and 7, 10 and 11, close together), from the box's top into the head, their tips round.
   const earW = Math.max(4, even(2 * kx))
-  const leftEar = even(across(4))
+  const leftEar = even(across(6))
   const ears = [leftEar, x0 + bw - (leftEar - x0) - earW]
   for (const x of ears) {
     fill(canvas, x, 0, earW, y0 + 2, '#')

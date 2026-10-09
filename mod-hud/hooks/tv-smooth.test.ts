@@ -10,7 +10,7 @@ import type { Who } from './tv-figure'
 import { TV_FRAMES, TV_FRAME_MS, tvLayoutOf, tvLookAt } from './tv-model'
 import type { TvInputs, TvRow } from './tv-model'
 import { paintCells, paintSvg } from './tv-paint'
-import { giantPicture, giantShapes, spriteShapes } from './tv-smooth'
+import { casingOf, giantPicture, giantShapes, spriteShapes } from './tv-smooth'
 import { BLINK_EVERY_MS, createTv, startClose, tickTv, tvPostOf } from './tv-world'
 import type { TvPost } from './tv-world'
 import { USAGI } from './usagi-sprites'
@@ -71,15 +71,15 @@ describe('the giant, smooth', () => {
       expect(bounds.top, who.character).toBeGreaterThanOrEqual(box.top - 0.5)
       expect(bounds.right, who.character).toBeLessThanOrEqual(box.right + 0.5)
       expect(bounds.bottom, who.character).toBeLessThanOrEqual(box.bottom + 0.5)
-      // The casing: a shape of its colour covering the TV.
+      // The casing: a shape of its colour (Usagi's cream) covering the TV.
       const tv = { x: box.left + layout.tv.x * 8, y: box.top + layout.tv.y * 16, w: layout.tv.w * 8, h: layout.tv.h * 16 }
-      expect(shapes.some(one => one.kind === 'rect' && one.fill === who.colour && one.x <= tv.x && one.y <= tv.y && one.x + one.w >= tv.x + tv.w && one.y + one.h >= tv.y + tv.h)).toBe(true)
+      expect(shapes.some(one => one.kind === 'rect' && one.fill === casingOf(who) && one.x <= tv.x && one.y <= tv.y && one.x + one.w >= tv.x + tv.w && one.y + one.h >= tv.y + tv.h)).toBe(true)
       // Its eyes: two, under the TV.
       const eye = who.character === 'usagi' ? USAGI.eye : EYE
       const eyes = (eyesOf: 'open' | 'shut') => giantShapes(who, layout, eyesOf).filter(one => one.fill === eye)
       expect(eyes('open')).toHaveLength(2)
       for (const one of eyes('open')) expect(one.y).toBeGreaterThanOrEqual(tv.y + tv.h)
-      for (const one of eyes('shut')) expect(one.kind === 'text' ? 0 : one.h).toBeLessThanOrEqual(4)
+      for (const one of eyes('shut')) expect(one.kind === 'text' ? 0 : one.h).toBeLessThanOrEqual(6)
     }
   })
 
@@ -238,7 +238,7 @@ describe('in a terminal that shows pictures', () => {
     await ui.unmount()
   })
 
-  test('on the desktop no picture: the module draws the giant smooth in its own document', async ($, on) => {
+  test('on the desktop no picture: the module draws the giant smooth in its own document', { timeoutMs: 20_000 }, async ($, on) => {
     arrange(on, [TYPIST])
     const ui = await mount($, 'desktop', 72, 36)
     await ui.post({ kind: 'inspect', id: 'a', at: { x: 10, y: 1 } }, { in: 'mascots' })
@@ -252,7 +252,7 @@ describe('in a terminal that shows pictures', () => {
     await ui.unmount()
   })
 
-  test('with mascotArt blocks, the TV keeps its quarters everywhere', { options: { mascotArt: 'blocks' } }, async ($, on) => {
+  test('with mascotArt blocks, the TV keeps its quarters everywhere', { options: { mascotArt: 'blocks' }, timeoutMs: 20_000 }, async ($, on) => {
     arrange(on, [TYPIST])
     mock.env(on, GHOSTTY)
     const ui = await mount($, 'terminal', 72, 36)

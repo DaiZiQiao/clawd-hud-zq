@@ -171,14 +171,17 @@ the stretch, pick up, dangle, throw and tumble.
   keys under a typing hand, and the session's tidy-up and stretch.
 - **The art** (`hooks/smooth-art.ts`): Clawd keeps Claude Code's own
   proportions (its logo's 18 by 6 quadrants) and wears its accessory, letter
-  and energy marks. Usagi is drawn as Chiikawa draws it: cream, a thin dark
-  line round it all, a big round head (10.6 units across) on a smaller round
-  body (8.8), its long ears close together and pink inside (up through its
-  hat, lowered squatting, drooping slumped bare-headed, trailing a walk), its
-  little feet and its hands nubs at its sides under its cheeks; its dot eyes
-  with a glint under fine brows, pink cheeks hatched with three strokes, a
-  small mouth (wide open on a shout); its hat, side crown and energy. Its
-  laptop stands nearer it than Clawd's, its body being narrower. Its thoughts are its phrases (`Yahaa!`, `HUHHH?`) in the cloud, its
+  and energy marks. Usagi is drawn as Chiikawa draws it: cream, a bold
+  near-black line round it all, a big round head (10.6 units across) on a
+  body three quarters as wide (8), its long ears together, their lines
+  touching, pink inside (up through its hat, lowered squatting, drooping
+  slumped bare-headed, trailing a walk), its little feet and its hands stubby
+  nubs at its sides under its cheeks; its dot eyes with a round glint in
+  their top right under brows arched high over them, its cheeks pink with
+  three short dark strokes, its small cat's mouth `ω` (wide open on a
+  shout); going, its tail, a white puff tufted in short strokes, out of its
+  back; its hat, side crown and energy. Its laptop stands nearer it than
+  Clawd's, its body being narrower. Its thoughts are its phrases (`Yahaa!`, `HUHHH?`) in the cloud, its
   shouts on the cigarette's puffs (`Ura!`, `HUHHH?`, `UNA!`, hands up), and
   `HUHHH?` getting up from a fall. Knocked flat, a hat or crown lies on the
   floor beside it. A child's mini is the same figure at 0.6 the size.
@@ -434,10 +437,10 @@ find none, which is why an eye and the mouth never share a cell (the wide
 mouth turns with the eyes) and why its ears stand on whole cells.
 
 ```
-    █   █        row 0: its ears
-   ▗█▄▄▄█▖       row 1: their feet, its head's top
+     █ █         row 0: its ears, together
+   ▗▄█▄█▄▖       row 1: their feet, its head's top
    ▗▝█▄█▘▖       row 2: its face, five cells of two colours (cheek, eye, mouth, eye, cheek)
-   ▝▛▀▀▀▜▘       row 3: its body, its feet
+    ▜▀▀▀▛        row 3: its body, narrower than its face, its feet
 ```
 
 Bare and standing, as plain text: a two-colour cell prints only its glyph
@@ -452,8 +455,13 @@ body's yellow.
 | cheeks | `#F2A0AE` |
 
 The vector art (below) draws it as Chiikawa does, in colours of its own: its
-body cream `#F8EAC0`, its line `#4B3A2F`, inside its ears `#F2B3BE`, its
-cheeks' hatching `#DE7790`.
+body cream `#F9EBC6`, its line `#2A2220` (its cheeks' strokes, brows and mouth
+too), inside its ears `#F4B3BE`.
+
+As Chiikawa draws it, its body is narrower than its head and its ears stand
+together: the cells keep both, the body's row two cells narrower than the
+face's, the ears a cell apart over the middle (each hat's crown between
+them or through them; the top hat a tall cell between them).
 
 **What it wears.** No letter, no accessory and no colour of its own: an
 agent's role is its **hat**, worn over its head with its ears through the
@@ -548,10 +556,11 @@ shifted each frame (`RUN_FEET`). The vector art draws a cartoon's run
 round its rim, four legs five turns a second), leaning hard into its way,
 arms pumping, ears streaming back, dust kicked up and speed lines behind.
 
-**The face** (vector art). Dot eyes with a glint under fine brows (raised
-when it is startled), squeezed shut `> <` in a burst, half lidded when smug,
-wide when startled; its cheeks pink, hatched with three strokes; its small
-open mouth with a tongue, a wide D when it screams, a round `o`, a smirk. Its ears twitch,
+**The face** (vector art). Dot eyes with a round glint under brows arched
+high over them (higher when it is startled), squeezed shut `> <` in a burst,
+half lidded when smug, wide when startled; its cheeks pink with three short
+dark strokes; its small cat's mouth `ω`, a wide D when it screams, a round
+`o`, a smirk. Its ears twitch,
 one at a time, every three to six seconds. Asleep, a bubble swells and
 shrinks from its nose. Its shouts (the cigarette's puffs, `HUHHH?` dazed,
 `HUHHH?!` startled, its quirks) burst out in the same spiky balloon.
@@ -595,7 +604,7 @@ proportions kept, as big as the giant's box holds it; then the giant is
 drawn as shapes. Clawd: its casing in its colour with a glint along its top
 and a shade along its bottom, its tall eyes under the TV, its arms and four
 legs, what it wears blown up evenly from the scene's. Usagi: cream with
-Chiikawa's thin dark line, its long ears up out of its head as the TV's own
+Chiikawa's bold line, its long ears up out of its head as the TV's own
 rabbit ears (pink inside, a V), its hand nubs by its face and its feet, its
 face under the TV (glinting eyes under fine brows, hatched cheeks, a small
 mouth), its hat between its ears, the crown by its left ear. In a terminal

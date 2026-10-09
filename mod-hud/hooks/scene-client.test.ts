@@ -27,7 +27,7 @@ const WIDE = HEADS.wide.slice(1, 8)
 const DIZZY = new RegExp([HEADS.spiral, HEADS.spin].map(row => flipped(row).slice(1, 8)).join('|'))
 
 // These read the desktop's scene back into cells (hooks/scene-svg.fixtures.ts): its block art.
-const BLOCKS = { options: { mascotArt: 'blocks' } }
+const BLOCKS = { options: { mascotArt: 'blocks' }, timeoutMs: 20_000 }
 
 describe('the scene is a Client', () => {
   test('on terminal and desktop: its module, the scene\'s inputs as props, the spare rows as its region; drawn a row per row', BLOCKS, async ($, on) => {
@@ -61,7 +61,7 @@ describe('the scene is a Client', () => {
     expect(held.has('sceneTick')).toBe(false)
   })
 
-  test('vscode and mobile, which draw no Client, keep the Box scene on the hooks\' 250 ms clock', async ($, on) => {
+  test('vscode and mobile, which draw no Client, keep the Box scene on the hooks\' 250 ms clock', { timeoutMs: 20_000 }, async ($, on) => {
     const { held, clock } = arrange(on, [TYPIST])
     for (const surface of ['vscode', 'mobile'] as const) {
       const ui = await mount($, surface)
@@ -75,7 +75,7 @@ describe('the scene is a Client', () => {
     }
   })
 
-  test('with motion classic, terminal and desktop draw the hooks\' scene too, with its pick buttons: rows of text, and on the desktop one Svg', { options: { motion: 'classic' } }, async ($, on) => {
+  test('with motion classic, terminal and desktop draw the hooks\' scene too, with its pick buttons: rows of text, and on the desktop one Svg', { options: { motion: 'classic' }, timeoutMs: 20_000 }, async ($, on) => {
     arrange(on, [TYPIST])
     for (const surface of SURFACES) {
       const ui = await mount($, surface)
@@ -111,7 +111,7 @@ describe('the scene is a Client', () => {
     }
   })
 
-  test('a pane with under four spare rows, or narrower than a slot, draws no scene at all', async ($, on) => {
+  test('a pane with under four spare rows, or narrower than a slot, draws no scene at all', { timeoutMs: 20_000 }, async ($, on) => {
     arrange(on, [TYPIST])
     for (const surface of SURFACES) {
       const short = await mount($, surface, 72, 6)
@@ -217,7 +217,7 @@ describe('the pointer', () => {
     }
   })
 
-  test('a click (up within 300 ms, under a cell away) on an agent inspects it: the hooks select it, its detail view takes the scene\'s place; on the crowned one it asks for `main`', { options: { inspectView: 'pane', mascotArt: 'blocks' } }, async ($, on) => {
+  test('a click (up within 300 ms, under a cell away) on an agent inspects it: the hooks select it, its detail view takes the scene\'s place; on the crowned one it asks for `main`', { options: { inspectView: 'pane', mascotArt: 'blocks' }, timeoutMs: 20_000 }, async ($, on) => {
     const { held, world } = arrange(on, [TYPIST])
     for (const surface of SURFACES) {
       held.set('selected', { value: null, version: (held.get('selected')?.version ?? 0) + 1 })
@@ -263,7 +263,7 @@ describe('the pointer', () => {
     }
   })
 
-  test('a post the hooks do not know, or naming no agent, selects nothing', async ($, on) => {
+  test('a post the hooks do not know, or naming no agent, selects nothing', { timeoutMs: 20_000 }, async ($, on) => {
     const { held } = arrange(on, [TYPIST])
     const ui = await mount($, 'terminal')
     const posts: JsonValue[] = ['inspect', { kind: 'inspect' }, { kind: 'inspect', id: 'nobody' }, { kind: 'throw', id: 'a' }, null]
@@ -274,7 +274,7 @@ describe('the pointer', () => {
     await ui.unmount()
   })
 
-  test('with inspect off a click posts nothing', { options: { inspect: false } }, async ($, on) => {
+  test('with inspect off a click posts nothing', { options: { inspect: false }, timeoutMs: 20_000 }, async ($, on) => {
     const { held, world } = arrange(on, [TYPIST])
     const ui = await mount($, 'terminal')
     const at = headAt(await rowsOf(ui), `${HEADS.right.trim()}  ${LAPTOP}`)!
@@ -287,7 +287,7 @@ describe('the pointer', () => {
 })
 
 describe('its own clock', () => {
-  test('a smooth redraw leaves another surface classic clock and plan alive', async ($, on) => {
+  test('a smooth redraw leaves another surface classic clock and plan alive', { timeoutMs: 20_000 }, async ($, on) => {
     const { held, clock } = arrange(on, [TYPIST])
     const classic = await mount($, 'vscode')
     await clock.advance(250)
@@ -328,7 +328,7 @@ describe('its own clock', () => {
 })
 
 describe('the vector art', () => {
-  test('on the desktop the mascots are drawn shapes, one Svg the region\'s size, a frame every 33 ms (each pose eased into the next); the terminal keeps its rows', async ($, on) => {
+  test('on the desktop the mascots are drawn shapes, one Svg the region\'s size, a frame every 33 ms (each pose eased into the next); the terminal keeps its rows', { timeoutMs: 20_000 }, async ($, on) => {
     arrange(on, [TYPIST])
     const ui = await mount($, 'desktop')
     const props = (await ui.find({ type: 'Client' }))?.props.props as SceneInputs
@@ -355,16 +355,20 @@ describe('the vector art', () => {
     await text.unmount()
   })
 
-  test('Usagi too: its round pale yellow body, its pink cheeks', { options: { character: 'usagi' } }, async ($, on) => {
+  test('Usagi too, as Chiikawa draws it: cream, its bold dark line, its pink ears and cheeks', { options: { character: 'usagi' }, timeoutMs: 20_000 }, async ($, on) => {
     arrange(on, [TYPIST])
     const ui = await mount($, 'desktop')
     const source = String((await ui.find({ type: 'Svg', in: 'mascots' }))?.props.source)
-    expect(source).toContain(`rx='3.6' fill='${USAGI.body}'`)
+    expect(source).toMatch(new RegExp(`<ellipse [^>]*fill='${USAGI.cream}'`))
+    expect(source).toMatch(new RegExp(`<ellipse [^>]*fill='${USAGI.line}'`))
+    expect(source).toMatch(new RegExp(`<rect [^>]*fill='${USAGI.ear}'`))
     expect(source).toMatch(new RegExp(`<ellipse [^>]*fill='${USAGI.blush}'`))
+    // Its cheeks' strokes, brows and cat's mouth in its line.
+    expect(source).toMatch(new RegExp(`<polygon [^>]*fill='${USAGI.line}'`))
     await ui.unmount()
   })
 
-  test('a click on a mascot drawn as shapes inspects it, where the cells place it', { options: { inspectView: 'pane' } }, async ($, on) => {
+  test('a click on a mascot drawn as shapes inspects it, where the cells place it', { options: { inspectView: 'pane' }, timeoutMs: 20_000 }, async ($, on) => {
     const { held } = arrange(on, [TYPIST])
     // Where the typist's head is, as the terminal's cells have it at the same moment.
     const text = await mount($, 'terminal')

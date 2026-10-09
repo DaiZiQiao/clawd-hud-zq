@@ -24,11 +24,10 @@ export const USAGI = {
   eye: '#2B211C',
   mouth: '#6B2D2A',
   blush: '#F2A0AE',
-  // The smooth art's, as Chiikawa draws it: its cream, its thin dark outline, inside its ears, its cheeks' hatching.
-  cream: '#F8EAC0',
-  line: '#4B3A2F',
-  ear: '#F2B3BE',
-  hatch: '#DE7790',
+  // The smooth art's, as Chiikawa draws it: its cream, its bold near-black line (the strokes on its cheeks, its brows and mouth too), inside its ears.
+  cream: '#F9EBC6',
+  line: '#2A2220',
+  ear: '#F4B3BE',
 } as const
 
 /** A bitmap's quarter: `.` none, `#` the body, `K` an eye, `M` the mouth, `P` a cheek, else a hat's own keys. */
@@ -42,21 +41,21 @@ export const FIGURE_H = 8
 
 // --- the figure's parts, figure quarters (column 0 is box column 2's left half) ---
 
-/** The ears, rows 0 to 2: standing; lowered, sitting or asleep; their tips trailing a walk; drooping, slumped. */
+/** The ears, rows 0 to 2, close together as Chiikawa draws them: standing; lowered, sitting or asleep; their tips trailing a walk; drooping, slumped. */
 export const EARS = {
-  up: ['....##......##....', '....##......##....', '....##......##....'],
-  short: ['..................', '....##......##....', '....##......##....'],
-  trailLeft: ['...##......##.....', '....##......##....', '....##......##....'],
-  trailRight: ['.....##......##...', '....##......##....', '....##......##....'],
+  up: ['......##..##......', '......##..##......', '......##..##......'],
+  short: ['..................', '......##..##......', '......##..##......'],
+  trailLeft: ['.....##..##.......', '......##..##......', '......##..##......'],
+  trailRight: ['.......##..##.....', '......##..##......', '......##..##......'],
   droop: ['..................', '..................', '.####........####.'],
 } as const
 
 export type Ears = keyof typeof EARS
 
-/** The head's top (row 3), the face's two rows (4, 5), the body (6) and the seat sitting (6, 7). */
+/** The head's top (row 3), the face's two rows (4, 5), the body (6, narrower than the face, as Chiikawa draws it) and the seat sitting (6, 7). */
 export const TOP = '...############...'
 export const FACE = '..##############..'
-export const BASE = '...############...'
+export const BASE = '....##########....'
 export const SEAT = ['..##############..', '.################.'] as const
 /** Drooping ears' tips hang beside the head's top. */
 export const DROOP_TOP = '#..############..#'
@@ -88,16 +87,16 @@ export const MOUTHS = {
   wideRight: [8, 9, 10, 11],
 } as const
 
-/** The feet's columns (row 7) by the legs' look. */
+/** The feet's columns (row 7) by the legs' look, under the body. */
 export const FEET = {
-  stand: [4, 13],
-  step: [5, 13],
-  pass: [5, 12],
-  back: [4, 12],
-  tuck: [5, 12],
-  stretch: [4, 13],
-  shuffleLeft: [3, 12],
-  shuffleRight: [5, 14],
+  stand: [5, 12],
+  step: [6, 12],
+  pass: [6, 11],
+  back: [5, 11],
+  tuck: [6, 11],
+  stretch: [5, 12],
+  shuffleLeft: [4, 11],
+  shuffleRight: [6, 13],
   none: [],
 } as const satisfies Record<string, readonly number[]>
 
@@ -159,9 +158,9 @@ export const HATS = {
     floor: '▗▄▖',
     mini: '▄',
   },
-  /** The planner's top hat, with its band. */
+  /** The planner's top hat, with its band, tall and narrow between its ears. */
   tophat: {
-    art: ['......UUUUUU......', '......UUUUUU......', '......RRRRRR......', '..UUUUUUUUUUUUUU..'],
+    art: ['........UU........', '........UU........', '........RR........', '..UUUUUUUUUUUUUU..'],
     palette: { U: '#9B5CB8', R: '#D05454' },
     colour: '#9B5CB8',
     floor: '▗█▖',
@@ -169,7 +168,7 @@ export const HATS = {
   },
   /** The frontend's beret: flat, tilted over its right ear, its little stalk on top. */
   beret: {
-    art: ['........R.........', '.....RRRRRRRRR....', '......RRRRRRR.....', '..................'],
+    art: ['........R.........', '.....RRRRRRRRR....', '......RRRRRRRR....', '..................'],
     palette: { R: '#D05454' },
     colour: '#D05454',
     floor: '▄▄▖',
@@ -188,7 +187,7 @@ export const ROLE_HATS: Readonly<Record<MascotRole, HatName>> = {
   frontend: 'beret',
 }
 
-/** The session's crown, small, tilted on the left of its head (rows 2 and 3), in front of its ear. */
+/** The session's crown, small, tilted on the left of its head (rows 2 and 3, from column 2), its last point in front of its ear. */
 export const SIDE_CROWN = { art: ['G.G.G', 'GGGGG'], palette: { G: CROWN.colour }, floor: CROWN.art } as const
 
 /** Flying: the propeller cap between its ears, its blade a row above; a bare head's in this colour. */

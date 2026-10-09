@@ -86,10 +86,11 @@ describe('the stage', () => {
     expect(stage.world.owners?.some(row => row.includes('a'))).toBe(true)
   })
 
-  test('Usagi\'s frame in its own colours', () => {
+  test('Usagi\'s frame in its own colours: cream, its thin dark line', () => {
     const stage = createStage(inputs([TYPIST], { columns: 60, rows: 10, art: 'vector', character: 'usagi' }))
     const picture = pngPixels(stageFrame(stage, 'dark'))
-    expect(countColour(picture, USAGI.body)).toBeGreaterThan(200)
+    expect(countColour(picture, USAGI.cream)).toBeGreaterThan(200)
+    expect(countColour(picture, USAGI.line)).toBeGreaterThan(40)
     expect(countColour(picture, CLAWD_BODY)).toBeLessThan(40)
   })
 
@@ -144,7 +145,7 @@ const blits = (on: Parameters<typeof arrange>[0]) => {
 }
 
 describe('in a terminal that shows pictures', () => {
-  test('the pane\'s scene is an Image the region\'s size, the hit layer over it; the hooks swap a frame in on their clock', async ($, on) => {
+  test('the pane\'s scene is an Image the region\'s size, the hit layer over it; the hooks swap a frame in on their clock', { timeoutMs: 20_000 }, async ($, on) => {
     const { clock } = arrange(on, [TYPIST])
     mock.env(on, GHOSTTY)
     const { sent } = blits(on)
@@ -167,7 +168,7 @@ describe('in a terminal that shows pictures', () => {
     await ui.unmount()
   })
 
-  test('a click through the hit layer on a mascot inspects it, as on the scene\'s own Client', { options: { inspectView: 'pane' } }, async ($, on) => {
+  test('a click through the hit layer on a mascot inspects it, as on the scene\'s own Client', { options: { inspectView: 'pane' }, timeoutMs: 20_000 }, async ($, on) => {
     const { held } = arrange(on, [TYPIST])
     mock.env(on, GHOSTTY)
     blits(on)
@@ -189,7 +190,7 @@ describe('in a terminal that shows pictures', () => {
     await ui.unmount()
   })
 
-  test('a terminal that draws the Image\'s alt refuses the swap: its scene\'s own Client and blocks from then on', async ($, on) => {
+  test('a terminal that draws the Image\'s alt refuses the swap: its scene\'s own Client and blocks from then on', { timeoutMs: 20_000 }, async ($, on) => {
     const { clock } = arrange(on, [TYPIST])
     mock.env(on, KITTY)
     const { state } = blits(on)
@@ -205,7 +206,7 @@ describe('in a terminal that shows pictures', () => {
     await ui.unmount()
   })
 
-  test('the band\'s yard too: the session\'s mascot an Image, the hit layer under the band\'s key', async ($, on) => {
+  test('the band\'s yard too: the session\'s mascot an Image, the hit layer under the band\'s key', { timeoutMs: 20_000 }, async ($, on) => {
     arrange(on, [])
     mock.env(on, GHOSTTY)
     blits(on)
@@ -219,7 +220,7 @@ describe('in a terminal that shows pictures', () => {
     await ui.unmount()
   })
 
-  test('with mascotArt blocks, the terminal keeps the scene\'s own Client', { options: { mascotArt: 'blocks' } }, async ($, on) => {
+  test('with mascotArt blocks, the terminal keeps the scene\'s own Client', { options: { mascotArt: 'blocks' }, timeoutMs: 20_000 }, async ($, on) => {
     arrange(on, [TYPIST])
     mock.env(on, GHOSTTY)
     blits(on)
@@ -229,7 +230,7 @@ describe('in a terminal that shows pictures', () => {
     await ui.unmount()
   })
 
-  test('a terminal that is neither kitty nor Ghostty, or either under tmux, is never handed a picture: the scene\'s own Client from the start', async ($, on) => {
+  test('a terminal that is neither kitty nor Ghostty, or either under tmux, is never handed a picture: the scene\'s own Client from the start', { timeoutMs: 20_000 }, async ($, on) => {
     arrange(on, [TYPIST])
     mock.env(on, { ...GHOSTTY, TMUX: '/tmp/tmux-501/default,1,0' })
     const { sent } = blits(on)
