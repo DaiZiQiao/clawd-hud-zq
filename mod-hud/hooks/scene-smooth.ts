@@ -190,7 +190,8 @@ export const smoothSvg = (frame: SmoothFrame, columns: number, rows: number, lim
     mascots = partMarkup(frame.shapes.filter((_, index) => !gone.has(index)), budget)
   }
   // The scenery in what the mascots leave, its alike shapes merged into paths, the still land lit for the hour: all
-  // of it, else without the ground's texture, else the sky's colours and the still land and its lights alone, else none.
+  // of it, else without (one by one) the ground's texture, the weather, and the sky's sun, moon, stars and clouds, then
+  // what moves on the land (the stop's name with it); else none.
   const scenery = frame.scenery
   let parts: { behind: Markup[]; front: Markup[] } = { behind: [], front: [] }
   if (scenery !== undefined) {
@@ -204,10 +205,13 @@ export const smoothSvg = (frame: SmoothFrame, columns: number, rows: number, lim
     const still = (texture: boolean): Markup => stillMarkup(`${land.key}:${land.litKey}:${texture}`, () => litStill(land, texture), land.shift, 'l')
     const lights = stillMarkup(`${land.key}:${land.litKey}:lights`, () => litLights(land), land.shift, 'o')
     const landMoving = moving(land.moving, 'n')
+    const weather = moving(scenery.weather, 'w')
     const front = moving(scenery.front, 'f')
     const choices = [
-      { behind: [sky, skyMoving, still(true), lights, landMoving], front: [front] },
-      { behind: [sky, skyMoving, still(false), lights, landMoving], front: [front] },
+      { behind: [sky, skyMoving, still(true), lights, landMoving, weather], front: [front] },
+      { behind: [sky, skyMoving, still(false), lights, landMoving, weather], front: [front] },
+      { behind: [sky, skyMoving, still(false), lights, landMoving], front: [] },
+      { behind: [sky, still(false), lights, landMoving], front: [] },
       { behind: [sky, still(false), lights], front: [] },
     ]
     const length = (choice: (typeof choices)[number]): number => [...choice.behind, ...choice.front].reduce((sum, part) => sum + part.markup.length, mascots.markup.length)
@@ -258,7 +262,7 @@ export const smoothPixels = (
   }, 10)
   overlay(pixels, lit, width, across, Math.min(across - width, Math.max(0, Math.round((land.shift * cell.width) / 2))))
 
-  return { pixels: rasterOf([...land.moving, ...frame.shapes, ...scenery.front], width, height, view, glyphShapes, scheme, pixels), width, height }
+  return { pixels: rasterOf([...land.moving, ...scenery.weather, ...frame.shapes, ...scenery.front], width, height, view, glyphShapes, scheme, pixels), width, height }
 }
 
 /**

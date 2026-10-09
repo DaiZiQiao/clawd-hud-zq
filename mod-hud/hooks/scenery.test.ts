@@ -131,7 +131,7 @@ describe('its days', () => {
 
 describe('its weather', () => {
   test('rain in London, leaves in Paris, cherry blossom at Fuji, snow in Tromsø; motes in front of the mascots too', () => {
-    const motes = (scenery: Scenery): Shape[] => [...scenery.land.moving, ...scenery.front]
+    const motes = (scenery: Scenery): Shape[] => [...scenery.weather, ...scenery.front]
     expect(motes(sceneryAt(visit('LONDON · UK', 12.5), 'real')).filter(shape => shape.kind === 'line' && (shape.stroke ?? 1) < 0.3).length).toBeGreaterThan(5)
     expect(motes(sceneryAt(visit('PARIS · FRANCE', 12.5), 'real')).some(shape => ['#e2762c', '#c8452e', '#f0b040', '#b85a26'].includes(shape.fill))).toBe(true)
     expect(motes(sceneryAt(visit('MT FUJI · JAPAN', 12.5), 'real')).some(shape => shape.fill === '#f8bcd4')).toBe(true)
@@ -141,7 +141,7 @@ describe('its weather', () => {
   })
 
   test('fireflies over Agra by night alone; snow by night as dim as the land', () => {
-    const fireflies = (scenery: Scenery): number => scenery.land.moving.filter(shape => shape.fill === '#fffbd0').length
+    const fireflies = (scenery: Scenery): number => scenery.weather.filter(shape => shape.fill === '#fffbd0').length
     expect(fireflies(sceneryAt(visit('AGRA · INDIA', 12.5), 'real'))).toBe(0)
     expect(fireflies(sceneryAt(visit('AGRA · INDIA', 22), 'real'))).toBeGreaterThan(0)
     const snow = sceneryAt(visit('TROMSO · NORWAY', 0.5), 'real').front.filter(shape => shape.kind === 'ellipse')
@@ -188,17 +188,26 @@ describe('drawn', () => {
 })
 
 describe('on the desktop', () => {
-  test('the scenery takes what room the mascots leave: never a mascot for it; short of room, the ground\'s texture goes first, then all of it', () => {
-    const scenery = sceneryAt(ROUND + 20_000)
+  test('the scenery takes what room the mascots leave: never a mascot for it; short of room, the ground\'s texture goes first, then the weather, the sky\'s sun and stars, what moves on the land, then all of it', () => {
+    const scenery = sceneryAt(visit('ROME · ITALY', 12.5, 5000), 'real')
     const mascot = (size: number): Shape[] => Array.from({ length: size }, (_, index) => ({ kind: 'ellipse', x: index % 200, y: 10, w: 1.3, h: 1.1, fill: '#D77757' }))
     const svg = (shapes: Shape[]) => smoothSvg({ shapes, wholes: [[0, shapes.length]], width: 240, height: 24, still: false, scenery }, 120, 6, 90_000).source
     const roomy = svg(mascot(10))
     expect(roomy).toContain('linearGradient')
-    // A crowd that leaves little room: every mascot drawn, the scenery thinner or gone.
-    const crowd = svg(mascot(900))
-    expect((crowd.match(/fill='#D77757'/g) ?? []).length).toBe(900)
-    expect(crowd.length).toBeLessThan(90_000)
-    expect(crowd.length).toBeLessThan(roomy.length + 900 * 90)
+    // The sun and the stop's name, while there is room.
+    expect(roomy).toContain(`fill='#fff6d8'`)
+    expect(roomy).toContain('ROME')
+    // Ever more crowded: every mascot drawn, under the cap, and the sun gone before the name.
+    let named = true
+    for (let size = 0; size <= 1200; size += 60) {
+      const crowd = svg(mascot(size))
+      expect((crowd.match(/fill='#D77757'/g) ?? []).length).toBe(size)
+      expect(crowd.length).toBeLessThan(90_000)
+      if (crowd.includes(`fill='#fff6d8'`)) expect(crowd).toContain('ROME')
+      if (!named) expect(crowd).not.toContain('ROME')
+      named = crowd.includes('ROME')
+    }
+    expect(named).toBe(false)
   })
 
   test('the still land lit for the hour, made again only as the light changes: through dusk in steps, all day and all night never', () => {

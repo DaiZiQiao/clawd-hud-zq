@@ -7,9 +7,9 @@ import type { At, Light, Point, Stop, Weather } from './scenery-stops'
 // a tour of the world's wonders, round it eastward (hooks/scenery-stops.ts
 // draws them). The tour stays at each stop (a landmark in its own weather:
 // Big Ben in the rain, Mount Fuji in cherry blossom, Tromsø's snow) for
-// STAY_MS, its name and hour shown a while, then pans on to the next, STOP
-// units along the world's strip, over PAN_MS; a wide view shows the stops
-// either side too. Each stop is at its own time of day, by its longitude
+// STAY_MS, its name and hour shown a while, then pans on to the next, a
+// stop's stretch along the world's strip (STOP units at its scale), over
+// PAN_MS; a wide view shows the stops either side too. Each stop is at its own time of day, by its longitude
 // (the `daylight` option: a world day in 24 minutes, or the real one): its
 // sky, its sun or moon and stars, its land golden in the low sun and dim by
 // night, its lights coming on at dusk. Pure: a function of the size and the
@@ -21,7 +21,7 @@ import type { At, Light, Point, Stop, Weather } from './scenery-stops'
 export const STAY_MS = 45_000
 const PAN_MS = 7000
 const LEG_MS = STAY_MS + PAN_MS
-/** A stop's stretch of the world's strip, in units. */
+/** A stop's stretch of the world's strip at scale 1, in units: its art's -55 to 55. */
 const STOP = 110
 
 /** How the day goes by: `fast`, a world day in 24 minutes; `real`, each stop at its time of day now (by its sun). */
@@ -44,11 +44,11 @@ export type Land = { key: string; still: Shape[]; detail: number; lights: Shape[
 /**
  * The scenery of a frame, back to front: the sky (its colours, a rect to a
  * stretch, all of them fading in from the terminal's own background down to
- * `top` units; then its stars, sun or moon and clouds), the land, then
- * (after the mascots) the weather nearest the eye; and whether the tour is
- * panning on.
+ * `top` units; then its stars, sun or moon and clouds), the land, the
+ * weather behind the mascots, then (after them) the weather nearest the eye;
+ * and whether the tour is panning on.
  */
-export type Scenery = { sky: { fill: Shape[]; top: number; moving: Shape[] }; land: Land; front: Shape[]; panning: boolean }
+export type Scenery = { sky: { fill: Shape[]; top: number; moving: Shape[] }; land: Land; weather: Shape[]; front: Shape[]; panning: boolean }
 
 // --- the light -------------------------------------------------------------------
 
@@ -159,25 +159,23 @@ const tourAt = (now: number): { leg: number; into: number; pan: number } => {
   return { leg, into, pan: into < STAY_MS ? 0 : smooth((into - STAY_MS) / PAN_MS) }
 }
 
-/** The left of the view along the world's strip at a leg's start: its stop in the middle. */
-const leftOf = (leg: number, width: number): number => leg * STOP + STOP / 2 - width / 2
-
 /** The land's scale: the band's few rows, a pane's many. */
 const scaleOf = (horizon: number): number => Math.max(0.6, Math.min(1.5, horizon / 21))
 
 type Seen = { stop: Stop; at: At; j: number }
 
-/** The stops seen from `left`, `width` across: each where it is drawn, and its place along the world's strip. */
-const stopsIn = (left: number, width: number, horizon: number, bottom: number): Seen[] => {
+/** The stops whose stretch, or `reach` units past it, is seen from `left`, `width` across: where each is drawn, and its place along the world's strip. */
+const stopsIn = (left: number, width: number, horizon: number, bottom: number, reach = 0): Seen[] => {
   const s = scaleOf(horizon)
+  const stretch = STOP * s
   const seen: Seen[] = []
-  for (let j = Math.floor((left - STOP / 2) / STOP); j * STOP <= left + width + STOP / 2; j += 1) seen.push({ stop: stopAt(j), at: { x: j * STOP + STOP / 2 - left, y: horizon, s, bottom }, j })
+  for (let j = Math.floor((left - reach) / stretch); j * stretch < left + width + reach; j += 1) seen.push({ stop: stopAt(j), at: { x: (j + 0.5) * stretch - left, y: horizon, s, bottom }, j })
 
   return seen
 }
 
-/** The ground's texture over a stop's stretch, sparser and smaller toward the horizon; alike marks together, so a document draws each kind as one path. */
-const floorShapes = (stop: Stop, at: At, j: number): Shape[] => {
+/** The ground's texture over a stop's stretch (what of it lies between `from` and `to`), sparser and smaller toward the horizon; alike marks together, so a document draws each kind as one path. */
+const floorShapes = (stop: Stop, at: At, j: number, from: number, to: number): Shape[] => {
   const light: Shape[] = []
   const dark: Shape[] = []
   const flowers: Shape[] = []
@@ -185,8 +183,9 @@ const floorShapes = (stop: Stop, at: At, j: number): Shape[] => {
   const deep = mix(stop.ground, '#000000', 0.22)
   for (let y = at.y + 1.2, row = 0; y < at.bottom - 0.3; row += 1) {
     const near = Math.min(1.6, 0.6 + (y - at.y) / 16)
-    for (let x = at.x - STOP / 2 + 3 * rnd('floor', j, row); x < at.x + STOP / 2; x += (4 + 5 * rnd('floor-gap', j, row, Math.floor(x))) * near) {
+    for (let x = at.x - (STOP / 2) * at.s + 3 * rnd('floor', j, row); x < at.x + (STOP / 2) * at.s; x += (4 + 5 * rnd('floor-gap', j, row, Math.floor(x))) * near) {
       const k = rnd('floor-kind', j, row, Math.floor(x))
+      if (x < from || x > to) continue
       switch (stop.floor) {
         case 'grass':
           light.push(line([[x - 0.5 * near, y], [x - 0.2 * near, y - 0.9 * near], [x, y], [x + 0.3 * near, y - 1.1 * near], [x + 0.5 * near, y]], 0.2 * near, pale, 0.7))
@@ -210,36 +209,36 @@ const floorShapes = (stop: Stop, at: At, j: number): Shape[] => {
   return [...light, ...dark, ...flowers]
 }
 
-/** A colour along the strip, `span` across from `left`: each stop's own over its middle, blended into the next's over the last stretch between them. */
-const groundOf = (left: number, span: number): Gradient => {
+/** A colour along the strip, `span` across from `left`, `stretch` a stop: each stop's own over its middle, blended into the next's over the seam between them. */
+const groundOf = (left: number, span: number, stretch: number): Gradient => {
   const stops: [number, string, number][] = []
-  for (let j = Math.floor(left / STOP) - 1; j * STOP <= left + span + STOP; j += 1) {
-    const edge = (j + 1) * STOP
-    for (const [x, colour] of [[edge - 14, stopAt(j).ground], [edge + 14, stopAt(j + 1).ground]] as const) stops.push([Math.max(0, Math.min(1, (x - left) / span)), colour, 1])
+  for (let j = Math.floor(left / stretch) - 1; j * stretch <= left + span + stretch; j += 1) {
+    const edge = (j + 1) * stretch
+    for (const [x, colour] of [[edge - stretch * 0.13, stopAt(j).ground], [edge + stretch * 0.13, stopAt(j + 1).ground]] as const) stops.push([Math.max(0, Math.min(1, (x - left) / span)), colour, 1])
   }
 
   return { x1: 0, y1: 0, x2: span, y2: 0, stops }
 }
 
-/** The land's still shapes in daylight, how many of the last are its texture (`Land.detail`), and its night lights. */
+/** The land's still shapes in daylight, how many of the last are its texture (`Land.detail`), and its night lights: of the stops whose art reaches the strip. */
 const landStill = (left: number, span: number, height: number, horizon: number): { shapes: Shape[]; detail: number; lights: Shape[] } => {
-  const seen = stopsIn(left, span, horizon, height)
+  const seen = stopsIn(left, span, horizon, height, REACH * scaleOf(horizon))
   // The ground first (`litStill` lights it stop by stop), nearer darker, its edge catching the light; on it each stop's
   // landmark, then the ground's texture.
   const shapes: Shape[] = [
-    { ...rect(0, horizon - 0.1, span, height - horizon + 0.1, '#000000'), grad: groundOf(left, span) },
+    { ...rect(0, horizon - 0.1, span, height - horizon + 0.1, '#000000'), grad: groundOf(left, span, STOP * scaleOf(horizon)) },
     { ...rect(0, horizon, span, height - horizon, '#000000'), grad: { x1: 0, y1: horizon, x2: 0, y2: Math.max(height, horizon + 1), stops: [[0, '#000000', 0], [1, '#000000', 0.32]] } },
     rect(0, horizon - 0.1, span, 0.3, '#ffffff', 0.1),
   ]
   for (const { stop, at } of seen) shapes.push(...stop.draw(at))
-  const texture = seen.flatMap(({ stop, at, j }) => floorShapes(stop, at, j))
+  const texture = seen.flatMap(({ stop, at, j }) => floorShapes(stop, at, j, -2, span + 2))
 
   return { shapes: [...shapes, ...texture], detail: texture.length, lights: seen.flatMap(({ stop, at }) => stop.lights?.(at) ?? []) }
 }
 
 /** How far into a stop's stretch `x` is (0 its left edge, 1 its right), and how much it fades there: none over its middle, out to its edges. */
 const edgeFade = (x: number, at: At): number => {
-  const u = (x - at.x) / STOP + 0.5
+  const u = (x - at.x) / (STOP * at.s) + 0.5
 
   return Math.max(0, Math.min(1, Math.min(u, 1 - u) * 5))
 }
@@ -253,17 +252,21 @@ const skyGradient = ([top = '#000000', high = top, low = high, horizonward = low
   stops: [[0.22, top, 1], [0.42, high, 1], [0.78, low, 1], [1, horizonward, 1]],
 })
 
-/** Between two stops, their skies and lights blend over this many units either side of the seam. */
+/** Between two stops, their skies and lights blend over this many units (at scale 1) either side of the seam. */
 const SEAM = 12
+/** How far past its stretch a stop's art may reach, at scale 1: a bus driving off, the northern lights. */
+const REACH = 6
 
 /** The sky's colours over the view: each stop's own over its stretch (on to the end of the seam after it), and the next's faded in over that seam. */
 const skyFill = (seen: readonly Seen[], width: number, horizon: number, skyAt: (j: number) => readonly string[]): Shape[] => {
   const own = (x: number, to: number, j: number): Shape => ({ ...rect(Math.max(0, x), 0, Math.min(width, to) - Math.max(0, x), horizon + 1, '#000000'), grad: skyGradient(skyAt(j), horizon) })
-  const seams = seen.filter(({ at }) => at.x + STOP / 2 + SEAM > 0 && at.x + STOP / 2 - SEAM < width)
+  // Each stop's seam with the next: from its end less SEAM to its end and SEAM more.
+  const seamOf = ({ at }: Seen): [number, number] => [at.x + (STOP / 2 - SEAM) * at.s, at.x + (STOP / 2 + SEAM) * at.s]
+  const shown = seen.filter(one => seamOf(one)[1] > 0 && seamOf(one)[1] - STOP * one.at.s < width)
 
   return [
-    ...seen.filter(({ at }) => at.x + STOP / 2 + SEAM > 0 && at.x - STOP / 2 + SEAM < width).map(({ at, j }) => own(at.x - STOP / 2 + SEAM, at.x + STOP / 2 + SEAM, j)),
-    ...seams.map(({ at, j }) => ({ ...own(at.x + STOP / 2 - SEAM, at.x + STOP / 2 + SEAM, j + 1), fade: [at.x + STOP / 2 - SEAM, at.x + STOP / 2 + SEAM] as const })),
+    ...shown.map(one => own(seamOf(one)[1] - STOP * one.at.s, seamOf(one)[1], one.j)),
+    ...shown.filter(one => seamOf(one)[0] < width).map(one => ({ ...own(...seamOf(one), one.j + 1), fade: seamOf(one) })),
   ]
 }
 
@@ -272,7 +275,7 @@ const arcOf = (at: At, hour: number, horizon: number, behind = 0): [number, numb
   const angle = (2 * Math.PI * (hour - 6)) / 24 - 2 * Math.PI * behind
   const up = Math.sin(angle)
 
-  return [at.x - Math.cos(angle) * STOP * 0.3, horizon * (1 - 0.82 * up), up]
+  return [at.x - Math.cos(angle) * STOP * at.s * 0.3, horizon * (1 - 0.82 * up), up]
 }
 
 /** A soft halo `r` round, `alpha` bright at its heart: rings, each fainter out to its edge. */
@@ -307,14 +310,14 @@ const skyMoving = (seen: readonly Seen[], width: number, horizon: number, now: n
     // Its stars, twinkling: in four brightnesses, each drawn together.
     const stars: Shape[][] = [[], [], [], []]
     for (let i = 0; light.dark * veil > 0.05 && i < STOP / 6; i += 1) {
-      const x = at.x + (rnd('sx', j, i) - 0.5) * STOP
+      const x = at.x + (rnd('sx', j, i) - 0.5) * STOP * at.s
       const level = Math.round(3 * light.dark * veil * (0.55 + 0.45 * Math.sin(now / (500 + 400 * rnd('twinkle', i)) + 7 * rnd('phase', i))) * edgeFade(x, at))
       const r = 0.16 + 0.2 * rnd('star', i)
       if (level > 0) stars[level]?.push(disc(x, rnd('sy', j, i) * horizon * 0.62, r, r * 0.8, '#f4f0ff', level / 3))
     }
     shapes.push(...stars.flat())
     // The sun, big and gold as it sets; the moon at its phase, pale by day; both dim through cloud.
-    const shine = Math.max(veil, 0.3) * smooth((0.75 * STOP - Math.abs(at.x - width / 2)) / (0.5 * STOP))
+    const shine = Math.max(veil, 0.3) * smooth((0.75 * STOP * at.s - Math.abs(at.x - width / 2)) / (0.5 * STOP * at.s))
     const [sx, sy, sun] = arcOf(at, light.hour, horizon)
     if (sun > -0.12 && shine > 0) {
       const r = (1.9 + 0.8 * light.golden) * at.s
@@ -328,7 +331,7 @@ const skyMoving = (seen: readonly Seen[], width: number, horizon: number, now: n
     }
     const cloud = cloudOf(light, stop.climate)
     for (let i = 0; i < (stop.clouds ?? 2); i += 1) {
-      const x = at.x - STOP / 2 + mod(rnd('cloud-x', j, i) * STOP + now * (0.0005 + 0.0004 * rnd('cloud-speed', i)), STOP)
+      const x = at.x + STOP * at.s * (mod(rnd('cloud-x', j, i) + (now * (0.0005 + 0.0004 * rnd('cloud-speed', i))) / STOP, 1) - 0.5)
       const y = horizon * (0.14 + 0.28 * rnd('cloud-y', j, i))
       const size = (1.8 + 1.4 * rnd('cloud-size', j, i)) * at.s
       const alpha = (stop.climate === 'overcast' ? 0.6 : 0.4) * edgeFade(x, at)
@@ -434,9 +437,11 @@ const caption = (stop: Stop, hour: number, into: number, horizon: number): Shape
  */
 export const sceneryOf = (width: number, height: number, horizon: number, now: number, daylight: Daylight = 'fast'): Scenery => {
   const { leg, into, pan } = tourAt(now)
-  const left = leftOf(leg, width)
-  const span = width + (pan > 0 ? STOP : 0)
-  const view = left + pan * STOP
+  const stretch = STOP * scaleOf(horizon)
+  // The view's left along the world's strip at the leg's start (its stop in the middle), and now.
+  const left = (leg + 0.5) * stretch - width / 2
+  const span = width + (pan > 0 ? stretch : 0)
+  const view = left + pan * stretch
   const key = `land:${width}x${height}@${horizon}:${leg}:${span}`
   const hour = worldHour(now, daylight)
   // Each stop's light now, by its place along the strip: made as first asked for.
@@ -453,18 +458,20 @@ export const sceneryOf = (width: number, height: number, horizon: number, now: n
     return made
   }
   // The still land's light `x` units into its strip: its stop's, blended into its neighbour's about the seam.
+  const seam = (SEAM * stretch) / STOP
   const litAt = (x: number): Lit => {
-    const j = Math.floor((left + x) / STOP)
-    const u = left + x - j * STOP
-    if (u < SEAM) return blend(lightOf(j - 1).lit, lightOf(j).lit, smooth((u + SEAM) / (2 * SEAM)))
-    if (u > STOP - SEAM) return blend(lightOf(j).lit, lightOf(j + 1).lit, smooth((u - STOP + SEAM) / (2 * SEAM)))
+    const j = Math.floor((left + x) / stretch)
+    const u = left + x - j * stretch
+    if (u < seam) return blend(lightOf(j - 1).lit, lightOf(j).lit, smooth((u + seam) / (2 * seam)))
+    if (u > stretch - seam) return blend(lightOf(j).lit, lightOf(j + 1).lit, smooth((u - stretch + seam) / (2 * seam)))
 
     return lightOf(j).lit
   }
   // The light changes the still land only from late in the night to well into the morning, and back: in steps of a two-hundredth of the sun's height.
-  const litKey = stopsIn(left, span, horizon, height).map(({ j }) => Math.round(200 * Math.max(-0.23, Math.min(0.29, lightOf(j).light.sun)))).join(',')
+  const litKey = stopsIn(left, span, horizon, height, stretch).map(({ j }) => Math.round(200 * Math.max(-0.23, Math.min(0.29, lightOf(j).light.sun)))).join(',')
 
-  const seen = stopsIn(view, width, horizon, height)
+  // The stops whose art reaches the view, and those whose sky does.
+  const seen = stopsIn(view, width, horizon, height, REACH * scaleOf(horizon))
   const moving: Shape[] = []
   for (const { stop, at, j } of seen) {
     const { light, lit } = lightOf(j)
@@ -472,7 +479,7 @@ export const sceneryOf = (width: number, height: number, horizon: number, now: n
   }
   // The weather of the stop each mote starts over, lit as it is.
   const weatherAt = (x: number): Weathered => {
-    const j = Math.floor((view + x) / STOP)
+    const j = Math.floor((view + x) / stretch)
     const kind = stopAt(j).weather
 
     return { ...(kind === undefined ? {} : { weather: kind }), lit: lightOf(j).lit }
@@ -480,18 +487,19 @@ export const sceneryOf = (width: number, height: number, horizon: number, now: n
   const land = keptIn(made, key, () => landStill(left, span, height, horizon))
 
   return {
-    sky: { fill: skyFill(seen, width, horizon, j => lightOf(j).sky), top: 0.22 * horizon, moving: skyMoving(seen, width, horizon, now, lightOf) },
+    sky: { fill: skyFill(stopsIn(view, width, horizon, height, stretch / 2), width, horizon, j => lightOf(j).sky), top: 0.22 * horizon, moving: skyMoving(seen, width, horizon, now, lightOf) },
     land: {
       key,
       still: land.shapes,
       detail: land.detail,
       lights: land.lights,
       span,
-      shift: pan * STOP,
+      shift: pan * stretch,
       litAt,
       litKey,
-      moving: [...moving, ...weather(width, height, horizon, now, false, weatherAt), ...(pan === 0 ? caption(stopAt(leg), lightOf(leg).light.hour, into, horizon) : [])],
+      moving: [...moving, ...(pan === 0 ? caption(stopAt(leg), lightOf(leg).light.hour, into, horizon) : [])],
     },
+    weather: weather(width, height, horizon, now, false, weatherAt),
     front: weather(width, height, horizon, now, true, weatherAt),
     panning: pan > 0,
   }
