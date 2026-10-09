@@ -1,11 +1,11 @@
 {
   "name": "mod-hud",
-  "version": "1.5.0",
+  "version": "1.6.0",
   "author": {
     "name": "Dai Zi Qiao",
     "url": "https://github.com/DaiZiQiao"
   },
-  "description": "A side pane, toggled by /mod-hud: a HUD of the session (header, alerts, then session, context and prompt cache, limits, usage and todos in labelled sections) above every subagent in it (type, model, status, elapsed time, tool calls, current tool, result), with an opt-in status line; the session's own mascot lives in the band above the prompt and tidies the conversation up (compacts it) when its context has grown; in the desktop app and in Ghostty or kitty the mascots are smooth vector art.",
+  "description": "A side pane, toggled by /mod-hud: a HUD of the session (header, alerts, then session, context and prompt cache, limits, usage and todos in labelled sections) above every subagent in it (type, model, status, elapsed time, tool calls, current tool, result), with an opt-in status line; the session's own mascot walks the band above the prompt and tidies the conversation up (compacts it) when its context has grown; in the desktop app and in Ghostty or kitty the mascots are smooth vector art, on a tour of the world's wonders.",
   "types": "./types/index.d.ts",
   "userConfig": {
     "stalledAfterSec": {
@@ -65,7 +65,7 @@
     "character": {
       "type": "string",
       "title": "Mascot character",
-      "description": "clawd (default): Claude Code's Clawd, each agent in its own colour with its role letter and an accessory. usagi: Usagi from Chiikawa (fan art), pale yellow, each agent's role shown by its hat (worker a construction hat, Explore or researcher a fedora, reviewer a mortarboard, debugger a miner's helmet, Plan a top hat, frontend a beret) and the session's by a crown on the side of its head; chaotic as Chiikawa's Usagi is, bursting into quirks out of nowhere and sprinting at twice Clawd's pace.",
+      "description": "clawd (default): Claude Code's Clawd, each agent in its own colour with its role letter and an accessory. usagi: Usagi from Chiikawa (fan art), pale yellow, each agent's role shown by its hat (worker a construction hat, Explore or researcher a fedora, reviewer a mortarboard, debugger a miner's helmet, Plan a top hat, frontend a beret) and the session's by a crown on the side of its head; chaotic as Chiikawa's Usagi is, bursting into quirks out of nowhere, crying Ura!, Yaha!, Haa? and Pururu!, strolling and then bounding far.",
       "default": "clawd"
     },
     "showWorkflows": {

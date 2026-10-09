@@ -67,10 +67,14 @@ desktop; a `ui.render` hook on `AbovePrompt` draws it whether the HUD's pane
 is open or not, so the mascot shows with the HUD closed and in a terminal too
 narrow to dock the pane.
 
-- **Its yard.** The band's left 28 columns (`YARD_COLUMNS`) and a mascot's
-  5 rows (`GRID_ROWS`: its sky row and its box): a field one row deep with a
-  row of sky (`fieldOf(28, 5)`), where it wanders, hops a row and can be
-  picked up and thrown like any mascot. It is the same scene in the same
+- **Its yard.** The band's width (less `TIDY_COLUMNS` while tidying up has
+  something to say beside it, never under `YARD_COLUMNS`, 28) and a
+  mascot's 5 rows (`GRID_ROWS`: its sky row and its box), a sixth row of sky
+  with the world tour (`BAND_ROWS`, where the band has the room): a field one
+  row deep, where it strolls the width of the prompt (idle too, till it
+  falls asleep under its blanket), hops and can be picked up and thrown like
+  any mascot. With the world tour behind it, its feet are on the ground and
+  its shadow under it. It is the same scene in the same
   `Client` (`hooks/scene-client.tsx`, keyed `session`), cast with the
   session's mascot alone: `sceneInputsOf(..., { only: 'main' })`. The board
   rides along in its props so that its mood still reads the agents (watching
@@ -198,9 +202,9 @@ the stretch, pick up, dangle, throw and tumble.
   panels the same way, its propeller turning over its ears; the session's
   crown, small and outlined, tilted on the left of its head in front of its
   ear. Its laptop stands nearer it than Clawd's, its body being narrower.
-  Its thoughts are its phrases (`Yahaa!`, `HUHHH?`) in the cloud, its
-  shouts on the cigarette's puffs (`Ura!`, `HUHHH?`, `UNA!`, hands up), and
-  `HUHHH?` getting up from a fall. Knocked flat, its hat (its ear holes
+  Its thoughts are its phrases (`Yahaa!`, `Haa?`) in the cloud, its
+  shouts on the cigarette's puffs (`Ura!`, `Haa?`, `Pururu!`, hands up),
+  `Haa?` getting up from a fall, and `Yaha!` as it bounds. Knocked flat, its hat (its ear holes
   empty) or its crown lies on the floor beside it. A child's mini is the same
   figure at 0.6 the size.
 - **The frame** (`hooks/scene-smooth.ts`): each mascot's feet on its floor,
@@ -236,6 +240,59 @@ the stretch, pick up, dangle, throw and tumble.
   own `Client` with its blocks, for the session. The same happens when swaps
   are refused for three seconds, or the hit layer fails. `mascotArt: blocks`
   keeps the blocks on every surface. The TV (below) is drawn smooth too.
+
+## The world tour
+
+With the vector art and `scenery` on (the default), the mascots stand in a
+world (`hooks/scenery.ts`): the band's session mascot walks along in front
+of it, the pane's subagents stand in it, both at the same stop at the same
+time. The tour is one day's travel round the world, each stop's sky close to
+its neighbours': dawn, morning, noon, sunset, dusk, night, and dawn again.
+It stays at each stop 45 seconds (`STAY_MS`), its name fading in
+by a pin as it arrives, then pans on to the next over 7 seconds, eased; a
+stop is 110 units of the world's strip (`STOP`, 55 cells), so a wide band
+shows the stops either side of it too, each in its own sky, the skies
+blending over the seam between them.
+
+| stop | its landmark | its light and weather |
+| --- | --- | --- |
+| Machu Picchu, Peru | its terraces and peak, a llama | first light, morning mist |
+| Great Wall, China | the Wall over misty ridges, its towers | dawn, mist drifting |
+| Mt Fuji, Japan | Fuji, a pagoda, a torii, cherry trees | a spring morning, falling petals |
+| Amsterdam, Netherlands | windmills turning, canal houses, tulip fields | morning, birds |
+| Sydney, Australia | the Opera House, the Harbour Bridge | noon, the harbour glinting |
+| Chichén Itzá, Mexico | El Castillo, jungle | noon, birds |
+| Giza, Egypt | the pyramids and the Sphinx, palms | noon |
+| Rome, Italy | the Colosseum, cypresses, umbrella pines | a golden afternoon, birds |
+| Agra, India | the Taj Mahal and its pool | sunset, fireflies |
+| Serengeti, Tanzania | Kilimanjaro, acacias, giraffes | sunset |
+| Easter Island, Chile | the moai on their platform | sunset over the sea |
+| Rio, Brazil | Christ the Redeemer, Sugarloaf, palms | dusk |
+| Paris, France | the Eiffel Tower, its lights sparkling; rooftops, plane trees | dusk, falling leaves |
+| London, UK | Big Ben (its clock at your local time), Westminster, a red bus going by | an evening's rain |
+| New York, USA | the skyline lit, the Statue of Liberty's torch flickering | night |
+| Moscow, Russia | St Basil's onion domes | a winter night, snow |
+| Tromsø, Norway | snowy fjords, a red cabin, pines | night, the northern lights, snow |
+
+- **Its layers.** The sky and the land are each a still layer (drawn once
+  per stop and kept: `Layer.still`, keyed by what it shows) and what moves
+  over it (stars twinkling, the sun or moon, clouds drifting, a windmill's
+  sails, smoke, glints, the weather), then the mascots and their shadows,
+  then the motes nearest the eye. During a pan the still layers are the
+  whole leg's strip, seen from where the pan has got to (`Layer.shift`).
+- **The ground.** Its field begins a little behind the back row's feet, each
+  stop's ground blending into the next's; nearer it is darker, and it has
+  its texture (tufts, ripples of sand, drifts of snow, paving stones).
+- **In a terminal's picture** (`smoothPixels`) the still layers are
+  rasterized once and kept (`stills`), a pan copying a window of them, so a
+  frame draws only what moves; a band 120 cells across costs about 4 ms a
+  frame more and its picture about 40 KiB.
+- **On the desktop** (`smoothSvg`) the scenery's shapes painted alike are
+  one path each (`shapesMarkup`'s `merged`); short of room for all of it in
+  the `Svg`, the ground's texture goes first (`Layer.detail`), then what
+  moves, then all of it, never a mascot for it.
+- Off (`scenery: false`), or with the block art, the scene is drawn as
+  before: no world, the band its usual five rows.
 
 ## Layout
 
@@ -512,12 +569,12 @@ its hat (or crown) lies on the floor beside it.
 - Its head never goes lower: sitting, crouched or squashed, it squats on a
   wide seat; knocked down it lies flat, ears out either side; asleep, the
   blanket covers its body up to its cheeks.
-- It barely talks: its thoughts are its shouts and its lines
-  (`USAGI_THOUGHTS`: `Ura!`, `Yaha!`, `HUHHH?`, `UNA!`, `Puruya`, `Haa?` and
-  more), one a spell as Clawd's phrases are.
+- It barely talks: its thoughts are its cries as the anime has them
+  (`USAGI_THOUGHTS`: `Ura!`, `Yaha!`, `Haa?`, its `Pururu!` trill, `Purya`,
+  `Fuun` and more), one a spell as Clawd's phrases are.
 - No cigarette: on each puff of that idle bit it throws its hands up and
-  shouts, in turn, `Ura!`, `HUHHH?`, `UNA!` (`SHOUTS`), then takes a breath.
-- Getting up after a fall, crouched, it is dazed: `HUHHH?` (`DAZED`).
+  shouts, in turn, `Ura!`, `Haa?`, `Pururu!` (`SHOUTS`), then takes a breath.
+- Getting up after a fall, crouched, it is dazed: `Haa?` (`DAZED`).
 - Failed, its cross stands over its head in the sky row (its head stays
   up); with no sky row free, the cross and its lines come a row lower,
   beside its ears.
@@ -544,12 +601,11 @@ always ends inside its window:
 | --- | --- | --- | --- |
 | `yaha` | 2 s | the Yaha! dance: arms waving in turn, swaying, bouncing, eyes turning spirals (in its cells shut), mouth wide | `Yaha!` |
 | `ura` | 1.4 s | a crouch, a leap with arms flung up, a landing that squashes and wobbles | `Ura!` |
-| `huh` | 1.3 s | it looms at you, head tilted, eyes wide, mouth a round `o` | `HUHHH?` |
+| `huh` | 1.3 s | it looms at you, head tilted, eyes wide, mouth a round `o` | `Haa?` |
 | `fuun` | 1.7 s | smug: lids half down, a smirk, leaning back, hands on hips, a huff | `Fuun` |
-| `zoom` | 1.6 s | zoomies: dashing either way and back on wheel legs | `Uraaa!` |
-| `twirl` | 1.2 s | two turns on the spot, arms out | `Puruya` |
-| `flip` | 1.3 s | a backflip: a crouch, a full turn in the air, a landing with arms up | `Yaha!` |
-| `shake` | 1 s | a blur either way | `UNA!` |
+| `twirl` | 1.2 s | two turns on the spot, arms out | `Purya` |
+| `flip` | 1.3 s | a backflip: a crouch, a full turn in the air, a landing with arms up | `Iyaha!` |
+| `shake` | 1 s | its rolled-r trill, trembling a blur either way | `Pururu!` |
 | `bash` | 1.5 s | at its laptop: both hands hammering the keys, keys flying | `Ura!` |
 
 A quirk comes over Usagi only where it stands on its floor with nothing
@@ -560,24 +616,29 @@ is down, done or failed, walks, flies, is in a scene's step, held or
 thrown, or is in the pipe. The cells draw each one with what a look has
 (`quirkLook`): the dance and the shake a cell either way in turn, the leap
 and the backflip a row up where the sky has one with a squash either side,
-zoomies a cell either way in stride, its line over its head
+its line over its head
 (`QUIRK_SHOUTS`). The vector art plays it by time (`quirkPose`,
 `hooks/usagi-moves.ts`) over the pose eased under it, easing in and back
 out, its line in a spiky balloon.
 
-**The sprint.** On foot Usagi covers two cells a frame where Clawd covers
-one (`ZIPPY_CELLS`), rests half as long between walks, and leaps one
-walking frame in six rather than ten (`Mover.zippy`, set by `mascotPlan`
-for a Usagi scene). The cells draw its strides as a flurry of four feet,
-shifted each frame (`RUN_FEET`). The vector art draws a cartoon's run
-(`sprintPose`): its legs a spinning wheel (a pale blur, dashes turning
-round its rim, four legs five turns a second), leaning hard into its way,
-arms pumping, ears streaming back, dust kicked up and speed lines behind.
+**Its stroll and its bounds.** On foot Usagi strolls at Clawd's pace, a
+cell a frame, then bounds: one walking frame in five rather than ten it
+springs as far as 18 cells (`BOUND_REACH`, against a hop's 10), six frames
+in the air (`BOUND_AIR`) and low, two rows of sky enough, so it bounds in
+the band above the prompt too (`Mover.springy`, set by `mascotPlan` for a
+Usagi scene). The vector art draws its walk as a toddle (`toddlePose`):
+short quick steps, a waddle side to side, its hands swinging a little, its
+ears a touch behind. A bound (`boundPose`, by the hop's progress and first
+frame) crouches to spring, then flies stretched with its legs tucked, hands
+flung up, ears streaming back, eyes squeezed and mouth wide on its cry
+(mostly `Yaha!`, as it leaps out in the anime; now and then `Iyaha!` or
+`Ura!`); one bound in three turns a forward flip high in the arc, about its
+middle; it lands squashed in a puff of dust.
 
 **The face** (vector art). Small dot eyes with a glint under brows high over
 them, level by the middle and curving down to the side (higher when it is
 startled); never squeezed shut `> <`: in a burst (the Yaha! dance, Ura!,
-UNA!, zoomies, bashing its keys) and dizzy, spirals turning, each the other
+Pururu!, a bound, bashing its keys) and dizzy, spirals turning, each the other
 way; knocked flat, crosses `× ×`; wide when startled. Its lids come half
 down (`Look.lids`): bored, idle 30 seconds as it looks about or sits;
 drowsy, the last 12 before its nap; unimpressed, `hmph`, when it fails, a
@@ -589,8 +650,8 @@ wide open when it shouts (a D on its back, flat along its top, its tongue
 in it), a round `o`, a smug hooked smile, a grin of two peaks with its eyes
 happy. Its ears twitch,
 one at a time, every three to six seconds. Asleep, a bubble swells and
-shrinks from its nose. Its shouts (the cigarette's puffs, `HUHHH?` dazed,
-`HUHHH?!` startled, its quirks) burst out in the same spiky balloon.
+shrinks from its nose. Its shouts (the cigarette's puffs, `Haa?` dazed,
+`Haa?!` startled, its quirks, its bounds) burst out in the same spiky balloon.
 
 ## The TV
 
@@ -674,7 +735,7 @@ the giant shrinks back into the mascot (5) and it flies home (5). Only then
 are the hooks told, and the mascot, out of the scene while it was the TV, is
 back: for three seconds it shakes its head, looking left and right, then
 stands wide-eyed with its arms down, a sweat drop and a `!?` beside it
-(Usagi shouts `HUHHH?!`), out of the choreography and on its floor, then
+(Usagi shouts `Haa?!`), out of the choreography and on its floor, then
 carries on. The scene counts those seconds on its own clock from when it
 hears the mascot is back.
 

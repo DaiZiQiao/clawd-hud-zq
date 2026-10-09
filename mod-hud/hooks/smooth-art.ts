@@ -1,5 +1,5 @@
 import { CLAWD, propShapes } from './clawd-moves'
-import { about, applyTo, chain, multiply, rotate, scale, translate } from './clawd-vector'
+import { about, applyTo, chain, multiply, rotate, scale, translate, wave } from './clawd-vector'
 import type { Matrix, Shape } from './clawd-vector'
 import { ACCESSORIES, BLANKET, CROWN, LAPTOP_COLOUR } from './mascot-sprites'
 import type { Accessory } from './mascot-sprites'
@@ -36,7 +36,6 @@ const PAPER = CLAWD.paper
 const EDGE = CLAWD.edge
 const SPARK = 'warning'
 
-const wave = (t: number, period: number, phase = 0): number => Math.sin((2 * Math.PI * t) / period + phase)
 
 /** A colour `k` of the way to black: a leg's shade of its body. */
 export const shade = (hex: string, k: number): string => {

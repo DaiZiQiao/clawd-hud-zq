@@ -464,11 +464,11 @@ const corcovado = (at: At): Shape[] => {
     ...water(at, 2, 55, 2, '#3a3a7a'),
     poly(p([[-30, 0], [-16, 6], [-9, 12.4], [-6.6, 13.2], [-4.4, 12], [2, 5], [10, 0]]), '#2a3a3a'),
     poly(p([[10, 0], [12, 5], [15, 8.4], [18, 8.8], [20.6, 7], [22.6, 2.4], [24, 0]]), '#2e3c40'),
-    // The statue, arms out.
-    box(at, -6.85, 13.2, -6.35, 15.4, '#f4eee4'),
-    box(at, -8.2, 14.6, -5, 15, '#f4eee4'),
-    dot(at, -6.6, 15.75, 0.35, 0.35, '#f4eee4'),
-    dot(at, -6.6, 14.8, 2.4, 1.6, '#fff4dc', 0.18),
+    // The statue, arms out, its robe widening down.
+    poly(p([[-7.25, 13.1], [-6.95, 16.2], [-6.25, 16.2], [-5.95, 13.1]]), '#f4eee4'),
+    box(at, -8.8, 15.5, -4.4, 16.05, '#f4eee4'),
+    dot(at, -6.6, 16.65, 0.48, 0.48, '#f4eee4'),
+    dot(at, -6.6, 15.4, 3.2, 2.2, '#fff4dc', 0.18),
     ...palm(at, -40, 6, '#3a2a22', '#1e3a2a'),
     ...palm(at, 33, 5.4, '#3a2a22', '#1e3a2a'),
   ]
@@ -592,24 +592,25 @@ const chichen = (at: At): Shape[] => {
   return shapes
 }
 
+// One day's travel round the world: dawn, morning, noon, sunset, dusk, night, and dawn again, each stop's sky close to its neighbours'.
 const STOPS: readonly Stop[] = [
-  { name: 'PARIS · FRANCE', sky: ['#1a1c48', '#4a3a7c', '#c46a8c', '#f4a868'], body: { x: 0.78, y: 0.82, r: 2.6, colour: '#ffb070' }, night: 0.4, cloud: '#e8a0a8', ground: '#4a5240', floor: 'grass', weather: 'leaves', draw: at => [...haussmann(at, -54, -14), ...haussmann(at, 14, 54), ...roundTree(at, -12, 6, '#d87a32', '#f0b04a'), ...roundTree(at, 12, 5.6, '#c8522e', '#e8903a'), ...eiffel(at)], moving: (at, now) => Array.from({ length: 10 }, (_, i) => dot(at, (rnd('sparkle-x', i) - 0.5) * (5 - rnd('sparkle-y', i) * 4.4), 1 + rnd('sparkle-y', i) * 17, 0.22, 0.22, '#ffffff', Math.max(0, Math.sin(now / 200 + i * 7)))) },
-  { name: 'LONDON · UK', sky: ['#262c3a', '#3e4656', '#646e80', '#8a92a0'], night: 0.1, cloud: '#5a6272', ground: '#41474e', floor: 'stone', weather: 'rain', draw: bigBen, moving: bigBenMoving },
-  { name: 'AMSTERDAM · NETHERLANDS', sky: ['#2c62a4', '#5e9ad2', '#a4cce8', '#e6eef0'], body: { x: 0.2, y: 0.4, r: 2.2, colour: '#fff4c0' }, night: 0, cloud: '#ffffff', ground: '#4c7a3a', floor: 'grass', birds: true, draw: at => [...canalHouses(at, -48), ...windmill(at, -10, 1.15), ...windmill(at, 18, 0.9), ...tulips(at, -55, 55)], moving: (at, now) => [...sails(at, -10, 1.15, now, 9000), ...sails(at, 18, 0.9, now, 7000)] },
-  { name: 'TROMSO · NORWAY', sky: ['#04081a', '#0a1430', '#142446', '#1e3254'], body: { moon: true, x: 0.82, y: 0.3, r: 1.6, colour: '#f2f2e6' }, night: 1, ground: '#b4c2d8', floor: 'snow', weather: 'snow', draw: fjord, moving: aurora },
-  { name: 'MOSCOW · RUSSIA', sky: ['#0c1430', '#1e2c5c', '#3a4a7a', '#5a6894'], body: { moon: true, x: 0.2, y: 0.32, r: 1.7, colour: '#f2f2e6' }, night: 0.9, ground: '#b8c4da', floor: 'snow', weather: 'snow', draw: stBasil },
-  { name: 'ROME · ITALY', sky: ['#2e6aaa', '#6aa6d6', '#b8d6e8', '#f2dcb0'], body: { x: 0.25, y: 0.45, r: 2.4, colour: '#fff0b8' }, night: 0, cloud: '#ffffff', ground: '#a48a5c', floor: 'stone', birds: true, draw: at => [...colosseum(at), cypress(at, -18, 8), cypress(at, -16, 6.6), cypress(at, 19, 7.4), ...umbrellaPine(at, -28, 7), ...umbrellaPine(at, 27, 6.4)] },
-  { name: 'GIZA · EGYPT', sky: ['#2462a2', '#5a9ed4', '#a6cce0', '#f2e0b0'], body: { x: 0.7, y: 0.25, r: 3, colour: '#fff6c8' }, night: 0, ground: '#d2a864', floor: 'sand', birds: true, draw: at => [...pyramid(at, -6, 8, 8.4, true), ...pyramid(at, 8, 11, 11), ...pyramid(at, 25, 5, 5), sphinx(at, -22), ...palm(at, -36, 6), ...palm(at, -33, 4.8), ...palm(at, 38, 5.6)] },
-  { name: 'SERENGETI · TANZANIA', sky: ['#2e1838', '#7a2e4a', '#d8603a', '#f8b44a'], body: { x: 0.62, y: 0.86, r: 4.2, colour: '#ffb84a' }, night: 0.2, ground: '#b8904a', floor: 'grass', birds: true, draw: savanna },
-  { name: 'AGRA · INDIA', sky: ['#2a2050', '#7a4a7a', '#e2848a', '#ffcc8a'], body: { x: 0.3, y: 0.85, r: 2.4, colour: '#ffc07a' }, night: 0.3, cloud: '#f4a8a8', ground: '#5e7048', floor: 'grass', weather: 'fireflies', draw: tajMahal },
-  { name: 'GREAT WALL · CHINA', sky: ['#4c5a7e', '#8a92b2', '#d4c4c8', '#f6dcc0'], body: { x: 0.74, y: 0.62, r: 2, colour: '#fff0d8' }, night: 0, ground: '#4a6a4e', floor: 'grass', birds: true, draw: greatWall, moving: (at, now) => mist(at, now, 4.2) },
+  { name: 'MACHU PICCHU · PERU', sky: ['#1e2848', '#4c5a82', '#a8a2b8', '#f0d2bc'], body: { x: 0.82, y: 0.94, r: 2.2, colour: '#ffd8b0' }, night: 0.3, cloud: '#e8e0ec', ground: '#4e7a44', floor: 'grass', draw: machuPicchu, moving: (at, now) => mist(at, now, 6) },
+  { name: 'GREAT WALL · CHINA', sky: ['#36487a', '#7a88b0', '#d0c2cc', '#f6dcc0'], body: { x: 0.74, y: 0.62, r: 2, colour: '#fff0d8' }, night: 0, ground: '#4a6a4e', floor: 'grass', birds: true, draw: greatWall, moving: (at, now) => mist(at, now, 4.2) },
   { name: 'MT FUJI · JAPAN', sky: ['#4a7ec0', '#8ab8e2', '#cce2f2', '#fbe2ea'], body: { x: 0.85, y: 0.4, r: 2.2, colour: '#fff4d8' }, night: 0, cloud: '#ffffff', ground: '#5c8a4c', floor: 'grass', weather: 'petals', draw: fuji },
+  { name: 'AMSTERDAM · NETHERLANDS', sky: ['#2c62a4', '#5e9ad2', '#a4cce8', '#e6eef0'], body: { x: 0.2, y: 0.4, r: 2.2, colour: '#fff4c0' }, night: 0, cloud: '#ffffff', ground: '#4c7a3a', floor: 'grass', birds: true, draw: at => [...canalHouses(at, -48), ...windmill(at, -10, 1.15), ...windmill(at, 18, 0.9), ...tulips(at, -55, 55)], moving: (at, now) => [...sails(at, -10, 1.15, now, 9000), ...sails(at, 18, 0.9, now, 7000)] },
   { name: 'SYDNEY · AUSTRALIA', sky: ['#145cac', '#4a9ae0', '#9ccdf0', '#d4ecf8'], body: { x: 0.18, y: 0.3, r: 2.6, colour: '#fff8d0' }, night: 0, cloud: '#ffffff', ground: '#8a8c88', floor: 'stone', birds: true, draw: operaHouse, moving: (at, now) => glints(at, -55, 55, 2.2, now) },
-  { name: 'EASTER ISLAND · CHILE', sky: ['#24204a', '#6a3a6a', '#e0705a', '#f8c070'], body: { x: 0.5, y: 0.96, r: 3.6, colour: '#ffa850' }, night: 0.3, cloud: '#e88a7a', ground: '#4a5a3a', floor: 'grass', draw: at => [...water(at, -55, 55, 2.4, '#4a3a6a'), box(at, -14, 0, 14, 0.8, '#3a3232'), ...[-10.5, -5.2, 0, 5.2, 10.5].flatMap(dx => moai(at, dx, 6.6 + 1.2 * rnd('moai', dx)))], moving: (at, now) => glints(at, -55, 55, 2.4, now, '#ffc890') },
-  { name: 'MACHU PICCHU · PERU', sky: ['#56708e', '#90a8bc', '#c8d4d8', '#eef0e4'], night: 0, cloud: '#ffffff', ground: '#4e7a44', floor: 'grass', draw: machuPicchu, moving: (at, now) => mist(at, now, 6) },
   { name: 'CHICHEN ITZA · MEXICO', sky: ['#2266b0', '#5ea2dc', '#a8d2ee', '#e4f2f4'], body: { x: 0.8, y: 0.3, r: 2.6, colour: '#fff6c8' }, night: 0, cloud: '#ffffff', ground: '#4c6e3c', floor: 'grass', birds: true, draw: chichen },
+  { name: 'GIZA · EGYPT', sky: ['#2462a2', '#5a9ed4', '#a6cce0', '#f2e0b0'], body: { x: 0.7, y: 0.25, r: 3, colour: '#fff6c8' }, night: 0, ground: '#d2a864', floor: 'sand', birds: true, draw: at => [...pyramid(at, -6, 8, 8.4, true), ...pyramid(at, 8, 11, 11), ...pyramid(at, 25, 5, 5), sphinx(at, -22), ...palm(at, -36, 6), ...palm(at, -33, 4.8), ...palm(at, 38, 5.6)] },
+  { name: 'ROME · ITALY', sky: ['#3a62a2', '#7a9ccc', '#d8c8b8', '#f6cc90'], body: { x: 0.25, y: 0.45, r: 2.4, colour: '#fff0b8' }, night: 0, cloud: '#ffffff', ground: '#a48a5c', floor: 'stone', birds: true, draw: at => [...colosseum(at), cypress(at, -18, 8), cypress(at, -16, 6.6), cypress(at, 19, 7.4), ...umbrellaPine(at, -28, 7), ...umbrellaPine(at, 27, 6.4)] },
+  { name: 'AGRA · INDIA', sky: ['#2a2050', '#7a4a7a', '#e2848a', '#ffcc8a'], body: { x: 0.3, y: 0.85, r: 2.4, colour: '#ffc07a' }, night: 0.3, cloud: '#f4a8a8', ground: '#5e7048', floor: 'grass', weather: 'fireflies', draw: tajMahal },
+  { name: 'SERENGETI · TANZANIA', sky: ['#2e1838', '#7a2e4a', '#d8603a', '#f8b44a'], body: { x: 0.62, y: 0.86, r: 4.2, colour: '#ffb84a' }, night: 0.2, ground: '#b8904a', floor: 'grass', birds: true, draw: savanna },
+  { name: 'EASTER ISLAND · CHILE', sky: ['#24204a', '#6a3a6a', '#e0705a', '#f8c070'], body: { x: 0.5, y: 0.96, r: 3.6, colour: '#ffa850' }, night: 0.3, cloud: '#e88a7a', ground: '#4a5a3a', floor: 'grass', draw: at => [...water(at, -55, 55, 2.4, '#4a3a6a'), box(at, -14, 0, 14, 0.8, '#3a3232'), ...[-10.5, -5.2, 0, 5.2, 10.5].flatMap(dx => moai(at, dx, 6.6 + 1.2 * rnd('moai', dx)))], moving: (at, now) => glints(at, -55, 55, 2.4, now, '#ffc890') },
   { name: 'RIO · BRAZIL', sky: ['#1e1e5a', '#6a3a8a', '#e06a8a', '#f8a85a'], body: { x: 0.74, y: 0.8, r: 3, colour: '#ffb060' }, night: 0.3, cloud: '#f0909a', ground: '#d8b47c', floor: 'sand', birds: true, draw: corcovado, moving: (at, now) => glints(at, 2, 55, 2, now, '#ffc0a0') },
+  { name: 'PARIS · FRANCE', sky: ['#1a1c48', '#4a3a7c', '#c46a8c', '#f4a868'], body: { x: 0.78, y: 0.82, r: 2.6, colour: '#ffb070' }, night: 0.4, cloud: '#e8a0a8', ground: '#4a5240', floor: 'grass', weather: 'leaves', draw: at => [...haussmann(at, -54, -14), ...haussmann(at, 14, 54), ...roundTree(at, -12, 6, '#d87a32', '#f0b04a'), ...roundTree(at, 12, 5.6, '#c8522e', '#e8903a'), ...eiffel(at)], moving: (at, now) => Array.from({ length: 10 }, (_, i) => dot(at, (rnd('sparkle-x', i) - 0.5) * (5 - rnd('sparkle-y', i) * 4.4), 1 + rnd('sparkle-y', i) * 17, 0.22, 0.22, '#ffffff', Math.max(0, Math.sin(now / 200 + i * 7)))) },
+  { name: 'LONDON · UK', sky: ['#161c30', '#2a344c', '#48546c', '#68728a'], night: 0.1, cloud: '#5a6272', ground: '#41474e', floor: 'stone', weather: 'rain', draw: bigBen, moving: bigBenMoving },
   { name: 'NEW YORK · USA', sky: ['#060c26', '#10204a', '#22325e', '#3a4670'], body: { moon: true, x: 0.68, y: 0.22, r: 1.8, colour: '#f4f2e6' }, night: 0.85, ground: '#34363e', floor: 'stone', draw: liberty, moving: (at, now) => [...libertyTorch(at, now), ...glints(at, -55, 55, 2.4, now, '#ffd78a')] },
+  { name: 'MOSCOW · RUSSIA', sky: ['#0c1430', '#1e2c5c', '#3a4a7a', '#5a6894'], body: { moon: true, x: 0.2, y: 0.32, r: 1.7, colour: '#f2f2e6' }, night: 0.9, ground: '#b8c4da', floor: 'snow', weather: 'snow', draw: stBasil },
+  { name: 'TROMSO · NORWAY', sky: ['#04081a', '#0a1430', '#142446', '#1e3254'], body: { moon: true, x: 0.82, y: 0.3, r: 1.6, colour: '#f2f2e6' }, night: 1, ground: '#b4c2d8', floor: 'snow', weather: 'snow', draw: fjord, moving: aurora },
 ]
 
 // --- the tour --------------------------------------------------------------------

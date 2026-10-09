@@ -2,7 +2,7 @@ import type { JsonValue } from 'claude-code'
 import { describe, expect, mock, test } from 'claude-code/testing'
 
 import type { HudSelection } from '../types'
-import { IDENTITY, rasterOf, scale, svgOf } from './clawd-vector'
+import { IDENTITY, documentOf, rasterOf, scale, shapesMarkup } from './clawd-vector'
 import { CROWN } from './mascot-sprites'
 import { base64Of, deflate, pngOf } from './png'
 import { bytesOf, countColour, inflate, pngPixels } from './png.fixtures'
@@ -81,7 +81,7 @@ describe('the rasterizer', () => {
     expect(outlined(1.5, 1.5)).toEqual([255, 0, 0, 255])
     expect(outlined(0.75, 1.5)).toEqual([0, 0, 255, 255])
     expect(outlined(0.25, 1.5)[3]).toBe(0)
-    const svg = svgOf([line, square], 24, 24, IDENTITY)
+    const svg = documentOf(shapesMarkup([line, square], IDENTITY), 24, 24)
     expect(svg).toContain(`<polyline points='0.5,0.5 2.5,0.5 2.5,2.5' fill='none' stroke='#FF0000' stroke-width='0.5' stroke-linecap='round' stroke-linejoin='round'/>`)
     expect(svg).toContain(`fill='#FF0000' stroke='#0000FF' stroke-width='1' stroke-linejoin='round' paint-order='stroke'`)
   })

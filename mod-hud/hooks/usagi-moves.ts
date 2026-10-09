@@ -1,3 +1,4 @@
+import { wave } from './clawd-vector'
 import type { Beside, FigurePose } from './smooth-pose'
 import { QUIRK_MS, QUIRK_SAYS } from './usagi-quirks'
 import type { Quirk } from './usagi-quirks'
@@ -8,7 +9,6 @@ import type { Quirk } from './usagi-quirks'
 // Each quirk eases in and out of the pose under it, so it starts from
 // whatever Usagi was doing and goes back to it.
 
-const wave = (t: number, period: number, phase = 0): number => Math.sin((2 * Math.PI * t) / period + phase)
 
 const smooth = (x: number): number => {
   const k = Math.max(0, Math.min(1, x))

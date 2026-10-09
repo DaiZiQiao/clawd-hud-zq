@@ -2,19 +2,11 @@
 
 A HUD side pane for Claude Code. It shows your session facts, what needs your attention, git state and the tool running now, context and prompt-cache bars, rate limits, cost, TODO progress and every running subagent, including ultracode and Workflow agents, next to a live, animated scene of Claude mascots. The mascots work, sleep, hop, fly and collide, and you can grab them with the mouse and throw them. In the desktop app and in terminals that show pictures (Ghostty, kitty), they are drawn as smooth vector art at 30 frames a second, with every pose easing into the next.
 
-Your session's own mascot lives in the band just above the prompt, so it is there even with the HUD closed. When the conversation's context has grown, it offers to tidy up (compact the conversation), and it squashes a pile of pages into a cube while any compaction runs.
+Your session's own mascot lives in the band just above the prompt, so it is there even with the HUD closed. It walks the width of the prompt on a tour of the world's wonders: the Eiffel Tower at dusk, Big Ben in the rain, the pyramids, Mount Fuji in cherry blossom, the northern lights over Tromsø and more, each in its own sky and weather, and the HUD's mascots stand in the same world. When the conversation's context has grown, it offers to tidy up (compact the conversation), and it squashes a pile of pages into a cube while any compaction runs.
 
 And a strip above the prompt: thumbnails of the images you paste into Claude Code, shown before you send, real pixels in kitty and Ghostty and coloured half-block cells in other terminals.
 
 This repository is a Claude Code marketplace that ships two mods, `mod-hud` (the HUD pane) and `mod-images` (the image strip). Each installs on its own: take either, or both. Everything below is mod-hud's until [mod-images](#mod-images).
-
-## Screenshots
-
-![The HUD pane](docs/screenshots/pane.png)
-
-![The mascot scene](docs/screenshots/mascots.png)
-
-> TODO (author): add `docs/screenshots/pane.png` and `docs/screenshots/mascots.png`.
 
 ## Requirements
 
@@ -87,6 +79,7 @@ Change any option from `/plugin` (select mod-hud, then its settings).
 | `collisions` | `rare` | `off`: wanderers that meet step back. `rare`: only two moving mascots collide, falling over dizzy, at most once per pair in 30 s. `normal`: a moving mascot knocks over a standing one too, once per pair in 10 s. In `rare` and `normal` a thrown mascot knocks over whoever it hits. |
 | `motion` | `smooth` | `smooth`: on the terminal and desktop the scene runs at 20 frames a second, gliding between cells, with click, pick up, drag and throw. `classic`: the Box/Text scene at 4 frames a second everywhere, with a pick button under each mascot. |
 | `mascotArt` | `vector` | `vector`: in the desktop app, and in Ghostty or kitty (known by their own environment variables, never under tmux), the mascots are drawn shapes at 30 frames a second, each pose eased into the next. Other terminals draw the block characters, as does a terminal that refuses a picture. `blocks`: the block characters everywhere. The scene needs `motion: smooth` for it; the TV is drawn smooth with either motion (in Ghostty and kitty its giant is a picture under the screen). |
+| `scenery` | `true` | With the vector art, the mascots tour the world's wonders behind them, in the band and the pane: a stop at each landmark in its own light and weather, its name shown as it arrives, then a pan to the next. See [the world tour](mod-hud/docs/mascots.md#the-world-tour). |
 | `todoRows` | `6` | Opened, the TODO section lists at most this many items and counts the rest. |
 | `sessionMascot` | `band` | `band`: the session's mascot lives in the band above the prompt on the terminal and desktop, so it shows with the HUD closed too, and the pane's scene holds the subagents. VS Code and mobile draw no band, so there it stays in the pane. `pane`: in the pane's scene with the subagents, as before 1.4.0. |
 | `tidy` | `ask` | `ask`: once the context passes `tidyAt` and the main loop is idle, the band offers to tidy up, with how many requests it takes to pay for itself. `auto`: when a main turn ends with no subagent running, the band counts down ten seconds, then tidies up; **Not now** or a new prompt stops it. `off`: never offered. Whatever it says, the mascot tidies up during any compaction and the band shows the result. |
@@ -140,7 +133,8 @@ Every request re-reads the whole conversation, mostly from the prompt cache, whi
 
 ## The mascots
 
-- One mascot for your session, wearing a crown, in the band above the prompt (or in the pane, with `sessionMascot: pane`), and one per subagent and workflow agent in the pane, each in its own colour.
+- One mascot for your session, wearing a crown, walking the band above the prompt (or in the pane, with `sessionMascot: pane`), and one per subagent and workflow agent in the pane, each in its own colour.
+- With the vector art they stand in a world on tour (`scenery`): 17 stops over one day's travel, from first light at Machu Picchu to the northern lights over Tromsø, 45 seconds each, a pan between them; a wide band shows the stops either side too. In a terminal's picture it costs about 4 ms a frame more.
 - While a compaction runs, the session's mascot tidies up: it squashes a stack of pages beside it into a cube, over and over, and the next stack lands.
 - A role letter above the head: `r` reviewer, `d` debugger, `p` Plan, `w` worker, `f` frontend, `e` Explore or researcher.
 - Eight accessories (beanie, cap, top hat, flower, bow, halo, note, propeller) tell agents apart.
@@ -151,7 +145,7 @@ Every request re-reads the whole conversation, mostly from the prompt cache, whi
 - Motion is `smooth` (20 fps, mouse grab and throw) or `classic` (4 fps, everywhere).
 - In the desktop app and in Ghostty or kitty, Clawd and Usagi are drawn as vector art (`mascotArt: vector`): round edges, squash and stretch that bounce back, falls that turn over, blinking and breathing, legs that walk, propellers that spin, every interaction the block art shows. In a terminal the scene is a picture swapped about 30 times a second, about 10 while everyone stands still. Other terminals get the block art automatically. See [the vector art](mod-hud/docs/mascots.md#the-vector-art).
 - Pressed, a mascot becomes a TV of itself, in its own colour and wearing its own accessory, hat or crown (pressed in flight, its propeller cap): Clawd's body or Usagi's round head the casing, the screen on its forehead, its eyes (and Usagi's cheeks and mouth) under it, its arms, legs and what it wears around it. With the vector art it flies in and grows smoothly and the giant is drawn smooth, Usagi's ears standing up as the TV's rabbit-ear antenna. See [the TV](mod-hud/docs/mascots.md#the-tv).
-- `character: usagi` swaps every mascot for Usagi (fan art): in the vector art drawn as Chiikawa draws it (a big round head on a small body, long ears close together, small glinting dot eyes under high curved brows, pink cheeks with four dark strokes, a mouth like a flat 3 over its cheeky slanted chin, a tufted tail, a bold outline), pale yellow, its role shown by its hat (worker a construction hat, Explore a fedora, reviewer a mortarboard, debugger a miner's helmet, Plan a top hat, frontend a beret), the session's by a small crown on the side of its head; it shouts `Ura!`, `Yaha!`, `HUHHH?` and `UNA!` where Clawd thinks out loud. Like Chiikawa's Usagi it is chaotic: out of nowhere it breaks into the Yaha! dance, an Ura! leap, a HUHHH? lean-in, a smug Fuun, zoomies, a twirl, a backflip or an UNA! shake, and bashes its keyboard at work; on foot it sprints at twice Clawd's pace, its legs a spinning wheel. See [the mascot docs](mod-hud/docs/mascots.md#usagis-chaos).
+- `character: usagi` swaps every mascot for Usagi (fan art): in the vector art drawn as Chiikawa draws it (a big round head on a small body, long ears close together, small glinting dot eyes under high curved brows, pink cheeks with four dark strokes, a mouth like a flat 3 over its cheeky slanted chin, a tufted tail, a bold outline), pale yellow, its role shown by its hat (worker a construction hat, Explore a fedora, reviewer a mortarboard, debugger a miner's helmet, Plan a top hat, frontend a beret), the session's by a small crown on the side of its head; it cries `Ura!`, `Yaha!`, `Haa?` and its `Pururu!` trill where Clawd thinks out loud. Like Chiikawa's Usagi it is chaotic: out of nowhere it breaks into the Yaha! dance, an Ura! leap, a Haa? lean-in, a smug Fuun, a twirl, a backflip or a Pururu! shake, and bashes its keyboard at work; on foot it strolls, then bounds far with a `Yaha!`, now and then flipping over in the air. See [the mascot docs](mod-hud/docs/mascots.md#usagis-chaos).
 
 ## mod-images
 

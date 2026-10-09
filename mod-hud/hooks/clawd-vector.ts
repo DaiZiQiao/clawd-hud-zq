@@ -6,6 +6,9 @@ import type { ThemeKey } from './svg-style'
 // quarter of a unit) to SVG markup for the desktop's `Svg`, or to RGBA pixels
 // with anti-aliased edges for a terminal's `Image`. Pure functions.
 
+/** A sine wave of `period` ms at time `t`, shifted by `phase`: what blinks, bobs and sways on. */
+export const wave = (t: number, period: number, phase = 0): number => Math.sin((2 * Math.PI * t) / period + phase)
+
 /** A 2D affine map `[a, b, c, d, e, f]`: x' = a·x + c·y + e, y' = b·x + d·y + f. */
 export type Matrix = readonly [number, number, number, number, number, number]
 
@@ -165,14 +168,30 @@ const visible = (shape: Shape): boolean =>
         ? (shape.points?.length ?? 0) >= 2 && (shape.stroke ?? 0) > 0
         : shape.w > 0 && shape.h > 0)
 
+/** Markup and the theme keys it uses: a drawing's, or a part of one. */
+export type Markup = { markup: string; used: Set<ThemeKey> }
+
 /**
  * The shapes as SVG markup to set in a document of one's own: shapes in a
- * row that share one placement in one group, under one group of `view`; in
- * a row, those `merged` says may be that are painted alike, one path; the
+ * row that share one placement in one group, under one group of `view`; the
  * theme keys used, for the document's light scheme's rule. Shapes past
  * `limit` characters are left out, the earliest kept.
  */
-export const shapesMarkup = (shapes: readonly Shape[], view: Matrix, limit = Infinity, merged?: (shape: Shape) => boolean): { markup: string; used: Set<ThemeKey> } => {
+export const shapesMarkup = (shapes: readonly Shape[], view: Matrix, limit = Infinity): Markup => {
+  const { markup, used } = partMarkup(shapes, limit)
+
+  return { markup: viewed(markup, view), used }
+}
+
+/** Markup in the group of `view`, mapping world units to the document's pixels. */
+export const viewed = (markup: string, view: Matrix): string => `<g transform='matrix(${view.map(num).join(' ')})'>${markup}</g>`
+
+/**
+ * Shapes as markup in world units, a part of a drawing (`shapesMarkup`): in
+ * a row, those `merged` says may be that are painted alike, one path; its
+ * gradients' ids under `prefix`, unique among the drawing's parts.
+ */
+export const partMarkup = (shapes: readonly Shape[], limit = Infinity, merged?: (shape: Shape) => boolean, prefix = 'g'): Markup => {
   const used = new Set<ThemeKey>()
   const parts: string[] = []
   let length = 0
@@ -182,7 +201,7 @@ export const shapesMarkup = (shapes: readonly Shape[], view: Matrix, limit = Inf
   const filled = (shape: Shape): string => {
     const grad = shape.kind === 'line' || shape.ring !== undefined || shape.grow !== undefined || shape.outline !== undefined ? undefined : shape.grad
     if (grad === undefined) return elementOf(shape)
-    const id = `g${(grads += 1)}`
+    const id = `${prefix}${(grads += 1)}`
     const stops = grad.stops.map(([at, colour, alpha]) => `<stop offset='${num(at)}' stop-color='${colour}'${alpha < 1 ? ` stop-opacity='${num(alpha)}'` : ''}/>`).join('')
 
     return `<linearGradient id='${id}' gradientUnits='userSpaceOnUse' x1='${num(grad.x1)}' y1='${num(grad.y1)}' x2='${num(grad.x2)}' y2='${num(grad.y2)}'>${stops}</linearGradient>${elementOf(shape, id)}`
@@ -224,19 +243,16 @@ export const shapesMarkup = (shapes: readonly Shape[], view: Matrix, limit = Inf
     length += group.length
   }
 
-  return { markup: `<g transform='matrix(${view.map(num).join(' ')})'>${parts.join('')}</g>`, used }
+  return { markup: parts.join(''), used }
 }
 
 /**
- * The shapes as one SVG document `width` by `height` CSS pixels, `view`
- * mapping world units to them (`shapesMarkup`); theme keys in the dark
- * scheme's colours, the light scheme's by the page's (`prefers-color-scheme`).
+ * Markup as one SVG document `width` by `height` CSS pixels (its theme keys
+ * in the dark scheme's colours, the light scheme's by the page's
+ * `prefers-color-scheme`).
  */
-export const svgOf = (shapes: readonly Shape[], width: number, height: number, view: Matrix, limit = Infinity, extra = '', merged?: (shape: Shape) => boolean): string => {
-  const { markup, used } = shapesMarkup(shapes, view, limit, merged)
-
-  return `<svg xmlns='http://www.w3.org/2000/svg' width='${width}' height='${height}' viewBox='0 0 ${width} ${height}' pointer-events='none'${extra}>${lightRule(used)}${markup}</svg>`
-}
+export const documentOf = ({ markup, used }: Markup, width: number, height: number, extra = ''): string =>
+  `<svg xmlns='http://www.w3.org/2000/svg' width='${width}' height='${height}' viewBox='0 0 ${width} ${height}' pointer-events='none'${extra}>${lightRule(used)}${markup}</svg>`
 
 const rgbOf = (hex: string): [number, number, number] => {
   const n = Number.parseInt(hex.slice(1, 7), 16)

@@ -1,5 +1,5 @@
-import { chain, overlay, rasterOf, scale, shapesMarkup, svgOf, translate } from './clawd-vector'
-import type { Shape } from './clawd-vector'
+import { chain, documentOf, overlay, partMarkup, rasterOf, scale, translate, viewed } from './clawd-vector'
+import type { Markup, Shape } from './clawd-vector'
 import { BODY_WIDTH, BODY_X, BOX_ROWS, MINI, MINI_SCALE, SKY } from './mascot-sprites'
 import { ACCENT } from './scene-model'
 import { PIPE_COLOUR, PIPE_SHINE, PIPE_WIDTH } from './scene-pipe'
@@ -13,7 +13,7 @@ import { livelyOf, targetOf } from './smooth-pose'
 import { TODDLE_MS, quirkPose } from './usagi-moves'
 import { quirkAt } from './usagi-quirks'
 import type { PoseContext, Smoother } from './smooth-pose'
-import { CELL_HEIGHT, CELL_WIDTH } from './svg-style'
+import { CELL_HEIGHT, CELL_WIDTH, num } from './svg-style'
 
 // The mascot scene drawn smooth: the same plan, view and looks as the cells
 // (hooks/scene-placement.ts), each mascot as Clawd's or Usagi's shapes
@@ -152,12 +152,18 @@ export const smoothFrame = (scene: MascotScene, layout: MascotLayout, plan: Masc
   return { shapes, wholes, width, height, still, ...land }
 }
 
-/** A layer's still shapes where the view sees them: moved back by its shift. */
-const stillShapes = (layer: Layer): readonly Shape[] => {
-  if (layer.shift === 0) return layer.still
-  const back = translate(-layer.shift, 0)
+/** The still layers' markup as last made, by what they show and whether with their texture: made once, not every frame. */
+const stillMarkups = new Map<string, Markup>()
 
-  return layer.still.map(shape => ({ ...shape, m: shape.m === undefined ? back : chain(back, shape.m) }))
+/** A layer's still shapes as markup (all of them, or without its texture), seen from its shift: kept, then moved back by it. */
+const stillMarkup = (layer: Layer, prefix: string, texture = true): Markup => {
+  const key = `${layer.key}:${texture}`
+  const kept = stillMarkups.get(key) ?? partMarkup(texture ? layer.still : layer.still.slice(0, layer.still.length - layer.detail), Infinity, () => true, prefix)
+  stillMarkups.delete(key)
+  stillMarkups.set(key, kept)
+  for (const old of stillMarkups.keys()) if (stillMarkups.size > STILLS) stillMarkups.delete(old)
+
+  return layer.shift === 0 ? kept : { markup: `<g transform='translate(${num(-layer.shift)} 0)'>${kept.markup}</g>`, used: kept.used }
 }
 
 /** The units a desktop CSS pixel is: a cell is 8 by 16 pixels, 2 by 4 units. */
@@ -173,10 +179,7 @@ export const smoothSvg = (frame: SmoothFrame, columns: number, rows: number, lim
   const view = scale(PIXELS_PER_UNIT)
   const extra = ` font-family='ui-monospace,Menlo,Consolas,monospace' text-anchor='middle'`
   const budget = limit - 400
-  // The scenery's alike shapes merged into paths: its many small ones (windows, tufts, tulips) cost little.
-  const scenic = new Set<Shape>()
-  const merged = (shape: Shape): boolean => scenic.has(shape)
-  const size = (all: readonly Shape[]): number => shapesMarkup(all, view, Infinity, merged).markup.length
+  const size = (all: readonly Shape[]): number => partMarkup(all).markup.length
   let shapes: readonly Shape[] = frame.shapes
   // Past the limit, whole mascots are left out, the last drawn first: never one drawn in part.
   if (size(shapes) > budget) {
@@ -190,17 +193,27 @@ export const smoothSvg = (frame: SmoothFrame, columns: number, rows: number, lim
     const gone = new Set(frame.wholes.flatMap(([from, to], index) => (dropped.has(index) ? Array.from({ length: to - from }, (_, at) => from + at) : [])))
     shapes = frame.shapes.filter((_, index) => !gone.has(index))
   }
-  // The scenery in what the mascots leave: all of it, else without the ground's texture, else its still layers alone, else none.
+  const mascots = partMarkup(shapes, budget)
+  // The scenery in what the mascots leave, its alike shapes merged into paths: all of it, else without the ground's
+  // texture, else its still layers alone, else none.
   const land = frame.scenery
+  let parts: { behind: Markup[]; front: Markup[] } = { behind: [], front: [] }
   if (land !== undefined) {
-    const sky = stillShapes(land.sky)
-    const ground = stillShapes(land.land)
-    const bare = ground.slice(0, ground.length - land.land.detail)
-    for (const shape of [...sky, ...land.sky.moving, ...ground, ...land.land.moving, ...land.front]) scenic.add(shape)
-    const choices = [[...sky, ...land.sky.moving, ...ground, ...land.land.moving, ...shapes, ...land.front], [...sky, ...land.sky.moving, ...bare, ...land.land.moving, ...shapes, ...land.front], [...sky, ...bare, ...shapes]]
-    shapes = choices.find(all => size(all) <= budget) ?? shapes
+    const moving = (shapes: readonly Shape[], prefix: string): Markup => partMarkup(shapes, Infinity, () => true, prefix)
+    const sky = stillMarkup(land.sky, 's')
+    const skyMoving = moving(land.sky.moving, 'm')
+    const landMoving = moving(land.land.moving, 'n')
+    const front = moving(land.front, 'f')
+    const choices = [
+      { behind: [sky, skyMoving, stillMarkup(land.land, 'l'), landMoving], front: [front] },
+      { behind: [sky, skyMoving, stillMarkup(land.land, 'l', false), landMoving], front: [front] },
+      { behind: [sky, stillMarkup(land.land, 'l', false)], front: [] },
+    ]
+    const length = (choice: (typeof choices)[number]): number => [...choice.behind, ...choice.front].reduce((sum, part) => sum + part.markup.length, mascots.markup.length)
+    parts = choices.find(choice => length(choice) <= budget) ?? parts
   }
-  const source = svgOf(shapes, width, height, view, budget, extra, merged)
+  const all = [...parts.behind, mascots, ...parts.front]
+  const source = documentOf({ markup: viewed(all.map(part => part.markup).join(''), view), used: new Set(all.flatMap(part => [...part.used])) }, width, height, extra)
 
   return { source, width, height }
 }

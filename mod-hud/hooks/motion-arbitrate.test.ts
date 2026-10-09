@@ -85,17 +85,18 @@ describe('wandering', () => {
     for (let tick = 0; tick < 50; tick += 1) expect(stepField([busy], tick).get('typist')?.x).toBe(7)
   })
 
-  test('only mascots between tools wander: typing, reading, stalled, asking and idle ones stay put; idle, the session stays put', () => {
+  test('only mascots between tools wander: typing, reading, stalled, asking and idle ones stay put; the session strolls idle, till it is asleep under its blanket', () => {
     const scene: MascotScene = {
-      main: { mood: 'idle', sweating: false },
+      main: { mood: 'idle', idleMs: 120_000, sweating: false },
       agents: [working('t', 'typing'), working('r', 'reading'), working('s', 'thinking', { status: 'stalled' }), working('q', 'asking'), working('i', 'thinking', { idleMs: 30_000 })],
     }
+    const places = (plans: readonly MascotPlan[], id: string): number => new Set(plans.map(plan => plan.placements.find(one => one.id === id)).map(one => `${one?.drawnX},${one?.d}`)).size
     for (const rows of [8, 16]) {
       const { plans } = run(() => scene, tick => room(120, rows, T0 + tick, { wander: true }), 120)
-      for (const id of ['main', 't', 'r', 's', 'q', 'i']) {
-        expect(new Set(plans.map(plan => plan.placements.find(one => one.id === id)).map(one => `${one?.drawnX},${one?.d}`)).size, id).toBe(1)
-      }
+      for (const id of ['main', 't', 'r', 's', 'q', 'i']) expect(places(plans, id), id).toBe(1)
     }
+    const awake = run(() => ({ main: { mood: 'idle', idleMs: 5000, sweating: false }, agents: [] }), tick => room(120, 8, T0 + tick, { wander: true }), 120)
+    expect(places(awake.plans, 'main')).toBeGreaterThan(1)
   })
 
   test('flights: with three rows of sky or more, each flier climbs two rows a second to an altitude of its own, cruises with a bob, comes down and lands with a bounce', () => {

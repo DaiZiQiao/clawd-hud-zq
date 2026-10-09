@@ -1,5 +1,6 @@
-import { STRETCH_MS, TIDY_LOOP_MS, stretchPose, tidyPose } from './clawd-moves'
+import { STRETCH_MS, stretchPose, tidyPose } from './clawd-moves'
 import type { Prop } from './clawd-moves'
+import { wave } from './clawd-vector'
 import type { Look, MiniLook } from './mascot-poses'
 import { MINI_OVERLAYS, OVERLAYS, THOUGHTS, THOUGHT_FRAMES } from './mascot-sprites'
 import type { Overlay } from './mascot-sprites'
@@ -31,7 +32,7 @@ export type Beside =
   | { kind: 'clock'; floor?: true }
   | { kind: 'ask' }
   | { kind: 'tick' }
-  | { kind: 'cross'; over?: true }
+  | { kind: 'cross' }
   | { kind: 'startle' }
   | { kind: 'pointing' }
   | { kind: 'cigarette' }
@@ -174,7 +175,6 @@ export type PoseContext = {
   mini?: boolean
 }
 
-const wave = (t: number, period: number, phase = 0): number => Math.sin((2 * Math.PI * t) / period + phase)
 
 /** A blink every three to five seconds, its own times by `seed`. */
 export const blinkAt = (t: number, seed: number): number => {
@@ -226,7 +226,7 @@ const besideOf = (overlays: readonly Overlay[], context: PoseContext, desk: bool
         beside.push(known.step === 1 ? { kind: 'clock', floor: true } : { kind: 'clock' })
         break
       case 'cross':
-        beside.push(known.step === 1 ? { kind: 'cross', over: true } : { kind: 'cross' })
+        beside.push({ kind: 'cross' })
         break
       case 'startle':
         beside.push(usagi ? { kind: 'shout', text: lineOf(STARTLED) } : { kind: 'startle' })
@@ -461,6 +461,3 @@ export const livelyOf = (pose: FigurePose, context: PoseContext, still: boolean)
 
   return { ...pose, eyeOpen: pose.eyeOpen * blink, sx: pose.sx * (1 - 0.01 * breath), sy: pose.sy * (1 + 0.018 * breath), earL: pose.earL + twitchL, earR: pose.earR + twitchR }
 }
-
-/** The tidy loop, for those that draw it without the session's time. */
-export const TIDY_LOOP = TIDY_LOOP_MS
