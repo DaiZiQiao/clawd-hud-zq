@@ -2,6 +2,8 @@
 
 A HUD side pane for Claude Code. It shows your session facts, what needs your attention, git state and the tool running now, context and prompt-cache bars, rate limits, cost, TODO progress and every running subagent, including ultracode and Workflow agents, next to a live, animated scene of Claude mascots. The mascots work, sleep, hop, fly and collide, and you can grab them with the mouse and throw them.
 
+Your session's own mascot lives in the band just above the prompt, so it is there even with the HUD closed. When the conversation's context has grown, it offers to tidy up (compact the conversation), and it squashes a pile of pages into a cube while any compaction runs.
+
 This repository is a Claude Code marketplace that ships one mod, `mod-hud`.
 
 ## Screenshots
@@ -48,6 +50,7 @@ export CLAUDE_CODE_PLUGIN_DIRS="$PWD/clawd-hud-zq/mod-hud"
 
 - Click a mascot (or an agent row) to inspect it: the mascot walks to the pane's centre and grows into a TV of itself, the screen on its forehead showing its tabs (Task, Trail, Said, Agents; the crowned session's Overview, Cost, Agents). On the panel right of the screen, the dial and `◀ ▶` change channel (tab), and the knob and `▲ ▼` scroll (hold `▲ ▼` to keep scrolling), as do the arrow keys and the wheel. Its `✕`, `q` or a click anywhere else switches the screen off and sends it home, shaken for three seconds. Where a surface cannot draw the TV (VS Code, mobile) or the pane is too small, the inspect view takes the scene's place instead; use Back to return.
 - Grab a mascot by pressing and moving the mouse (or holding for 300 ms), drag it around, and let go to throw it. It flies on with the speed of your pointer, bounces, and lands.
+- The crowned mascot above the prompt is your session's. Click it to open the HUD on the session's own view (Overview, Cost, Agents). When the band offers to tidy up, **Tidy up** compacts the conversation now and **Not now** puts it off until the context has grown 50k tokens more. See [Tidying up](#tidying-up).
 
 ## Configuration
 
@@ -73,6 +76,9 @@ Change any option from `/plugin` (select mod-hud, then its settings).
 | `collisions` | `rare` | `off`: wanderers that meet step back. `rare`: only two moving mascots collide, falling over dizzy, at most once per pair in 30 s. `normal`: a moving mascot knocks over a standing one too, once per pair in 10 s. In `rare` and `normal` a thrown mascot knocks over whoever it hits. |
 | `motion` | `smooth` | `smooth`: on the terminal and desktop the scene runs at 20 frames a second, gliding between cells, with click, pick up, drag and throw. `classic`: the Box/Text scene at 4 frames a second everywhere, with a pick button under each mascot. |
 | `todoRows` | `6` | Opened, the TODO section lists at most this many items and counts the rest. |
+| `sessionMascot` | `band` | `band`: the session's mascot lives in the band above the prompt on the terminal and desktop, so it shows with the HUD closed too, and the pane's scene holds the subagents. VS Code and mobile draw no band, so there it stays in the pane. `pane`: in the pane's scene with the subagents, as before 1.4.0. |
+| `tidy` | `ask` | `ask`: once the context passes `tidyAt` and the main loop is idle, the band offers to tidy up, with how many requests it takes to pay for itself. `auto`: when a main turn ends with no subagent running, the band counts down ten seconds, then tidies up; **Not now** or a new prompt stops it. `off`: never offered. Whatever it says, the mascot tidies up during any compaction and the band shows the result. |
+| `tidyAt` | `150` | The context, in thousands of tokens, past which a tidy is offered (never under 40). See [Tidying up](#tidying-up) for why it is a token count and not a percentage. |
 | `cacheTtl` | `auto` | The main conversation's prompt-cache TTL the `context · cache` row counts down: `auto` infers it as Claude Code 2.1.292 picks it (`FORCE_PROMPT_CACHING_5M`, `CLAUDE_CODE_PROMPT_CACHE_TTL`, the `promptCacheTtl` setting, `ENABLE_PROMPT_CACHING_1H` on any provider and `ENABLE_PROMPT_CACHING_1H_BEDROCK` on Bedrock honoured; else 5m on an API key, auth token, `apiKeyHelper`, Bedrock, Vertex, Foundry or another partner cloud, and 1h otherwise). Until the first response the automatic TTL is drawn as a guess, `(1h?)` (a Console API-key login, a subscription drawing on usage credits past its limits and a base URL that may be a gateway cannot be told apart at start); then the responses' rate limits settle it: a 5-hour or 7-day window means a subscription, 1h, certain (5m, certain, while a window is at 100 % or past it), and none means most likely a Console login, 5m, still a guess. Set `5m` or `1h` to make it certain. |
 
 ## What the pane shows
@@ -110,9 +116,20 @@ A card at the top of the pane, at most 72 cells wide, then the TODO section, the
 - Below 60 columns the labels shorten (`sess`, `ctx`, `lim`, `use`), the bars shrink, and pieces that no longer fit are left out, down to 36 columns. On a short pane the HUD keeps the most needed rows: alerts, header, context used, limits, the tool running now, the cache, the cost, then the rest.
 - The session's tokens by kind, the compaction count and the files edited are in the session's inspect view (Overview tab); per-tool counts and the MCP/skill inventory are in `/mod-hud facts`.
 
+## Tidying up
+
+Every request re-reads the whole conversation, mostly from the prompt cache, which is cheap but not free. A compaction (what `/compact` does) replaces the conversation with a summary, so the requests after it read far less. But writing the summary costs output tokens (the dearest kind), the new context has to be cached again, and Claude often re-reads a few files afterwards.
+
+- **When.** A tidy pays off once the context is large in absolute terms. In a simple model of a long session (Opus 5.5 prices, 300 requests), compacting at roughly 100k to 200k tokens cost least. At 80k it cost about 30 to 65 % more, because summaries were written too often. Waiting for the default auto-compact on a 1M window cost about 60 to 75 % more. That is why `tidyAt` is a token count (150k by default), not a share of the window: 40 % of a 1M window is 400k (late), 40 % of a 200k window is 80k (early). A short session never earns a tidy back, so none is offered under 40k.
+- **The offer.** It shows the context's size and, for a model with a known price, how many requests the tidy takes to pay for itself: its one-off cost over what each later request saves. The estimate uses the last tidy's size after (30k until there has been one) and a 12k summary. It is a guide, not a bill.
+- **Running it.** **Tidy up** asks Claude Code for a compaction (the same call `/compact` makes) and tells the summary to keep the task in progress and its plan, the todo list with each item's status, decisions and why, open questions, and the files being worked on. While it runs, the band says so; afterwards it shows the size before and after (`✓ tidied 182k → 21k (−88%)`) for 20 seconds. If Claude Code refuses (a turn is running, compaction is disabled), the band says why.
+- **Any compaction.** Your own `/compact` and the built-in auto-compact get the same animation and result, whatever `tidy` says.
+- **Quality.** A summary loses detail. Tidying between tasks, rather than in the middle of one, keeps what matters. That is why it is offered rather than forced unless you choose `auto`.
+
 ## The mascots
 
-- One mascot for your session, wearing a crown, and one per subagent and workflow agent, each in its own colour.
+- One mascot for your session, wearing a crown, in the band above the prompt (or in the pane, with `sessionMascot: pane`), and one per subagent and workflow agent in the pane, each in its own colour.
+- While a compaction runs, the session's mascot tidies up: it squashes a stack of pages beside it into a cube, over and over, and the next stack lands.
 - A role letter above the head: `r` reviewer, `d` debugger, `p` Plan, `w` worker, `f` frontend, `e` Explore or researcher.
 - Eight accessories (beanie, cap, top hat, flower, bow, halo, note, propeller) tell agents apart.
 - Effort marks: none for low or medium, `✦` for high, `✦✦` for xhigh and max.

@@ -1,11 +1,11 @@
 {
   "name": "mod-hud",
-  "version": "1.3.0",
+  "version": "1.4.0",
   "author": {
     "name": "Dai Zi Qiao",
     "url": "https://github.com/DaiZiQiao"
   },
-  "description": "A side pane, toggled by /mod-hud: a HUD of the session (header, alerts, then session, context and prompt cache, limits, usage and todos in labelled sections) above every subagent in it (type, model, status, elapsed time, tool calls, current tool, result), with an opt-in status line.",
+  "description": "A side pane, toggled by /mod-hud: a HUD of the session (header, alerts, then session, context and prompt cache, limits, usage and todos in labelled sections) above every subagent in it (type, model, status, elapsed time, tool calls, current tool, result), with an opt-in status line; the session's own mascot lives in the band above the prompt and tidies the conversation up (compacts it) when its context has grown.",
   "types": "./types/index.d.ts",
   "userConfig": {
     "stalledAfterSec": {
@@ -121,6 +121,24 @@
       "title": "Prompt cache TTL",
       "description": "auto (default): infer the main conversation's prompt-cache TTL as Claude Code picks it (FORCE_PROMPT_CACHING_5M, CLAUDE_CODE_PROMPT_CACHE_TTL, the promptCacheTtl setting, ENABLE_PROMPT_CACHING_1H on any provider and ENABLE_PROMPT_CACHING_1H_BEDROCK on Bedrock honoured; else 5m on an API key, auth token, apiKeyHelper or partner cloud, 1h otherwise). Where the mod cannot tell (a Console API-key login, a subscription drawing on usage credits past its limits, a base URL that may be a gateway) the TTL is drawn as a guess, (1h?). 5m or 1h: count down that instead, as certain.",
       "default": "auto"
+    },
+    "sessionMascot": {
+      "type": "string",
+      "title": "Session mascot",
+      "description": "band (default): the session's own mascot lives in the band above the prompt, where the surface draws one (terminal, desktop), so it shows with the HUD closed too; the subagents stay in the pane, and clicking the mascot opens the HUD on the session's view. Where no band is drawn (VS Code, mobile) it stays in the pane. pane: in the pane's scene with the subagents, as before 1.4.0.",
+      "default": "band"
+    },
+    "tidy": {
+      "type": "string",
+      "title": "Tidy up",
+      "description": "Compacting the main conversation once its context passes Tidy up at. ask (default): the band offers it while the main loop is idle, with how many requests it takes to pay for itself; Tidy up runs it (the same call /compact makes, told to keep the plan and the todos), Not now puts it off until the context grows 50k more. auto: after a main turn ends with no subagent running, the band counts down ten seconds, then tidies up; Not now or a new prompt stops it. off: never offered. Whatever this says, the session's mascot squashes a pile of pages while any compaction of the main conversation runs, and the band shows its size before and after.",
+      "default": "ask"
+    },
+    "tidyAt": {
+      "type": "number",
+      "title": "Tidy up at (k tokens)",
+      "description": "The context, in thousands of tokens, past which a tidy is offered (or, with tidy auto, started). Never under 40. Roughly 100 to 200 costs least for most long sessions: earlier and the summaries cost more than they save, later and every request re-reads a large context.",
+      "default": 150
     }
   }
 }

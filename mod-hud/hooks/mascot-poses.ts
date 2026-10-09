@@ -112,6 +112,23 @@ const stretchLook = (frame: number): Look => {
 }
 
 /**
+ * Tidying up, eight frames on a loop beside its pile of pages (OVERLAYS.tidy):
+ * arms up over the stack (2), the arm coming down on it, eyes shut with the
+ * effort (2), arms low over the cube it made (1), looking at it, pleased (2),
+ * watching the next stack land (1).
+ */
+const tidyLook = (frame: number): Look => {
+  const step = ((frame % 8) + 8) % 8
+  const overlays = [OVERLAYS.tidy[step] as Overlay]
+  if (step < 2) return { ...STAND, head: 'right', arms: 'up', armsUp: true, overlays }
+  if (step < 4) return { ...STAND, head: 'shut', arms: 'point', overlays }
+  if (step < 5) return { ...STAND, head: 'shut', arms: 'low', overlays }
+  if (step < 7) return { ...STAND, head: 'right', overlays }
+
+  return { ...STAND, head: 'up', overlays }
+}
+
+/**
  * The cheer's dance, eight frames, a tick beside its head throughout: a
  * shuffle a cell left, a bounce with its arms up, a shuffle a cell right, a
  * bounce, and again.
@@ -415,8 +432,11 @@ export const miniLook = (agent: MascotAgent, phase: Phase, tick: number, context
 export const mainLook = (main: MascotMain, tick: number, context: LookContext = {}): Look => {
   const sweat = main.sweating ? [at(OVERLAYS.sweat, tick)] : []
   const stretched = ticksOf(main.stretchMs)
+  const tidying = ticksOf(main.tidyMs)
   let look: Look
-  if (stretched !== undefined) {
+  if (tidying !== undefined) {
+    look = tidyLook(tidying)
+  } else if (stretched !== undefined) {
     look = stretchLook(Math.min(stretched, 7))
   } else {
     switch (main.mood) {

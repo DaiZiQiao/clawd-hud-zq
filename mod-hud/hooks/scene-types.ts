@@ -73,6 +73,8 @@ export type MascotMain = {
   stretchMs?: number
   /** Its energy mark, by the session's effort. */
   energy?: Energy
+  /** Tidying up: a compaction of the main conversation running this long (it squashes a pile of pages beside it). */
+  tidyMs?: number
 }
 
 /** A message between two mascots: a bubble that travels from one to the other. */
@@ -82,8 +84,19 @@ export type SceneEvent = { kind: 'message'; from: string; to: string; tick: numb
 /** Who the mascots are: Clawd (the default), or Usagi (the `character` option). */
 export type Character = 'clawd' | 'usagi'
 
-/** The scene: the session's mascot, the agents', the messages between them, and who they all are (absent, Clawd). */
-export type MascotScene = { main: MascotMain; agents: MascotAgent[]; events?: SceneEvent[]; character?: Character }
+/**
+ * Which mascots a scene holds: the session's alone (`main`, the band above
+ * the prompt) or the agents' alone (`agents`, the pane under a band that has
+ * the session's); absent, all of them.
+ */
+export type SceneCast = 'main' | 'agents'
+
+/**
+ * The scene: the session's mascot, the agents', the messages between them,
+ * and who they all are (absent, Clawd); `withoutMain`, the session's mascot is
+ * elsewhere (the band) and the field leaves it out.
+ */
+export type MascotScene = { main: MascotMain; agents: MascotAgent[]; events?: SceneEvent[]; character?: Character; withoutMain?: true }
 
 /**
  * The room the scene is drawn into: the rows the HUD and the list leave, and
@@ -125,6 +138,10 @@ export type SceneOptions = {
   history?: SceneHistory
   /** Who the mascots are: Usagi, else Clawd. */
   character?: Character
+  /** The session's mascot alone, or the agents' alone (SceneCast); absent, all of them. */
+  only?: SceneCast
+  /** A compaction of the main conversation running since then (`mod-hud.tidy`): the session's mascot tidies up. */
+  tidyingSince?: number
 }
 
 /**
@@ -189,6 +206,10 @@ export type SceneInputs = {
   away?: string
   /** The mascot back from the TV, and when (the hooks' clock): shaken for STARTLED_MS. */
   startled?: { id: string; at: number }
+  /** The session's mascot alone (the band), or the agents' alone (the pane under it); absent, all of them. */
+  only?: SceneCast
+  /** A compaction of the main conversation running since then: the session's mascot tidies up. */
+  tidyingSince?: number
 }
 
 /** Where an agent is in its life, at this tick. */

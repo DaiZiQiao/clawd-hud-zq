@@ -53,6 +53,44 @@ the mascots are: Clawd, as the rest of this page draws it, or `usagi`; see
 "Usagi".
 `/clear` still removes stale `main` facts left by an earlier enabled session.
 
+## The band above the prompt
+
+Since 1.4.0 the session's own mascot lives in the band above the prompt
+(the `sessionMascot` option, `band` by default; `pane` keeps it in the
+pane's scene as before). The engine raises that band on the terminal and the
+desktop; a `ui.render` hook on `AbovePrompt` draws it whether the HUD's pane
+is open or not, so the mascot shows with the HUD closed and in a terminal too
+narrow to dock the pane.
+
+- **Its yard.** The band's left 28 columns (`YARD_COLUMNS`) and a mascot's
+  5 rows (`GRID_ROWS`: its sky row and its box): a field one row deep with a
+  row of sky (`fieldOf(28, 5)`), where it wanders, hops a row and can be
+  picked up and thrown like any mascot. It is the same scene in the same
+  `Client` (`hooks/scene-client.tsx`, keyed `session`), cast with the
+  session's mascot alone: `sceneInputsOf(..., { only: 'main' })`. The board
+  rides along in its props so that its mood still reads the agents (watching
+  while they run), but `sceneOf` draws none of them there. With
+  `motion: classic`, or where its `Client` failed, the classic scene draws it
+  on the scene clock, which then runs for the band too (its plans and renders
+  kept under `band:<surface>`, beside the pane's). A band narrower than a
+  slot (17 columns), or held by a survey, draws no mascot.
+- **The pane's scene, the agents' alone.** Once the band has drawn the
+  mascot on a surface (`bandMascot`, module memory), the pane's scene on that
+  surface is cast `only: 'agents'`: `MascotScene.withoutMain`, so the field
+  lays out without the session's slot (`fieldLayout`), nobody takes a task
+  from it or walks a report back to it (a top-level agent's `spawner` is
+  absent, so `holdTicks` leaves the hand-back out), and a message from or to
+  it draws no bubble. Where the band never draws (VS Code, mobile), and until
+  it first does, the pane keeps the session's mascot as before. A change
+  either way redraws every render hook once (`$.ui.invalidate`).
+- **A click.** Pressing the band's mascot posts `{ kind: 'inspect', id:
+  'main' }`, as in the pane; the HUD opens where it is not and selects the
+  session (its TV or inspect view, Overview and Cost).
+- **Tidying up beside it.** Right of the yard, the band says what tidying up
+  has to (`hooks/tidy.ts`, the `tidy` and `tidyAt` options): the offer, the
+  `auto` countdown, a compaction running, its result. See "Tidying up" in the
+  README.
+
 ## Where it draws
 
 The pane is a column with one blank row between its parts: the HUD, the
@@ -1220,6 +1258,24 @@ without the pipe: "The pipe" shows them in the scene.
     ▘▘ ▝▝           ▘▘ ▝▝           ▘▘ ▝▝           ▘▘ ▝▝           ▘▘ ▝▝
 ```
 
+### main · tidying up while a compaction runs (8 frames on a loop: arms up over a stack of pages, pressing it down, a cube on the floor, a spark, the next stack landing)
+
+```
+
+     ▙█▟                 ▙█▟                 ▙█▟                 ▙█▟       ∘         ▙█▟        ·        ▙█▟                 ▙█▟
+  ▐▐█▜██▛▌▌ ≡≡≡       ▐▐█▜██▛▌▌ ≡≡≡        ▐█████▌     ·       ▐█████▌      ·      ▐█████▌             ▐█▜██▛▌             ▐█▜██▛▌
+  ▝▜█████▛▘ ≡≡≡       ▝▜█████▛▘ ≡≡≡       ▝▜█████▛▀ ≡≡≡       ▝▜█████▛▀ ≡≡≡       ▗▜█████▛▖           ▝▜█████▛▘   ✦       ▝▜█████▛▘   ✧
+    ▘▘ ▝▝   ≡≡≡         ▘▘ ▝▝   ≡≡≡         ▘▘ ▝▝   ≡≡≡         ▘▘ ▝▝   ≡≡≡         ▘▘ ▝▝   ▄▄          ▘▘ ▝▝   ▄▄          ▘▘ ▝▝   ▄▄
+```
+
+```
+            ≡≡≡
+     ▙█▟
+   ▐▛███▜▌
+  ▝▜█████▛▘
+    ▘▘ ▝▝   ▄▄
+```
+
 ### main · delegating: holds out a hand, nods at a report, glances up at a message
 
 ```
@@ -1327,6 +1383,7 @@ The first match wins:
 
 | State | When |
 | --- | --- |
+| tidying up | a compaction of the main conversation is running (`mod-hud.tidy`'s `runningSince`, any trigger but `precompute`): it squashes a stack of pages beside it into a cube, eight frames on a loop, and stands still while it does |
 | stretching | the main conversation was compacted less than 3 s ago (`main.compactedAt`) |
 | watching | any agent on the board, or any workflow agent the list shows, is running |
 | thinking | the main loop is at work (`main.busySince` is set) or a main-loop tool is running (`hud.tools.current`) |
@@ -1339,6 +1396,13 @@ The main loop's activity is the `mod-hud.main` state value
 - `busySince`: the first main `turn.step` of a turn, whatever the options (the HUD's `main` row reads it);
 - `idleSince`: the main `turn.complete` (only when it was busy), whatever the options;
 - `compactedAt`: a main `session.compact` that took place, with mascots on only (the stretch is all that reads it).
+
+A compaction running is not a `main` fact: `mod-hud.tidy` (`HudTidyFacts`)
+holds when it started (`runningSince`, written once as it starts) and the
+last that stood (`last`: its trigger and its size before and after, written
+once as it ends), with the offer's own (Not now, the `auto` countdown, a
+failed ask). The scenes read `runningSince` through their options
+(`tidyingSince`), so the `main` writes stay one a compaction.
 
 A module flag skips the state read on a turn's later steps.
 

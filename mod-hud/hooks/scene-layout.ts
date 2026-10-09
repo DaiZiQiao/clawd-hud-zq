@@ -214,8 +214,9 @@ export const fieldLayout = (
   exits: ReadonlyMap<string, Slot>,
 ): Laid | undefined => {
   const groups = groupsOf(scene.agents)
-  const main: Unit = { kind: 'main' }
-  const units = [main, ...unitsOf(groups)]
+  // The session's mascot heads the field, unless it stands elsewhere (the band).
+  const lead: Unit[] = scene.withoutMain === true ? [] : [{ kind: 'main' }]
+  const units = [...lead, ...unitsOf(groups)]
   // Laid out afresh, packed without overlaps before anyone stands over another; a field already laid out keeps its slots.
   const tries: Attempt[] = [
     { minis: false, packed: false, strict: true },
@@ -231,7 +232,7 @@ export const fieldLayout = (
   }
   const folding = (folded: number, dots: number): Laid | undefined => {
     const gone = groups.slice(0, folded).flat()
-    const units = [main, { kind: 'strip' as const, agents: gone, dots: Math.min(dots, gone.length) }, ...unitsOf(groups.slice(folded))]
+    const units = [...lead, { kind: 'strip' as const, agents: gone, dots: Math.min(dots, gone.length) }, ...unitsOf(groups.slice(folded))]
     const slots = allocate(units, columns, depth, true, undefined, occupied, exits, true)
 
     return slots === undefined ? undefined : { units, slots, collapsed: gone, minis: true }
@@ -255,8 +256,8 @@ export const fieldLayout = (
       if (laid !== undefined) return laid
     }
   }
-  // Not even the strip fits beside the session's mascot: it stands alone.
-  const slots = allocate([main], columns, depth, false, undefined, [], new Map())
+  // Not even the strip fits beside the session's mascot: it stands alone (with none, the field is empty).
+  const slots = allocate(lead, columns, depth, false, undefined, [], new Map())
 
-  return slots === undefined ? undefined : { units: [main], slots, collapsed: [...scene.agents], minis: false }
+  return slots === undefined ? undefined : { units: lead, slots, collapsed: [...scene.agents], minis: false }
 }

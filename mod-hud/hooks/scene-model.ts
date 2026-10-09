@@ -17,6 +17,7 @@ import {
   SCENE_FRAME_MS,
   SIT_TICKS,
   STRETCH_TICKS,
+  TIDY_STALE_MS,
   holdTicks,
 } from './scene-phases'
 import { PIPE_BATCH_MS, PIPE_COLOUR, PIPE_SHINE, PIPE_SLIDE_MS, pipeBatch } from './scene-pipe'
@@ -290,6 +291,8 @@ export const sceneOf = (
   const scenes = options.scenes === true
   // The smooth scene's props carry what the agents they leave out settled.
   const history = options.history
+  // The session's mascot elsewhere (the band): no one hands it a report or takes a task from it here.
+  const withoutMain = options.only === 'agents'
 
   const known = new Set([...candidates.map(entry => entry.id), ...(history?.known ?? [])])
   const runningFlow = candidates.filter(entry => entry.workflow === true && entry.status === 'running')
@@ -302,7 +305,7 @@ export const sceneOf = (
     // Idle: quiet a while with no tool running, or stalled (its laptop dropped); never while asking.
     const idle = entry.status === 'running' && !asking && (stalled || entry.currentTool === undefined) && quiet >= IDLE_AFTER_MS
     const role = entry.workflow === true ? undefined : roleOf(entry.type)
-    const spawner = entry.workflow === true ? undefined : entry.parentId !== undefined && known.has(entry.parentId) ? entry.parentId : 'main'
+    const spawner = entry.workflow === true ? undefined : entry.parentId !== undefined && known.has(entry.parentId) ? entry.parentId : withoutMain ? undefined : 'main'
     const accessory = history?.worn[entry.id] ?? worn.get(entry.id)
     const energy = energyOf(entry.effort)
     // A reading streak: only reads since `readingSince`, the current call one too (or none).
@@ -386,8 +389,11 @@ export const sceneOf = (
   const idleFrom = facts.idleSince ?? hud?.session?.startedAt
   const percent = contextPercentOf(hud)
   const stretch = isNumber(facts.compactedAt) ? now - facts.compactedAt : undefined
+  const tidy = isNumber(options.tidyingSince) ? now - options.tidyingSince : undefined
   const tick = Math.floor(now / SCENE_FRAME_MS)
-  const present = new Set(['main', ...ids])
+  // The session's mascot alone (the band): none of the agents, no messages; the agents alone: none to or from it.
+  const onlyMain = options.only === 'main'
+  const present = new Set([...(withoutMain ? [] : ['main']), ...(onlyMain ? [] : ids)])
   const events = (options.events ?? [])
     .filter(one => present.has(one.from) && present.has(one.to) && one.from !== one.to && tick - one.tick >= 0 && tick - one.tick < MESSAGE_TICKS)
   const energy = energyOf(hud?.session?.effort)
@@ -399,10 +405,12 @@ export const sceneOf = (
       sweating: percent !== undefined && Math.round(percent) >= SWEAT_PERCENT,
       ...(stretch !== undefined && stretch >= 0 && stretch < STRETCH_TICKS * SCENE_FRAME_MS ? { stretchMs: stretch } : {}),
       ...(energy === 0 ? {} : { energy }),
+      ...(tidy !== undefined && tidy >= 0 && tidy < TIDY_STALE_MS ? { tidyMs: tidy } : {}),
     },
-    agents: piped,
+    agents: onlyMain ? [] : piped,
     ...(events.length === 0 ? {} : { events }),
     ...(options.character === 'usagi' ? { character: 'usagi' as const } : {}),
+    ...(withoutMain ? { withoutMain: true as const } : {}),
   }
 }
 
@@ -495,5 +503,7 @@ export const sceneFromInputs = (inputs: SceneInputs, now: number): MascotScene =
     events: inputs.events,
     ...(inputs.history === undefined ? {} : { history: inputs.history }),
     ...(inputs.character === undefined ? {} : { character: inputs.character }),
+    ...(inputs.only === undefined ? {} : { only: inputs.only }),
+    ...(inputs.tidyingSince === undefined ? {} : { tidyingSince: inputs.tidyingSince }),
   })
 }

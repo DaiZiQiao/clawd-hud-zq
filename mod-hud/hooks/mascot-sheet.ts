@@ -185,6 +185,7 @@ export const spriteSheet = (character: Character = 'clawd'): SheetEntry[] => {
     main('main · asleep under the blanket, idle 10 minutes', { mood: 'idle', idleMs: LONG_IDLE_MS }, 8),
     main('main · sweating (ctx ≥ 85 %)', { mood: 'thinking', sweating: true }, 4),
     framesOf('main · stretch after a compaction', ticks(STRETCH_TICKS).map(tick => session({ mood: 'idle', stretchMs: tick * SCENE_FRAME_MS }, tick))),
+    framesOf('main · tidying up while a compaction runs (8 frames on a loop: arms up over a stack of pages, pressing it down, a cube on the floor, a spark, the next stack landing)', ticks(8).map(tick => session({ mood: 'thinking', tidyMs: tick * SCENE_FRAME_MS }, tick))),
     framesOf('main · delegating: holds out a hand, nods at a report, glances up at a message', [session({}, 0, { cues: ['give-scroll'] }), session({}, 0, { cues: ['take-report', 'nod'] }), session({}, 0, { cues: ['glance'] })]),
     usagi
       ? framesOf('child (mini, its role\'s hat a cell between its ears): reviewer, debugger, Plan, worker, frontend, Explore or researcher, none', [...roles, undefined].map(role => {

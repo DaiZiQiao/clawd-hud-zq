@@ -4,14 +4,14 @@
     "name": "Dai Zi Qiao",
     "url": "https://github.com/DaiZiQiao"
   },
-  "description": "clawd-hud-zq: a HUD side pane for Claude Code with session facts, subagents and animated mascots.",
-  "version": "1.3.0",
+  "description": "clawd-hud-zq: a HUD side pane for Claude Code with session facts, subagents and animated mascots; the session's mascot lives above the prompt and tidies the conversation up when its context has grown.",
+  "version": "1.4.0",
   "plugins": [
     {
       "name": "mod-hud",
       "source": "./mod-hud",
-      "description": "A side pane, toggled by /mod-hud: a HUD of the session (session, alerts, context, limits, cost, git, the tool running now, todos) above every subagent in it (type, model, status, elapsed time, tool calls, current tool, result), with an opt-in status line.",
-      "version": "1.3.0",
+      "description": "A side pane, toggled by /mod-hud: a HUD of the session (session, alerts, context, limits, cost, git, the tool running now, todos) above every subagent in it (type, model, status, elapsed time, tool calls, current tool, result), with an opt-in status line. The session's own mascot lives in the band above the prompt and offers to tidy up (compact) the conversation once its context has grown.",
+      "version": "1.4.0",
       "author": {
         "name": "Dai Zi Qiao",
         "url": "https://github.com/DaiZiQiao"
@@ -20,7 +20,7 @@
       "repository": "https://github.com/DaiZiQiao/clawd-hud-zq",
       "license": "MIT",
       "category": "productivity",
-      "keywords": ["hud", "statusline", "agents", "mascots", "mods"]
+      "keywords": ["hud", "statusline", "agents", "mascots", "mods", "compaction"]
     }
   ]
 }

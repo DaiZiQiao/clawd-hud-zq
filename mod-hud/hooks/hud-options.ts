@@ -2,6 +2,7 @@ import type { PluginOptions } from 'claude-code'
 
 import { TODO_ROWS } from './hud'
 import type { Character } from './scene-types'
+import type { TidyMode } from './tidy'
 
 // The mod's options (`userConfig` in plugin.json) as the hooks use them:
 // every HUD part shown unless switched off, the status line opt-in, numbers
@@ -39,6 +40,16 @@ export type Settings = {
   cacheTtl: 'auto' | '5m' | '1h'
   /** `smooth`: the scene runs in a `Client` surface module where the surface has one; `classic` keeps the Box/Text scene everywhere. */
   motion: 'smooth' | 'classic'
+  /**
+   * Where the session's own mascot lives: `band`, in the band above the
+   * prompt where the surface draws one (terminal, desktop), the subagents in
+   * the pane; `pane`, in the pane's scene with them, as before 1.4.0.
+   */
+  sessionMascot: 'band' | 'pane'
+  /** Tidying up the main conversation (hooks/tidy.ts): offered in the band (`ask`), counted down and started (`auto`), or never (`off`). */
+  tidy: TidyMode
+  /** The context, in tokens, past which a tidy is due (the `tidyAt` option is in thousands). */
+  tidyAt: number
 }
 
 const positive = (value: unknown, fallback: number): number =>
@@ -66,4 +77,7 @@ export const settingsOf = (options: PluginOptions): Settings => ({
   collisions: options.collisions === 'off' || options.collisions === 'normal' ? options.collisions : 'rare',
   motion: options.motion === 'classic' ? 'classic' : 'smooth',
   cacheTtl: options.cacheTtl === '5m' || options.cacheTtl === '1h' ? options.cacheTtl : 'auto',
+  sessionMascot: options.sessionMascot === 'pane' ? 'pane' : 'band',
+  tidy: options.tidy === 'auto' || options.tidy === 'off' ? options.tidy : 'ask',
+  tidyAt: Math.round(positive(options.tidyAt, 150) * 1000),
 })

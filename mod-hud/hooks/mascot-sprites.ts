@@ -275,6 +275,23 @@ export const OVERLAYS = {
   /** Its smoke rising, half a second a puff. */
   smoke: each('d', [placed([1, 12, '·']), placed([0, 12, '∘']), placed([0, 12, '○']), placed()].flatMap(twice)),
   /**
+   * Tidying up (a compaction running), eight frames on a loop: a stack of
+   * pages three high beside it (`≡`, dim: the foreground is the letter's and
+   * the thought's alone), pressed to two as its arm comes down, dust puffing
+   * up (dim), then to a cube on the floor (`▄▄`, the accent) with a spark
+   * (warning); the next stack lands from above.
+   */
+  tidy: [
+    { art: placed([1, 12, '≡≡≡'], [2, 12, '≡≡≡'], [3, 12, '≡≡≡']), ink: 'd' },
+    { art: placed([1, 12, '≡≡≡'], [2, 12, '≡≡≡'], [3, 12, '≡≡≡']), ink: 'd' },
+    { art: placed([1, 15, '·'], [2, 12, '≡≡≡'], [3, 12, '≡≡≡']), ink: 'd' },
+    { art: placed([0, 15, '∘'], [1, 16, '·'], [2, 12, '≡≡≡'], [3, 12, '≡≡≡']), ink: 'd' },
+    { art: placed([0, 16, '·'], [3, 12, '▄▄']), ink: 'a', by: { '·': 'd' } },
+    { art: placed([2, 14, '✦'], [3, 12, '▄▄']), ink: 'a', by: { '✦': 'y' } },
+    { art: placed([2, 14, '✧'], [3, 12, '▄▄']), ink: 'a', by: { '✧': 'y' } },
+    { art: placed([-1, 12, '≡≡≡'], [3, 12, '▄▄']), ink: 'a', by: { '≡': 'd' } },
+  ],
+  /**
    * Dizzy: three stars over the figure on its back (columns 3, 6 and 9), one
    * hidden a frame in turn, each coming back as the other star.
    */

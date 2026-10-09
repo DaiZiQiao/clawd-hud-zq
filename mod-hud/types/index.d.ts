@@ -64,6 +64,10 @@ declare module 'claude-code' {
       listView: HudListView
       /** What each loop spent, by model: one write per request (`turn.step`), per agent turn end and per failed call. */
       ledger: HudLedger
+      /** Tidying up: a compaction running and the last one, Not now, the auto countdown, a failed ask. */
+      tidy: HudTidyFacts
+      /** The band's one-second clock, written only while the band draws a tidy running, counting down or its result. */
+      bandTick: number
     }
   }
 }
@@ -198,6 +202,32 @@ export type HudMainFacts = {
   idleSince?: number
   /** When the main conversation was last compacted. */
   compactedAt?: number
+}
+
+/** One compaction of the main conversation that stood (HudTidyFacts.last). */
+export type HudTidied = {
+  at: number
+  trigger: 'manual' | 'auto' | 'plugin'
+  /** The conversation's tokens before it: the engine's count, else the last response's context. */
+  before?: number
+  /** Its tokens after it, as the engine counted them. */
+  after?: number
+}
+
+/**
+ * Tidying up (hooks/tidy.ts): a compaction of the main conversation running
+ * (any trigger but `precompute`) since when, and the last that stood; the
+ * context's tokens when the person last said Not now (offered again past
+ * TIDY_AGAIN more), the countdown an `auto` tidy runs before it starts, and
+ * why the last tidy the mod asked for did not run. Written as a compaction
+ * starts and ends, on a press and on a main turn's end only.
+ */
+export type HudTidyFacts = {
+  runningSince?: number
+  last?: HudTidied
+  dismissedAt?: number
+  countdownSince?: number
+  failed?: { at: number; reason: string }
 }
 
 // The HUD's facts as `$.state` holds them (hooks/facts.ts assembles them into

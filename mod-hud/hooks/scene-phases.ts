@@ -39,6 +39,8 @@ export const SIT_TICKS = 20
 export const EXIT_TICKS = 12
 /** A compaction: the session's mascot stretches for three seconds. */
 export const STRETCH_TICKS = 12
+/** A compaction that started longer ago than this and never ended (a reload mid-way) is no longer drawn: no tidying up, no `tidying up` in the band. */
+export const TIDY_STALE_MS = 15 * 60_000
 /** Review: up to ten frames walking to the desk, then eight standing beside it. */
 export const REVIEW_WALK_TICKS = 10
 export const REVIEW_STAND_TICKS = 8

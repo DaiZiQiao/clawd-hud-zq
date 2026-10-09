@@ -92,7 +92,7 @@ export const mascotPlan = (scene: MascotScene, layout: MascotLayout, previous?: 
   // Who may wander: the session's mascot while awake, an agent thinking away from its laptop; never one idle.
   const isFree = (one: Placement): boolean => {
     if (!wander) return false
-    if (one.kind === 'main') return scene.main.mood !== 'idle' && scene.main.stretchMs === undefined
+    if (one.kind === 'main') return scene.main.mood !== 'idle' && scene.main.stretchMs === undefined && scene.main.tidyMs === undefined
     const agent = byId.get(one.id)
 
     return one.phase?.kind === 'work' && agent?.status === 'running' && agent.activity === 'thinking' && agent.idleMs === undefined
