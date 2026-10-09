@@ -18,8 +18,9 @@ import type { MasterBinner } from './thumb-master'
 // heartbeat for 5 s, and a timer callback has no hook budget of its own: so
 // every decoder works to a deadline, `runSliced` yields between slices and
 // gives up past its own CPU cap, and the caps keep memory flat (PNG, JPEG and
-// GIF to `PIXEL_CAP`; lossless WebP, which the vendored library decodes in
-// one call, to `WEBP_SIDE_CAP` a side).
+// GIF to `PIXEL_CAP`). Lossless WebP is the exception: the vendored library
+// decodes it in one call that cannot yield, so `WEBP_PIXEL_CAP` keeps that
+// call short.
 
 /** The master's long side, in pixels. */
 export const MASTER_SIDE = 256
@@ -29,6 +30,13 @@ export const READ_CAP = 4 * 1024 * 1024
 export const PIXEL_CAP = 36_000_000
 /** Lossless WebP, decoded whole in one call: the longest side decoded. */
 export const WEBP_SIDE_CAP = 2048
+/**
+ * Lossless WebP: the most pixels decoded. The library's one call blocks the
+ * worker every plugin shares, for about 75 to 130 ms a megapixel measured in
+ * the hooks environment (0.2 to 0.5 s for 2000x1333, up to 1.5 s for
+ * 2048x2048): this keeps it to a few tenths of a second (1280x854 fits).
+ */
+export const WEBP_PIXEL_CAP = 1_100_000
 /** Every format: the longest side decoded, JPEG's and GIF's own limit (a PNG row's buffers grow with its width). */
 export const SIDE_CAP = 65_535
 
@@ -141,7 +149,9 @@ const capFaultOf = (header: ImageHeader): string | undefined => {
   const { format, width, height } = header
   const name = FORMAT_NAMES[format]
   if (format === 'webp') {
-    return width > WEBP_SIDE_CAP || height > WEBP_SIDE_CAP ? `${name}: ${width}x${height} is over ${WEBP_SIDE_CAP} pixels a side` : undefined
+    if (width > WEBP_SIDE_CAP || height > WEBP_SIDE_CAP) return `${name}: ${width}x${height} is over ${WEBP_SIDE_CAP} pixels a side`
+
+    return width * height > WEBP_PIXEL_CAP ? `${name}: ${width}x${height} is over ${WEBP_PIXEL_CAP} pixels` : undefined
   }
   if (width > SIDE_CAP || height > SIDE_CAP) return `${name}: ${width}x${height} is over ${SIDE_CAP} pixels a side`
   if (width * height > PIXEL_CAP) return `${name}: ${width}x${height} is over ${PIXEL_CAP} pixels`

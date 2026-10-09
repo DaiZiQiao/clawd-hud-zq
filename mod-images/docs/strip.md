@@ -84,8 +84,9 @@ The strip shows the images that will be sent with the prompt, in `#` order:
 - One exception it cannot see: after Esc Esc and then ↑, Claude Code has dropped
   the images, but the strip still shows them.
 - Pictures it cannot show get a framed tile with the reason: `no preview` (a lossy
-  or animated WebP, or a rare kind of JPEG), `too big` (over 4 MB, or more pixels
-  than the decoders take), `not found` (no file appeared), `can't read`, `too slow`.
+  or animated WebP, or a rare kind of JPEG), `too big` (over 4 MB, a lossless WebP
+  over about a megapixel, or more pixels than the decoders take), `not found` (no
+  file appeared), `can't read`, `too slow`.
 
 ## Where the pictures come from
 
@@ -120,11 +121,16 @@ frame) and lossless WebP (through the MIT-licensed
 `hooks/vendor-webp/`). Lossy WebP has no decoder small and fast enough, and
 gets a `no preview` tile, as does an animated one.
 
-Decoding runs on a timer, in slices of at most 8 ms with a pause between them,
-because one worker serves every plugin's hooks: a 3000x2000 screenshot takes
-about 0.15 s in all, and Claude Code and other plugins never wait on it. Each
-image is decoded once, to a copy at most 256 pixels on its long side; every
-thumbnail size is cut from that copy.
+Decoding runs on a timer, in slices of about 8 ms with a pause between them,
+because one worker serves every plugin's hooks, and Claude Code and other
+plugins never wait on it long. Claude Code keeps a pasted image at most 2000
+pixels on its long side; a 2000x1250 PNG screenshot takes 60 to 90 ms in all, a
+1200x800 JPEG under 12 ms. Lossless WebP is the exception: the library decodes
+it in one call that cannot pause, about a tenth of a second a megapixel, so a
+lossless WebP over 1,100,000 pixels (larger than about 1280x854) gets a
+`too big` tile rather than hold every plugin up. Each image is decoded once, to
+a copy at most 256 pixels on its long side; every thumbnail size is cut from
+that copy.
 
 ## `/mod-images`
 

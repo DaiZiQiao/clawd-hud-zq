@@ -179,16 +179,19 @@ export const createGifDecoder = (bytes: Uint8Array, sink: RowSink): GifDecoder =
     phase = 'bottom'
   }
 
+  // The frame row in `pixels` onto a canvas row, out to the sink; on to the
+  // next frame row. The arrays are locals for the copy loop.
   const emitFrameRow = (): void => {
     const canvasY = frameY + fy
     if (canvasY < height) {
-      line32.fill(0)
+      const out = line32
+      const colours = palette
+      const indices = pixels
+      out.fill(0)
       const span = min(frameWidth, width - frameX)
-      for (let i = 0; i < span; i += 1) line32[frameX + i] = palette[pixels[i]!]!
+      for (let i = 0, o = frameX; i < span; i += 1, o += 1) out[o] = colours[indices[i]!]!
       sink.row(canvasY, 0, 1, line, width)
     }
-    rowsDone += 1
-    rowsLeft -= 1
     if (!interlaced) fy += 1
     else {
       fy += PASS_STEP[pass]!
@@ -199,106 +202,143 @@ export const createGifDecoder = (bytes: Uint8Array, sink: RowSink): GifDecoder =
     }
   }
 
-  // The pending string's pixels into rows; false when the deadline cut it short.
-  const flush = (deadline: number): boolean => {
-    while (sp > 0 && rowsLeft > 0) {
-      sp -= 1
-      pixels[x] = stack[sp]!
-      x += 1
-      if (x === frameWidth) {
-        x = 0
-        emitFrameRow()
-        if (rowsDone % ROWS_PER_CHECK === 0 && performance.now() >= deadline) return false
-      }
-    }
-
-    return true
-  }
-
-  // The next code, or -1 when the data has run out.
-  const readCode = (): number => {
-    while (bitCnt < codeSize) {
-      if (blockLeft === 0) {
-        if (at >= b.length) return -1
-        blockLeft = b[at]!
-        at += 1
-        if (blockLeft === 0) return -1
-      }
-      if (at >= b.length) return -1
-      bitBuf |= b[at]! << bitCnt
-      at += 1
-      bitCnt += 8
-      blockLeft -= 1
-    }
-    const code = bitBuf & ((1 << codeSize) - 1)
-    bitBuf >>>= codeSize
-    bitCnt -= codeSize
-
-    return code
-  }
-
+  // The frame's LZW codes into rows until the deadline, the end of the data
+  // or the last row. What the loop touches per code or pixel is a local while
+  // it runs (a register, where the closure's own variables are memory), and
+  // the state is written back once when it stops; a string's pixels still on
+  // the stack wait there. The clock is read every `CODES_PER_CHECK` codes on a
+  // countdown: a modulo for each code costs more than the code.
   const decodeFrame = (deadline: number): void => {
-    for (let codes = 1; ; codes += 1) {
-      if (!flush(deadline)) return
-      if (rowsLeft === 0) {
-        endFrame()
-
-        return
+    const data = b
+    const clearCode = clear
+    const endCode = eoi
+    const rowWidth = frameWidth
+    const firstSize = minCodeSize + 1
+    const string = stack
+    const prefixes = prefix
+    const suffixes = suffix
+    const row = pixels
+    let rowsToGo = rowsLeft
+    let decoded = rowsDone
+    let size = codeSize
+    let free = next
+    let prior = old
+    let head = first
+    let top = sp
+    let buf = bitBuf
+    let cnt = bitCnt
+    let p = at
+    let left = blockLeft
+    let column = x
+    let ended = false
+    let check = CODES_PER_CHECK
+    frame: for (;;) {
+      // The pending string's pixels into rows.
+      while (top > 0 && rowsToGo > 0) {
+        top -= 1
+        row[column] = string[top]!
+        column += 1
+        if (column === rowWidth) {
+          column = 0
+          emitFrameRow()
+          decoded += 1
+          rowsToGo -= 1
+          if (decoded % ROWS_PER_CHECK === 0 && performance.now() >= deadline) break frame
+        }
       }
-      if (codes % CODES_PER_CHECK === 0 && performance.now() >= deadline) return
-      const code = readCode()
-      if (code < 0 || code === eoi) {
-        endFrame()
-
-        return
+      if (rowsToGo === 0) {
+        ended = true
+        break
       }
-      if (code === clear) {
-        codeSize = minCodeSize + 1
-        next = clear + 2
-        old = -1
+      check -= 1
+      if (check === 0) {
+        check = CODES_PER_CHECK
+        if (performance.now() >= deadline) break
+      }
+      // The next code, from the data's sub-blocks; their end is the frame's.
+      while (cnt < size) {
+        if (left === 0) {
+          if (p >= data.length || data[p] === 0) {
+            ended = true
+            break frame
+          }
+          left = data[p]!
+          p += 1
+        }
+        if (p >= data.length) {
+          ended = true
+          break frame
+        }
+        buf |= data[p]! << cnt
+        p += 1
+        cnt += 8
+        left -= 1
+      }
+      const code = buf & ((1 << size) - 1)
+      buf >>>= size
+      cnt -= size
+      if (code === endCode) {
+        ended = true
+        break
+      }
+      if (code === clearCode) {
+        size = firstSize
+        free = clearCode + 2
+        prior = -1
         continue
       }
-      if (old === -1) {
+      if (prior === -1) {
         // The first code after a clear is a pixel of its own.
-        if (code > clear) {
-          endFrame()
-
-          return
+        if (code > clearCode) {
+          ended = true
+          break
         }
-        stack[0] = code
-        sp = 1
-        first = code
-        old = code
+        string[0] = code
+        top = 1
+        head = code
+        prior = code
         continue
       }
       let c = code
-      if (code >= next) {
+      if (code >= free) {
         // Only the code about to be defined may come early (the KwKwK case).
-        if (code > next) {
-          endFrame()
-
-          return
+        if (code > free) {
+          ended = true
+          break
         }
-        stack[sp] = first
-        sp += 1
-        c = old
+        string[top] = head
+        top += 1
+        c = prior
       }
-      while (c >= clear && sp < 4096) {
-        stack[sp] = suffix[c]!
-        sp += 1
-        c = prefix[c]!
+      while (c >= clearCode && top < 4096) {
+        string[top] = suffixes[c]!
+        top += 1
+        c = prefixes[c]!
       }
-      stack[sp] = c
-      sp += 1
-      first = c
-      if (next < 4096) {
-        prefix[next] = old
-        suffix[next] = first
-        next += 1
-        if (next === 1 << codeSize && codeSize < 12) codeSize += 1
+      string[top] = c
+      top += 1
+      head = c
+      if (free < 4096) {
+        prefixes[free] = prior
+        suffixes[free] = head
+        free += 1
+        if (free === 1 << size && size < 12) size += 1
       }
-      old = code
+      prior = code
     }
+    rowsLeft = rowsToGo
+    rowsDone = decoded
+    codeSize = size
+    next = free
+    old = prior
+    first = head
+    sp = top
+    bitBuf = buf
+    bitCnt = cnt
+    at = p
+    blockLeft = left
+    x = column
+    if (ended) endFrame()
   }
 
   // Blank canvas rows (above or below the frame) up to `stop`.

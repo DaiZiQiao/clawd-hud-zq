@@ -9,6 +9,7 @@ import {
   SIDE_CAP,
   sniffFormatOf,
   startMaster,
+  WEBP_PIXEL_CAP,
   WEBP_SIDE_CAP,
 } from './decode-drive'
 import type { MasterFailure, MasterJob } from './decode-drive'
@@ -100,7 +101,7 @@ describe('formats and headers', () => {
   })
 
   test('the caps are as the design sets them', () => {
-    expect([MASTER_SIDE, READ_CAP, PIXEL_CAP, WEBP_SIDE_CAP, SIDE_CAP]).toEqual([256, 4_194_304, 36_000_000, 2048, 65_535])
+    expect([MASTER_SIDE, READ_CAP, PIXEL_CAP, WEBP_SIDE_CAP, WEBP_PIXEL_CAP, SIDE_CAP]).toEqual([256, 4_194_304, 36_000_000, 2048, 1_100_000, 65_535])
   })
 })
 
@@ -125,7 +126,11 @@ describe('refusals', () => {
     gif.set([0xff, 0xff, 0xff, 0xff], 6)
     expect(startMaster(gif)).toEqual({ failure: 'too big', detail: 'GIF: 65535x65535 is over 36000000 pixels' })
     expect(startMaster(flatWebpOf(2049, 1))).toEqual({ failure: 'too big', detail: 'WebP: 2049x1 is over 2048 pixels a side' })
-    expect(isJob(startMaster(flatWebpOf(2048, 2048)))).toBe(true)
+    // The library decodes a lossless WebP in one call: past a megapixel or so it is not tried.
+    expect(startMaster(flatWebpOf(2048, 2048))).toEqual({ failure: 'too big', detail: 'WebP: 2048x2048 is over 1100000 pixels' })
+    expect(startMaster(flatWebpOf(1101, 1000))).toEqual({ failure: 'too big', detail: 'WebP: 1101x1000 is over 1100000 pixels' })
+    expect(isJob(startMaster(flatWebpOf(1100, 1000)))).toBe(true)
+    expect(isJob(startMaster(flatWebpOf(2048, 1)))).toBe(true)
   })
 
   test('can\'t read: not a picture, a bad header, or nothing to decode, with the reason', () => {
