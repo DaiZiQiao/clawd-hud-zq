@@ -348,8 +348,8 @@ export const usagiMouthShapes = (m: Matrix, kind: UsagiMouth, open = 1): Shape[]
       })
       const chin = Array.from({ length: 11 }, (_, index) => {
         const u = index / 10
-        // From under the left lobe down to the right, bowed out to the right as a `u` turned onto its side.
-        const [x0, y0, cx, cy, x1, y1] = [-0.5, 0.26, -0.12, 0.42, -0.2, 0.86]
+        // From under the left lobe straight down, then round to the right: convex, bowed out to the lower left, as a chin's.
+        const [x0, y0, cx, cy, x1, y1] = [-0.44, 0.26, -0.47, 0.8, -0.04, 0.8]
 
         return [(1 - u) * (1 - u) * x0 + 2 * u * (1 - u) * cx + u * u * x1, (1 - u) * (1 - u) * y0 + 2 * u * (1 - u) * cy + u * u * y1] as const
       })
