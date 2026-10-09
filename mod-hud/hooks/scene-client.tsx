@@ -3,7 +3,6 @@ import type { ClientElements, ClientModule, ElementConstructor, JsonValue, Rende
 import { sceneCanvas } from './scene-canvas'
 import { renderCanvas } from './scene-render'
 import { smoothFrame, smoothSvg } from './scene-smooth'
-import type { SceneryHeld } from './scene-smooth'
 import { SVG_MAX, sceneAlt, sceneSvg } from './scene-svg'
 import type { SceneSvg } from './scene-svg'
 import type { SceneInputs } from './scene-types'
@@ -40,11 +39,8 @@ type State = {
 /** The vector art's frame: thirty a second, where the cells step at FRAME_MS. */
 export const VECTOR_FRAME_MS = 33
 
-
-
-/** Each world's eased poses, and its last choice of the scenery's layers, kept with it from frame to frame. */
+/** Each world's eased poses, kept with it from frame to frame. */
 const smoothers = new WeakMap<World, Smoother>()
-const helds = new WeakMap<World, SceneryHeld>()
 
 const smootherOf = (world: World): Smoother => {
   const kept = smoothers.get(world)
@@ -66,38 +62,20 @@ export type SceneElements = Pick<ClientElements, 'Box' | 'Text'> & { Svg?: Eleme
 const svgOf = (elements: SceneElements): ElementConstructor<SvgProps> => elements.Svg ?? (props => h('Svg', props) as RenderElement)
 
 /**
- * The scene in pixels: the `Svg` the region's size (over the scenery's own,
- * when it has them: its layers, each a document that stays the same while
- * what it shows does, so the page draws it again only then), and over them a
- * box as big with nothing in it, the region's hit layer. The desktop draws an `Svg`
- * as an image, and a press on an image starts the page's own drag of it, which
+ * The scene in pixels: the `Svg` the region's size, and over it a box as big
+ * with nothing in it, the region's hit layer. The desktop draws an `Svg` as an
+ * image, and a press on an image starts the page's own drag of it, which
  * takes the pointer's moves and its release from the region: the layer over it
  * is what the press lands on, so the region's `onPointer` hears the whole
  * gesture; whose mascot was pressed still comes from the frame's cells.
  */
-const pixelsOf = (elements: SceneElements, drawn: SceneSvg & { scenery?: readonly string[] }, room: { columns: number; rows: number }): RenderElement => {
+const pixelsOf = (elements: SceneElements, drawn: SceneSvg, room: { columns: number; rows: number }): RenderElement => {
   const { Box } = elements
   const Svg = svgOf(elements)
-  const mascots = <Svg source={drawn.source} alt={drawn.alt} width={drawn.width} height={drawn.height} />
-  const [behind, ...over] = drawn.scenery ?? []
 
   return (
     <Box key="scene" width={room.columns} height={room.rows} flexShrink={0}>
-      {behind === undefined ? (
-        mascots
-      ) : (
-        <Box key="layers" width={room.columns} height={room.rows}>
-          <Svg key="scenery" source={behind} alt=" " width={drawn.width} height={drawn.height} />
-          {over.map((source, index) => (
-            <Box key={`scenery:${index + 1}`} position="absolute" top={0} left={0} width={room.columns} height={room.rows}>
-              <Svg source={source} alt=" " width={drawn.width} height={drawn.height} />
-            </Box>
-          ))}
-          <Box key="figures" position="absolute" top={0} left={0} width={room.columns} height={room.rows}>
-            {mascots}
-          </Box>
-        </Box>
-      )}
+      <Svg source={drawn.source} alt={drawn.alt} width={drawn.width} height={drawn.height} />
       <Box position="absolute" top={0} left={0} width={room.columns} height={room.rows} />
     </Box>
   )
@@ -140,13 +118,8 @@ export const draw = (world: World, elements: SceneElements): RenderElement => {
   if (!pixels) return renderCanvas(elements, canvas.grid, 'scene')
   const alt = sceneAlt(scene, canvas.layers, plan.collapsed.length)
   // The vector art: the same plan and view, each mascot's pose eased from its last frame.
-  const frame = world.props.art === 'vector' ? smoothFrame(scene, layout, plan, view.sprites, smootherOf(world), world.sceneNow, world.props.scenery === undefined ? false : { daylight: world.props.scenery }) : undefined
-  if (frame !== undefined) {
-    const held = helds.get(world) ?? {}
-    helds.set(world, held)
-
-    return pixelsOf(elements, { ...smoothSvg(frame, room.columns, room.rows, SVG_MAX, held), alt }, room)
-  }
+  const frame = world.props.art === 'vector' ? smoothFrame(scene, layout, plan, view.sprites, smootherOf(world), world.sceneNow) : undefined
+  if (frame !== undefined) return pixelsOf(elements, { ...smoothSvg(frame, room.columns, room.rows, SVG_MAX), alt }, room)
 
   return pixelsOf(elements, sceneSvg(canvas.layers, room, alt), room)
 }

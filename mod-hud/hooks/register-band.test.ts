@@ -73,13 +73,11 @@ describe('the session mascot in the band', () => {
       expect((await sceneOfClient(pane, 'mascots'))?.only).toBeUndefined()
       const band = await mountBand($, surface)
       const yard = await band.find({ type: 'Client', key: 'session' })
-      // It walks the band's width; where the world behind it is drawn (the desktop's Svg), in a row more of sky.
-      const rows = surface === 'desktop' ? 6 : 5
-      expect(yard?.props).toMatchObject({ module: 'hooks/scene-client.tsx', width: 100, height: rows })
+      // It walks the band's width, a mascot's rows high.
+      expect(yard?.props).toMatchObject({ module: 'hooks/scene-client.tsx', width: 100, height: 5 })
       const inputs = yard?.props.props as SceneInputs
       expect(inputs.only).toBe('main')
-      expect(inputs.rows).toBe(rows)
-      expect(inputs.scenery).toBe('fast')
+      expect(inputs.rows).toBe(5)
       // The board rides along for its mood (watching a subagent at work), never drawn there.
       expect(inputs.agents.map(one => one.id)).toEqual(['sub-1'])
       // Nothing to say about tidying: no text beside it.

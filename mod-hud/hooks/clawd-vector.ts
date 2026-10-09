@@ -57,9 +57,6 @@ const invert = (m: Matrix): Matrix | undefined => {
 /** A colour: raw (`#rrggbb`), or a theme key, drawn in the page's scheme. */
 export type Paint = string
 
-/** A linear gradient from (x1, y1) to (x2, y2) in a shape's own units: each stop its share of the way, its raw colour and alpha. */
-export type Gradient = { x1: number; y1: number; x2: number; y2: number; stops: readonly (readonly [number, string, number])[] }
-
 /**
  * One shape, placed by `m`: a rectangle (corners rounded by `r`), an ellipse
  * (its box's; a ring `ring` thick instead of a disc), a polygon (`points`,
@@ -68,10 +65,7 @@ export type Gradient = { x1: number; y1: number; x2: number; y2: number; stops: 
  * it), a line through `points` `stroke` thick (its ends and bends round), or
  * a line of text (its baseline's middle, start or end at `x`, `y`; `size` its
  * height in units). Filled with `fill` at `alpha`; an outline's colour, and
- * a grown polygon's or a line's, raw (no theme key). A rectangle, an ellipse
- * or a plain polygon may be filled with a gradient (`grad`) instead, and a
- * rectangle faded in across (`fade`: clear at its first x, whole at its
- * second, eased between, in its own units).
+ * a grown polygon's or a line's, raw (no theme key).
  */
 export type Shape = {
   kind: 'rect' | 'ellipse' | 'poly' | 'line' | 'text'
@@ -90,8 +84,6 @@ export type Shape = {
   anchor?: 'start' | 'middle' | 'end'
   bold?: boolean
   fill: Paint
-  grad?: Gradient
-  fade?: readonly [number, number]
   alpha?: number
   m?: Matrix
 }
@@ -101,14 +93,13 @@ const hexOf = (fill: Paint, scheme: 'dark' | 'light' = 'dark'): string => (isThe
 const matrixAttr = (m: Matrix | undefined): string =>
   m === undefined || m === IDENTITY ? '' : ` transform='matrix(${m.map(num).join(' ')})'`
 
-/** How a shape is painted, as its element's attributes; `grad` the id of its gradient, when it has one. */
-const paintOf = (shape: Shape, grad?: string): string => {
+/** One shape's element, without its group's transform. */
+const elementOf = (shape: Shape): string => {
   const theme = isThemeKey(shape.fill) ? ` class='${CLASSES[shape.fill]}'` : ''
   const alpha = shape.alpha ?? 1
   const grow = shape.kind === 'poly' ? shape.grow ?? 0 : 0
   const outline = shape.kind === 'poly' ? shape.outline : undefined
-
-  return shape.kind === 'ellipse' && shape.ring !== undefined
+  const paint = shape.kind === 'ellipse' && shape.ring !== undefined
     ? ` fill='none' stroke='${hexOf(shape.fill)}' stroke-width='${num(shape.ring)}'${alpha < 1 ? ` stroke-opacity='${num(alpha)}'` : ''}`
     : shape.kind === 'line'
       ? ` fill='none' stroke='${hexOf(shape.fill)}' stroke-width='${num(shape.stroke ?? 0)}' stroke-linecap='round' stroke-linejoin='round'${alpha < 1 ? ` stroke-opacity='${num(alpha)}'` : ''}`
@@ -118,16 +109,7 @@ const paintOf = (shape: Shape, grad?: string): string => {
         : outline !== undefined
           // Outlined: its stroke painted first, under its fill, twice as wide as the outline, round at the corners.
           ? `${theme} fill='${hexOf(shape.fill)}' stroke='${outline.fill}' stroke-width='${num(2 * outline.width)}' stroke-linejoin='round' paint-order='stroke'${alpha < 1 ? ` opacity='${num(alpha)}'` : ''}`
-          : grad !== undefined
-            ? ` fill='url(#${grad})'${alpha < 1 ? ` fill-opacity='${num(alpha)}'` : ''}`
-            : `${theme} fill='${hexOf(shape.fill)}'${alpha < 1 ? ` fill-opacity='${num(alpha)}'` : ''}`
-}
-
-const pointsOf = (shape: Shape): string => (shape.points ?? []).map(([x, y]) => `${num(x)},${num(y)}`).join(' ')
-
-/** One shape's element, without its group's transform; `grad` the id of its gradient, when it has one. */
-const elementOf = (shape: Shape, grad?: string): string => {
-  const paint = paintOf(shape, grad)
+          : `${theme} fill='${hexOf(shape.fill)}'${alpha < 1 ? ` fill-opacity='${num(alpha)}'` : ''}`
   switch (shape.kind) {
     case 'rect': {
       const r = Math.min(shape.r ?? 0, shape.w / 2, shape.h / 2)
@@ -137,46 +119,11 @@ const elementOf = (shape: Shape, grad?: string): string => {
     case 'ellipse':
       return `<ellipse cx='${num(shape.x + shape.w / 2)}' cy='${num(shape.y + shape.h / 2)}' rx='${num(shape.w / 2)}' ry='${num(shape.h / 2)}'${paint}/>`
     case 'poly':
-      return `<polygon points='${pointsOf(shape)}'${paint}/>`
+      return `<polygon points='${(shape.points ?? []).map(([x, y]) => `${num(x)},${num(y)}`).join(' ')}'${paint}/>`
     case 'line':
-      return `<polyline points='${pointsOf(shape)}'${paint}/>`
+      return `<polyline points='${(shape.points ?? []).map(([x, y]) => `${num(x)},${num(y)}`).join(' ')}'${paint}/>`
     case 'text':
       return `<text x='${num(shape.x)}' y='${num(shape.y)}' font-size='${num(shape.size ?? 3)}'${shape.anchor === undefined || shape.anchor === 'middle' ? '' : ` text-anchor='${shape.anchor}'`}${shape.bold === true ? ` font-weight='700'` : ''}${paint}>${escapeText(shape.text ?? '')}</text>`
-  }
-}
-
-/**
- * A plain shape (a square rectangle, a disc, an unadorned polygon, a line)
- * as path data, to be drawn in one path with those painted alike; undefined
- * for any other. Every outline runs clockwise, so where two overlap the
- * path's nonzero fill fills both, as their own elements would.
- */
-const pathOf = (shape: Shape): string | undefined => {
-  if (shape.grad !== undefined || shape.fade !== undefined) return undefined
-  const given = shape.points ?? []
-  // A polygon's area signed by its turning: negative running anticlockwise (y down).
-  const turning = given.reduce((sum, [x, y], index) => {
-    const [nx, ny] = given[(index + 1) % given.length] ?? [x, y]
-
-    return sum + x * ny - nx * y
-  }, 0)
-  const points = (shape.kind === 'poly' && turning < 0 ? [...given].reverse() : given).map(([x, y]) => `${num(x)} ${num(y)}`).join('L')
-  switch (shape.kind) {
-    case 'rect':
-      return (shape.r ?? 0) > 0 ? undefined : `M${num(shape.x)} ${num(shape.y)}h${num(shape.w)}v${num(shape.h)}h${num(-shape.w)}z`
-    case 'ellipse': {
-      if (shape.ring !== undefined) return undefined
-      const rx = num(shape.w / 2)
-      const ry = num(shape.h / 2)
-
-      return `M${num(shape.x)} ${num(shape.y + shape.h / 2)}a${rx} ${ry} 0 1 1 ${num(shape.w)} 0a${rx} ${ry} 0 1 1 ${num(-shape.w)} 0z`
-    }
-    case 'poly':
-      return shape.grow !== undefined || shape.outline !== undefined ? undefined : `M${points}z`
-    case 'line':
-      return `M${points}`
-    case 'text':
-      return undefined
   }
 }
 
@@ -190,80 +137,24 @@ const visible = (shape: Shape): boolean =>
         ? (shape.points?.length ?? 0) >= 2 && (shape.stroke ?? 0) > 0
         : shape.w > 0 && shape.h > 0)
 
-/** Markup and the theme keys it uses: a drawing's, or a part of one. */
-export type Markup = { markup: string; used: Set<ThemeKey> }
-
 /**
  * The shapes as SVG markup to set in a document of one's own: shapes in a
  * row that share one placement in one group, under one group of `view`; the
  * theme keys used, for the document's light scheme's rule. Shapes past
  * `limit` characters are left out, the earliest kept.
  */
-export const shapesMarkup = (shapes: readonly Shape[], view: Matrix, limit = Infinity): Markup => {
-  const { markup, used } = partMarkup(shapes, limit)
-
-  return { markup: viewed(markup, view), used }
-}
-
-/** Markup in the group of `view`, mapping world units to the document's pixels. */
-export const viewed = (markup: string, view: Matrix): string => `<g transform='matrix(${view.map(num).join(' ')})'>${markup}</g>`
-
-/**
- * Shapes as markup in world units, a part of a drawing (`shapesMarkup`): in
- * a row, those `merged` says may be that are painted alike, one path; its
- * gradients' ids under `prefix`, unique among the drawing's parts.
- */
-export const partMarkup = (shapes: readonly Shape[], limit = Infinity, merged?: (shape: Shape) => boolean, prefix = 'g'): Markup => {
+export const shapesMarkup = (shapes: readonly Shape[], view: Matrix, limit = Infinity): { markup: string; used: Set<ThemeKey> } => {
   const used = new Set<ThemeKey>()
   const parts: string[] = []
   let length = 0
   let index = 0
-  let grads = 0
-  // A gradient's own element, just before the shape it fills (in that shape's units).
-  const gradient = (grad: Gradient): { id: string; element: string } => {
-    const id = `${prefix}${(grads += 1)}`
-    const stops = grad.stops.map(([at, colour, alpha]) => `<stop offset='${num(at)}' stop-color='${colour}'${alpha < 1 ? ` stop-opacity='${num(alpha)}'` : ''}/>`).join('')
-
-    return { id, element: `<linearGradient id='${id}' gradientUnits='userSpaceOnUse' x1='${num(grad.x1)}' y1='${num(grad.y1)}' x2='${num(grad.x2)}' y2='${num(grad.y2)}'>${stops}</linearGradient>` }
-  }
-  const filled = (shape: Shape): string => {
-    const grad = shape.kind === 'line' || shape.ring !== undefined || shape.grow !== undefined || shape.outline !== undefined || shape.grad === undefined ? undefined : gradient(shape.grad)
-    const element = elementOf(shape, grad?.id)
-    if (shape.fade === undefined || shape.kind !== 'rect') return `${grad?.element ?? ''}${element}`
-    // Faded in: masked by a ramp of white, clear to whole, eased as `smooth` is.
-    const [from, to] = shape.fade
-    const ramp = gradient({ x1: from, y1: 0, x2: to, y2: 0, stops: [0, 0.25, 0.5, 0.75, 1].map(at => [at, '#ffffff', smooth(at)] as const) })
-    const mask = `${prefix}${(grads += 1)}`
-
-    return `${grad?.element ?? ''}${ramp.element}<mask id='${mask}'><rect x='${num(shape.x)}' y='${num(shape.y)}' width='${num(shape.w)}' height='${num(shape.h)}' fill='url(#${ramp.id})'/></mask>${element.replace(/\/>$/, ` mask='url(#${mask})'/>`)}`
-  }
   const drawn = shapes.filter(visible)
   while (index < drawn.length) {
     const m = drawn[index]?.m
     let end = index
     while (end < drawn.length && drawn[end]?.m === m) end += 1
     const run = drawn.slice(index, end)
-    const elements: string[] = []
-    for (let at = 0; at < run.length; ) {
-      const shape = run[at] as Shape
-      const path = merged?.(shape) === true ? pathOf(shape) : undefined
-      if (path === undefined) {
-        elements.push(filled(shape))
-        at += 1
-        continue
-      }
-      // Its neighbours painted alike, one path with it.
-      const paint = paintOf(shape)
-      let d = path
-      for (at += 1; at < run.length; at += 1) {
-        const next = run[at] as Shape
-        const more = merged?.(next) === true && paintOf(next) === paint ? pathOf(next) : undefined
-        if (more === undefined) break
-        d += more
-      }
-      elements.push(`<path d='${d}'${paint}/>`)
-    }
-    const inner = elements.join('')
+    const inner = run.map(elementOf).join('')
     const placed = matrixAttr(m)
     // One shape carries its own transform; several share a group's; unplaced ones need neither.
     const group = placed === '' ? inner : run.length > 1 ? `<g${placed}>${inner}</g>` : inner.startsWith('<text') ? inner.replace(/^<text/, `<text${placed}`) : inner.replace(/\/>$/, `${placed}/>`)
@@ -274,36 +165,24 @@ export const partMarkup = (shapes: readonly Shape[], limit = Infinity, merged?: 
     length += group.length
   }
 
-  return { markup: parts.join(''), used }
+  return { markup: `<g transform='matrix(${view.map(num).join(' ')})'>${parts.join('')}</g>`, used }
 }
 
 /**
- * Markup as one SVG document `width` by `height` CSS pixels (its theme keys
- * in the dark scheme's colours, the light scheme's by the page's
- * `prefers-color-scheme`).
+ * The shapes as one SVG document `width` by `height` CSS pixels, `view`
+ * mapping world units to them (`shapesMarkup`); theme keys in the dark
+ * scheme's colours, the light scheme's by the page's (`prefers-color-scheme`).
  */
-export const documentOf = ({ markup, used }: Markup, width: number, height: number, extra = ''): string =>
-  `<svg xmlns='http://www.w3.org/2000/svg' width='${width}' height='${height}' viewBox='0 0 ${width} ${height}' pointer-events='none'${extra}>${lightRule(used)}${markup}</svg>`
+export const svgOf = (shapes: readonly Shape[], width: number, height: number, view: Matrix, limit = Infinity, extra = ''): string => {
+  const { markup, used } = shapesMarkup(shapes, view, limit)
 
-/** A raw colour's red, green and blue (white for one it cannot read). */
-export const rgbOf = (hex: string): [number, number, number] => {
+  return `<svg xmlns='http://www.w3.org/2000/svg' width='${width}' height='${height}' viewBox='0 0 ${width} ${height}' pointer-events='none'${extra}>${lightRule(used)}${markup}</svg>`
+}
+
+const rgbOf = (hex: string): [number, number, number] => {
   const n = Number.parseInt(hex.slice(1, 7), 16)
 
   return Number.isFinite(n) ? [(n >> 16) & 255, (n >> 8) & 255, n & 255] : [255, 255, 255]
-}
-
-type Rgb = readonly [number, number, number]
-
-/** A colour grade: each channel a row of `m` times the colour (0 to 255) plus that channel's `add`; its alpha times `alpha`. */
-export type Grade = { m: readonly [Rgb, Rgb, Rgb]; add: Rgb; alpha?: number }
-
-const channel = (v: number): number => (v <= 0 ? 0 : v >= 255 ? 255 : Math.round(v))
-
-/** A raw colour graded. */
-export const graded = (hex: string, { m, add }: Grade): string => {
-  const [r, g, b] = rgbOf(hex)
-
-  return `#${m.map((row, i) => channel(row[0] * r + row[1] * g + row[2] * b + (add[i] ?? 0)).toString(16).padStart(2, '0')).join('')}`
 }
 
 /**
@@ -425,16 +304,6 @@ const boundsOf = (shape: Shape): [number, number, number, number] => {
   return [shape.x - pad, shape.y - pad, shape.x + shape.w + pad, shape.y + shape.h + pad]
 }
 
-/** The rows of pixels a shape may reach through `view`, its first and its last: its bounds, and a pixel more each side; all of them for text. */
-export const rowsOf = (shape: Shape, view: Matrix): [number, number] => {
-  if (shape.kind === 'text') return [-Infinity, Infinity]
-  const m = multiply(view, shape.m ?? IDENTITY)
-  const [lx0, ly0, lx1, ly1] = boundsOf(shape)
-  const ys = [applyTo(m, lx0, ly0), applyTo(m, lx1, ly0), applyTo(m, lx0, ly1), applyTo(m, lx1, ly1)].map(([, y]) => y)
-
-  return [Math.floor(Math.min(...ys)) - 1, Math.ceil(Math.max(...ys)) + 1]
-}
-
 /** A colour laid over pixel `at` of `pixels` at `a` (straight alpha). */
 const layPixel = (pixels: Uint8Array, at: number, r: number, g: number, b: number, a: number): void => {
   const below = (pixels[at + 3] ?? 0) / 255
@@ -454,145 +323,11 @@ const layPixel = (pixels: Uint8Array, at: number, r: number, g: number, b: numbe
   pixels[at + 3] = Math.round(out * 255)
 }
 
-/** Each column's grade as numbers, thirteen a column: its matrix by rows, its add, and its alpha over 255 (less than 0 for a column not graded). */
-export type GradeTable = Float64Array
-
-export const gradeTable = (grades: readonly (Grade | undefined)[]): GradeTable => {
-  const table = new Float64Array(grades.length * 13)
-  grades.forEach((grade, x) => {
-    if (grade === undefined) {
-      table[x * 13 + 12] = -1
-      return
-    }
-    table.set([...grade.m[0], ...grade.m[1], ...grade.m[2], ...grade.add, (grade.alpha ?? 1) / 255], x * 13)
-  })
-
-  return table
-}
-
-/**
- * `above` laid over `below` in place (straight alpha): `below` `width`
- * pixels a row, `above` `stride` a row, read from its column `from` on; each
- * of `below`'s columns graded by its grade in `grades` (`gradeTable`), when
- * it has one. Row by row, as the pixels lie.
- */
-export const overlay = (below: Uint8Array, above: Uint8Array, width: number, stride = width, from = 0, grades?: GradeTable): void => {
-  const rows = below.length / (4 * width)
-  // Ungraded, an opaque pixel is copied whole, four bytes at once, where both sit on four-byte bounds.
-  const words = below.byteOffset % 4 === 0 && above.byteOffset % 4 === 0 ? { below: new Uint32Array(below.buffer, below.byteOffset, below.length / 4), above: new Uint32Array(above.buffer, above.byteOffset, above.length / 4) } : undefined
-  for (let y = 0; y < rows; y += 1) {
-    for (let x = 0, at = (y * stride + from) * 4, to = y * width * 4; x < width; x += 1, at += 4, to += 4) {
-      const a = above[at + 3] ?? 0
-      if (a === 0) continue
-      const c = x * 13
-      const scale = grades === undefined ? -1 : (grades[c + 12] ?? -1)
-      if (scale < 0 && a === 255 && words !== undefined) {
-        words.below[to / 4] = words.above[at / 4] ?? 0
-        continue
-      }
-      const r = above[at] ?? 0
-      const g = above[at + 1] ?? 0
-      const b = above[at + 2] ?? 0
-      if (scale < 0 || grades === undefined) {
-        layPixel(below, to, r, g, b, a / 255)
-        continue
-      }
-      const red = channel((grades[c] ?? 0) * r + (grades[c + 1] ?? 0) * g + (grades[c + 2] ?? 0) * b + (grades[c + 9] ?? 0))
-      const green = channel((grades[c + 3] ?? 0) * r + (grades[c + 4] ?? 0) * g + (grades[c + 5] ?? 0) * b + (grades[c + 10] ?? 0))
-      const blue = channel((grades[c + 6] ?? 0) * r + (grades[c + 7] ?? 0) * g + (grades[c + 8] ?? 0) * b + (grades[c + 11] ?? 0))
-      if (a === 255 && scale === 1 / 255) {
-        // Opaque and graded: the graded colour itself.
-        below[to] = red
-        below[to + 1] = green
-        below[to + 2] = blue
-        below[to + 3] = 255
-      } else layPixel(below, to, red, green, blue, a * scale)
-    }
-  }
-}
-
-/**
- * Rects, each its fill or a gradient down it, laid over `pixels` whole pixels
- * at a time through `view` (one that only scales): their edges unsmoothed,
- * so rects side by side tile, and the colour there before them gone, but
- * where one fades in (`Shape.fade`), laid over it. A sky's colours, far
- * quicker than `rasterOf`.
- */
-export const paintRects = (pixels: Uint8Array, width: number, height: number, view: Matrix, rects: readonly Shape[], scheme: 'dark' | 'light' = 'dark'): void => {
-  const words = new Uint32Array(pixels.buffer, pixels.byteOffset, width * height)
-  const one = new Uint8Array(4)
-  const word = new Uint32Array(one.buffer)
-  for (const shape of rects) {
-    const left = Math.max(0, Math.round(shape.x * view[0]))
-    const right = Math.min(width, Math.round((shape.x + shape.w) * view[0]))
-    const grad = shape.grad
-    // How far faded in each column is, when it fades.
-    const fade = shape.fade
-    const faded = fade === undefined ? undefined : Array.from({ length: Math.max(0, right - left) }, (_, x) => smooth(((left + x + 0.5) / view[0] - fade[0]) / (fade[1] - fade[0])))
-    // Its colours, each where down it.
-    const stops = (grad?.stops ?? [[0, hexOf(shape.fill, scheme), 1]]).map(([at, colour, alpha]) => [grad === undefined ? 0 : grad.y1 + at * (grad.y2 - grad.y1), ...rgbOf(colour), alpha] as const)
-    for (let py = Math.max(0, Math.round(shape.y * view[3])), bottom = Math.min(height, Math.round((shape.y + shape.h) * view[3])); py < bottom && right > left; py += 1) {
-      const y = (py + 0.5) / view[3]
-      const after = stops.findIndex(([at]) => at >= y)
-      // Above its first stop its first colour, past its last its last.
-      const [y0, r0, g0, b0, a0] = stops[after < 0 ? stops.length - 1 : Math.max(0, after - 1)] ?? [0, 0, 0, 0, 0]
-      const [y1, r1, g1, b1, a1] = after < 0 ? [y0, r0, g0, b0, a0] : stops[after] ?? [y0, r0, g0, b0, a0]
-      const k = y1 > y0 ? (y - y0) / (y1 - y0) : 0
-      one[0] = r0 + (r1 - r0) * k
-      one[1] = g0 + (g1 - g0) * k
-      one[2] = b0 + (b1 - b0) * k
-      one[3] = 255 * (a0 + (a1 - a0) * k) * (shape.alpha ?? 1)
-      if (faded === undefined) words.fill(word[0] ?? 0, py * width + left, py * width + right)
-      else {
-        const [r = 0, g = 0, b = 0, a = 0] = one
-        for (let px = left, at = (py * width + left) * 4; px < right; px += 1, at += 4) {
-          const w = (a / 255) * (faded[px - left] ?? 1)
-          // Over a colour as opaque as it is: the two mixed, else as `layPixel` lays it.
-          if ((pixels[at + 3] ?? 0) === a && a === 255) {
-            const r0 = pixels[at] ?? 0
-            const g0 = pixels[at + 1] ?? 0
-            const b0 = pixels[at + 2] ?? 0
-            pixels[at] = r0 + (r - r0) * w + 0.5
-            pixels[at + 1] = g0 + (g - g0) * w + 0.5
-            pixels[at + 2] = b0 + (b - b0) * w + 0.5
-          } else layPixel(pixels, at, r, g, b, w)
-        }
-      }
-    }
-  }
-}
-
-/** A gradient as 256 RGBA steps along it, and how far along it a local point is: (p - start) · (dx, dy). */
-const rampOf = (grad: Gradient): { rgba: Uint8Array; x: number; y: number; dx: number; dy: number } => {
-  const gx = grad.x2 - grad.x1
-  const gy = grad.y2 - grad.y1
-  const length = gx * gx + gy * gy || 1
-  const rgba = new Uint8Array(256 * 4)
-  const stops = grad.stops
-  for (let step = 0; step < 256; step += 1) {
-    const t = step / 255
-    // Before its first stop its first colour, past its last its last.
-    const after = stops.findIndex(([at]) => at >= t)
-    const next = after < 0 ? stops.length - 1 : after
-    const [a0, c0, o0] = stops[after <= 0 ? next : after - 1] ?? [0, '#000000', 0]
-    const [a1, c1, o1] = stops[next] ?? [a0, c0, o0]
-    const k = a1 > a0 ? Math.max(0, Math.min(1, (t - a0) / (a1 - a0))) : 0
-    const from = rgbOf(c0)
-    const to = rgbOf(c1)
-    rgba.set([0, 1, 2].map(i => Math.round((from[i] ?? 0) + ((to[i] ?? 0) - (from[i] ?? 0)) * k)), step * 4)
-    rgba[step * 4 + 3] = Math.round(255 * (o0 + (o1 - o0) * k))
-  }
-
-  return { rgba, x: grad.x1, y: grad.y1, dx: gx / length, dy: gy / length }
-}
-
-/** One shape's pixels laid over `pixels` (straight alpha), a theme key in `scheme`'s colour. */
 /**
  * A square rectangle placed without turning, laid exactly as `layShape` lays
  * it (each pixel covered as far as its middle is inside, a pixel's width
  * blurring the edge) but with the distances across worked out once a column
- * and down once a row, and a gradient's colour likewise: the scenery's
- * grounds and skies, hundreds of thousands of pixels each.
+ * and down once a row, and the rows it covers whole filled at once.
  */
 const layRect = (pixels: Uint8Array, width: number, height: number, shape: Shape, m: Matrix, scheme: 'dark' | 'light'): void => {
   const alpha = shape.alpha ?? 1
@@ -604,61 +339,18 @@ const layRect = (pixels: Uint8Array, width: number, height: number, shape: Shape
   const y1 = Math.min(height - 1, Math.ceil(Math.max(corners[2], corners[3])) + 1)
   if (x1 < x0 || y1 < y0) return
   const [red, green, blue] = rgbOf(hexOf(shape.fill, scheme))
-  const ramp = shape.grad === undefined ? undefined : rampOf(shape.grad)
-  const fade = shape.fade
-  // Each column's middle in local units, how far outside the rect across, how far faded in, and its share of the gradient; each row's likewise.
-  const lxs = Array.from({ length: x1 - x0 + 1 }, (_, i) => (x0 + i + 0.5 - m[4]) / m[0])
-  const qxs = lxs.map(lx => Math.abs(lx - shape.x - shape.w / 2) - shape.w / 2)
-  const fades = lxs.map(lx => (fade === undefined ? 1 : smooth((lx - fade[0]) / (fade[1] - fade[0]))))
-  const tx = lxs.map(lx => (ramp === undefined ? 0 : (lx - ramp.x) * ramp.dx))
-  // The columns it covers whole (a run, a rectangle being convex): within them, on a row it covers whole too, a colour
-  // of the row's or a gradient across copied as it is, or a row's colour laid over an opaque ground at once.
+  // How far outside the rect each column's middle is, across; the columns it covers whole (a run, a rectangle being convex).
+  const qxs = Array.from({ length: x1 - x0 + 1 }, (_, i) => Math.abs((x0 + i + 0.5 - m[4]) / m[0] - shape.x - shape.w / 2) - shape.w / 2)
   const whole = qxs.map(qx => qx <= -0.5 * pixel)
   const first = whole.indexOf(true)
   const last = whole.lastIndexOf(true)
-  const opaque = alpha === 1 && fade === undefined && (ramp === undefined || shape.grad?.stops.every(([, , a]) => a === 1) === true)
-  const across = ramp !== undefined && ramp.dy === 0 && opaque && first >= 0 ? new Uint8Array((last - first + 1) * 4) : undefined
-  if (across !== undefined && ramp !== undefined) {
-    for (let i = first; i <= last; i += 1) {
-      const t = tx[i] ?? 0
-      const step = 4 * Math.round(255 * (t < 0 ? 0 : t > 1 ? 1 : t))
-      across.set(ramp.rgba.subarray(step, step + 3), (i - first) * 4)
-      across[(i - first) * 4 + 3] = 255
-    }
-  }
   for (let py = y0; py <= y1; py += 1) {
-    const ly = (py + 0.5 - m[5]) / m[3]
-    const qy = Math.abs(ly - shape.y - shape.h / 2) - shape.h / 2
-    const ty = ramp === undefined ? 0 : (ly - ramp.y) * ramp.dy
-    let skip = -1
-    if (first >= 0 && qy <= -0.5 * pixel && fade === undefined && (ramp === undefined || ramp.dx === 0 || across !== undefined)) {
-      const row = (py * width + x0) * 4
-      if (across !== undefined) pixels.set(across, row + first * 4)
-      else {
-        // The row's colour (its own, or its gradient's down here) and alpha, laid over each pixel of the run.
-        const step = ramp === undefined ? 0 : 4 * Math.round(255 * (ty < 0 ? 0 : ty > 1 ? 1 : ty))
-        const [r, g, b] = ramp === undefined ? [red, green, blue] : [ramp.rgba[step] ?? 0, ramp.rgba[step + 1] ?? 0, ramp.rgba[step + 2] ?? 0]
-        const a = alpha * (ramp === undefined ? 1 : (ramp.rgba[step + 3] ?? 0) / 255)
-        for (let at = row + first * 4, end = row + last * 4; at <= end; at += 4) {
-          if (a >= 1) {
-            pixels[at] = r
-            pixels[at + 1] = g
-            pixels[at + 2] = b
-            pixels[at + 3] = 255
-          } else if ((pixels[at + 3] ?? 0) === 255) {
-            const r0 = pixels[at] ?? 0
-            const g0 = pixels[at + 1] ?? 0
-            const b0 = pixels[at + 2] ?? 0
-            pixels[at] = r0 + (r - r0) * a + 0.5
-            pixels[at + 1] = g0 + (g - g0) * a + 0.5
-            pixels[at + 2] = b0 + (b - b0) * a + 0.5
-          } else layPixel(pixels, at, r, g, b, a)
-        }
-      }
-      skip = first
-    }
+    const qy = Math.abs((py + 0.5 - m[5]) / m[3] - shape.y - shape.h / 2) - shape.h / 2
+    // On a row it covers whole too, the run laid at once.
+    const run = first >= 0 && qy <= -0.5 * pixel
+    if (run) for (let at = (py * width + x0 + first) * 4, end = (py * width + x0 + last) * 4; at <= end; at += 4) layPixel(pixels, at, red, green, blue, alpha)
     for (let i = 0, px = x0; px <= x1; i += 1, px += 1) {
-      if (skip >= 0 && i === skip) {
+      if (run && i === first) {
         i = last
         px = x0 + last
         continue
@@ -666,16 +358,7 @@ const layRect = (pixels: Uint8Array, width: number, height: number, shape: Shape
       const qx = qxs[i] ?? 0
       const d = qx > 0 || qy > 0 ? Math.hypot(Math.max(qx, 0), Math.max(qy, 0)) : Math.max(qx, qy)
       const cover = 0.5 - d / pixel
-      if (cover <= 0) continue
-      const a = (cover >= 1 ? 1 : cover) * alpha * (fades[i] ?? 1)
-      const at = (py * width + px) * 4
-      if (ramp === undefined) {
-        layPixel(pixels, at, red, green, blue, a)
-        continue
-      }
-      const t = (tx[i] ?? 0) + ty
-      const step = 4 * Math.round(255 * (t < 0 ? 0 : t > 1 ? 1 : t))
-      layPixel(pixels, at, ramp.rgba[step] ?? 0, ramp.rgba[step + 1] ?? 0, ramp.rgba[step + 2] ?? 0, (a * (ramp.rgba[step + 3] ?? 0)) / 255)
+      if (cover > 0) layPixel(pixels, (py * width + px) * 4, red, green, blue, (cover >= 1 ? 1 : cover) * alpha)
     }
   }
 }
@@ -703,9 +386,6 @@ const layShape = (pixels: Uint8Array, width: number, height: number, shape: Shap
   const reach = outline?.width ?? 0
   const distance = distanceTo(shape)
   const [b0, b1, b2, b3, b4, b5] = back
-  const ramp = shape.outline === undefined && shape.grow === undefined && shape.ring === undefined && shape.kind !== 'line' && shape.grad !== undefined ? rampOf(shape.grad) : undefined
-  const fade = shape.kind === 'rect' ? shape.fade : undefined
-  const lay = (at: number, r: number, g: number, b: number, a: number, lx: number): void => layPixel(pixels, at, r, g, b, fade === undefined ? a : a * smooth((lx - fade[0]) / (fade[1] - fade[0])))
   // A plain polygon a row at a time: where its edges (in pixels) cross the row's middle says which pixels are inside it,
   // and only those near an edge are worked out exactly; the rest are wholly in or out.
   const scan = shape.kind === 'poly' && (shape.grow ?? 0) === 0 && outline === undefined ? edgesOf((shape.points ?? []).map(([x, y]) => applyTo(m, x, y)), true) : undefined
@@ -753,15 +433,9 @@ const layShape = (pixels: Uint8Array, width: number, height: number, shape: Shap
       // Its outline where its fill does not cover the pixel whole.
       if (outline !== undefined && (cover < 1 || alpha < 1)) {
         const under = 0.5 - (d - reach) / pixel
-        if (under > 0) lay(at, lineRed, lineGreen, lineBlue, (under >= 1 ? 1 : under) * alpha, lx)
+        if (under > 0) layPixel(pixels, at, lineRed, lineGreen, lineBlue, (under >= 1 ? 1 : under) * alpha)
       }
-      if (cover <= 0) continue
-      if (ramp === undefined) {
-        lay(at, red, green, blue, (cover >= 1 ? 1 : cover) * alpha, lx)
-        continue
-      }
-      const step = 4 * Math.round(255 * Math.max(0, Math.min(1, (lx - ramp.x) * ramp.dx + (ly - ramp.y) * ramp.dy)))
-      lay(at, ramp.rgba[step] ?? 0, ramp.rgba[step + 1] ?? 0, ramp.rgba[step + 2] ?? 0, ((cover >= 1 ? 1 : cover) * alpha * (ramp.rgba[step + 3] ?? 0)) / 255, lx)
+      if (cover > 0) layPixel(pixels, at, red, green, blue, (cover >= 1 ? 1 : cover) * alpha)
     }
   }
 }
@@ -795,10 +469,10 @@ export const coverOf = (shapes: readonly Shape[]): ((x: number, y: number) => bo
  * nothing is drawn), `view` mapping world units to pixels: each edge covers
  * its pixels as far as it reaches into them, so edges are smooth at any size.
  * Theme keys in `scheme`'s colours; text in `glyphs`' shapes (in the text's
- * own frame), when given; laid over `base` itself (as many pixels) when given.
+ * own frame), when given.
  */
-export const rasterOf = (shapes: readonly Shape[], width: number, height: number, view: Matrix, glyphs?: (shape: Shape) => readonly Shape[], scheme: 'dark' | 'light' = 'dark', base?: Uint8Array): Uint8Array => {
-  const pixels = base?.length === width * height * 4 ? base : new Uint8Array(width * height * 4)
+export const rasterOf = (shapes: readonly Shape[], width: number, height: number, view: Matrix, glyphs?: (shape: Shape) => readonly Shape[], scheme: 'dark' | 'light' = 'dark'): Uint8Array => {
+  const pixels = new Uint8Array(width * height * 4)
   for (const shape of shapes) {
     if (!visible(shape)) continue
     const m = multiply(view, shape.m ?? IDENTITY)

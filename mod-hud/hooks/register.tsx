@@ -96,7 +96,7 @@ import type { AgentBody, InspectAction, InspectHeader, InspectRow, Trails } from
 import { inspectedOf, overviewOf } from './inspect-model'
 import { STARTLED_MS } from './mascot-poses'
 import { GRID_ROWS, SLOT } from './mascot-sprites'
-import { IMAGE_FRAME_MS, createStage, hitsOf, refusedTiles, restage, stageHits, stageTick, stageTiles, workAhead } from './scene-image'
+import { IMAGE_FRAME_MS, createStage, hitsOf, refusedTiles, restage, stageHits, stageTick, stageTiles } from './scene-image'
 import type { HitPost, Stage, Tile } from './scene-image'
 import { MOST_STEP_MS } from './scene-world'
 import { sceneInputsOf, sceneOf } from './scene-model'
@@ -1331,7 +1331,7 @@ const startPictures = ($: EngineInterface): void => {
       try {
         const scheme = pictureScheme?.scheme ?? 'dark'
         const now = await $.clock.now()
-        // Each picture's world on by the time gone, its changed tiles drawn when its frame is due; the scenery's work ahead; then all the swaps at once.
+        // Each picture's world on by the time gone, its changed tiles drawn when its frame is due; then all the swaps at once.
         const swaps: Promise<void>[] = []
         for (const [site, picture] of pictures) {
           if (picture.fresh > 0) picture.fresh -= 1
@@ -1366,7 +1366,6 @@ const startPictures = ($: EngineInterface): void => {
             })(),
           )
         }
-        workAhead([...pictures.values()].map(picture => picture.stage))
         for (const [site, giant] of giantPictures) {
           giant.ms += IMAGE_FRAME_MS
           const frame = giantFrameOf(giant)
@@ -1553,8 +1552,6 @@ const BAND_KEY = 'session'
 // The yard is the band's width, less what tidying up has to say beside it, but never under YARD_COLUMNS.
 const YARD_COLUMNS = 28
 const TIDY_COLUMNS = 48
-// With the scenery, a row more of sky, where the band has the room.
-const BAND_ROWS = GRID_ROWS + 1
 // On which surfaces the band last drew the session's mascot, and where its `Client` failed (the classic scene there).
 const bandMascot = new Map<string, boolean>()
 const bandFaulted = new Set<string>()
@@ -1735,7 +1732,6 @@ const bandYard = async (
   requestId: string,
   table: ReturnType<EngineInterface['ui']['resolve']>,
   columns: number,
-  rows: number,
   now: number,
 ): Promise<RenderElement | undefined> => {
   const all = await read($, agents)
@@ -1749,7 +1745,7 @@ const bandYard = async (
     const props: SceneInputs = sceneInputsOf(list, workflow, hud, {
       now,
       columns,
-      rows,
+      rows: GRID_ROWS,
       main,
       events: [],
       stalledMs: settings.stalledMs,
@@ -1761,19 +1757,18 @@ const bandYard = async (
       ...(tidyingSince === undefined ? {} : { tidyingSince }),
       ...(svg === undefined ? {} : { svg: true as const }),
       ...(settings.mascotArt === 'vector' ? { art: 'vector' as const } : {}),
-      ...(settings.mascotArt === 'vector' && settings.scenery ? { scenery: settings.daylight } : {}),
       ...(settings.character === 'usagi' ? { character: 'usagi' as const } : {}),
     })
     // A terminal that shows pictures: the vector art as one, swapped frame by frame.
     if (await picturedOn($, settings, surface, table, props.columns, props.rows)) return pictureOf($, table, surface, requestId, BAND_KEY, props, now)
     const { Client } = table as { Client: (props: { key: string; module: string; props?: unknown; width?: number; height?: number }) => RenderElement }
 
-    return <Client key={BAND_KEY} module="./scene-client.tsx" props={props} width={columns} height={rows} />
+    return <Client key={BAND_KEY} module="./scene-client.tsx" props={props} width={columns} height={GRID_ROWS} />
   }
   const key = `${BAND_SCENE}${surface}`
   const frame = await read($, sceneTick)
   const mascots = sceneOf(list, hud, now, { stalledMs: settings.stalledMs, main, shadows: workflow, scenes: settings.scenes, character: settings.character, only: 'main', ...(tidyingSince === undefined ? {} : { tidyingSince }) })
-  const room = { columns, rows, tick: Math.max(frame, Math.floor(now / SCENE_FRAME_MS)), wander: settings.wander, scenes: settings.scenes, collisions: settings.collisions }
+  const room = { columns, rows: GRID_ROWS, tick: Math.max(frame, Math.floor(now / SCENE_FRAME_MS)), wander: settings.wander, scenes: settings.scenes, collisions: settings.collisions }
   const plan = mascotPlan(mascots, room, scenePlans.get(key))
   if (plan === undefined) {
     scenePlans.delete(key)
@@ -2498,8 +2493,7 @@ export const register: Register = (on, options) => {
               ...(inspecting === undefined ? {} : { paused: true }),
               ...(svg === undefined ? {} : { svg: true as const }),
               ...(settings.mascotArt === 'vector' ? { art: 'vector' as const } : {}),
-              ...(settings.mascotArt === 'vector' && settings.scenery ? { scenery: settings.daylight } : {}),
-              ...(settings.character === 'usagi' ? { character: 'usagi' as const } : {}),
+                      ...(settings.character === 'usagi' ? { character: 'usagi' as const } : {}),
               ...(away === undefined ? {} : { away }),
               ...(shaken === undefined ? {} : { startled: shaken }),
               ...(agentsOnly ? { only: 'agents' as const } : {}),
@@ -2656,14 +2650,10 @@ export const register: Register = (on, options) => {
     const lines = shown === undefined ? [] : bandLinesOf(shown, now)
     // The mascot walks the band's width above the prompt, what tidying up says beside it.
     const yardColumns = lines.length > 0 ? Math.max(Math.min(columns, YARD_COLUMNS), columns - TIDY_COLUMNS) : columns
-    // A row more of sky for the world tour where the band draws it (the desktop's Svg, a terminal's picture) and has the room.
-    const scenic = settings.scenery && settings.motion === 'smooth' && e.props.maxRows >= BAND_ROWS && !bandFaulted.has(e.surface)
-      && ((e.surface === 'desktop' && settings.mascotArt === 'vector' && 'Svg' in table) || (await picturedOn($, settings, e.surface, table, yardColumns, BAND_ROWS)))
-    const yardRows = scenic ? BAND_ROWS : GRID_ROWS
     let yard: RenderElement | undefined
     if (settings.mascots && settings.sessionMascot === 'band' && yardColumns >= SLOT) {
       try {
-        yard = await bandYard($, settings, e.surface, e.requestId, table, yardColumns, yardRows, now)
+        yard = await bandYard($, settings, e.surface, e.requestId, table, yardColumns, now)
       } catch {
         // Nothing more to draw.
       }
@@ -2681,7 +2671,7 @@ export const register: Register = (on, options) => {
 
     return (
       <Box key="band" flexDirection="row" flexShrink={0}>
-        {yard !== undefined && <Box key="band:yard" width={yardColumns} height={yardRows} flexShrink={0}>{yard}</Box>}
+        {yard !== undefined && <Box key="band:yard" width={yardColumns} height={GRID_ROWS} flexShrink={0}>{yard}</Box>}
         {lines.length > 0 && (
           <Box key="band:tidy" flexDirection="column" flexGrow={1} paddingLeft={yard === undefined ? 0 : 1} justifyContent="flex-end">
             {lines.map((line, index) => (

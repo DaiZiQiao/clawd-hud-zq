@@ -69,12 +69,10 @@ narrow to dock the pane.
 
 - **Its yard.** The band's width (less `TIDY_COLUMNS` while tidying up has
   something to say beside it, never under `YARD_COLUMNS`, 28) and a
-  mascot's 5 rows (`GRID_ROWS`: its sky row and its box), a sixth row of sky
-  with the world tour (`BAND_ROWS`, where the band has the room): a field one
-  row deep, where it strolls the width of the prompt (idle too, till it
-  falls asleep under its blanket), hops and can be picked up and thrown like
-  any mascot. With the world tour behind it, its feet are on the ground and
-  its shadow under it. It is the same scene in the same
+  mascot's 5 rows (`GRID_ROWS`: its sky row and its box): a field one row
+  deep, where it strolls the width of the prompt (idle too, till it falls
+  asleep under its blanket), hops and can be picked up and thrown like any
+  mascot. It is the same scene in the same
   `Client` (`hooks/scene-client.tsx`, keyed `session`), cast with the
   session's mascot alone: `sceneInputsOf(..., { only: 'main' })`. The board
   rides along in its props so that its mood still reads the agents (watching
@@ -217,8 +215,7 @@ the stretch, pick up, dangle, throw and tumble.
   scene and the band's yard are each a picture cut in tiles of 10 by 3 cells
   (`TILE_COLUMNS`, `TILE_ROWS`), each tile a keyed `Image` whose frames
   `$.ui.blit` swaps in from the hooks. A frame writes and swaps only the tiles
-  whose pixels changed, so a mascot walking over the scenery costs the few it
-  is in. The hooks run the scene's world themselves, as the `Client` runs it
+  whose pixels changed, so a mascot walking costs the few it is in. The hooks run the scene's world themselves, as the `Client` runs it
   on its surface. Each frame is rasterized (`rasterOf`, anti-aliased by each
   edge's coverage), its text in a small bitmap font (`hooks/raster-font.ts`),
   the theme keys in the person's theme's dark or light colours, and its
@@ -232,18 +229,18 @@ the stretch, pick up, dangle, throw and tumble.
   still (two a second), and one as a blink begins and as it ends. A picture's
   mascots are drawn calm (`PoseContext.calm`): standing still they do not
   breathe (a body swelling would send all its tiles again), a blink is shut
-  whole while it lasts, and a typing hand strikes a key a frame. The scenery behind is a still picture between its steps
-  (below). A picture sends at most 128 KiB a second (`BYTES_A_SECOND`, twice
+  whole while it lasts, and a typing hand strikes a key a frame. A picture
+  sends at most 128 KiB a second (`BYTES_A_SECOND`, twice
   that at once): past it, its frames wait, whatever moves. It draws again no
   sooner than three times what its last frame took (`PICTURE_SHARE`, four
   frames at most), so a costly frame comes less often instead of making the
   rest late, and a press on it draws at once. Each picture's world steps on
   by the time gone since its last frame (up to `MOST_STEP_MS`), so a late
-  frame is never slow motion. A band 120 cells across sends about 80 to 130
-  KiB a second while its mascot walks (the cap holds it there) and 20 to 40
-  while it works at its laptop, where every frame drawn whole sent over ten
-  times that; the hooks spend a few percent of a core on it. A tile whose swap is refused is swapped in again at the
-  next frame. Over the picture is a `Client` drawing nothing
+  frame is never slow motion. A band 120 cells across sends about 40 KiB a
+  second while its mascot walks and under 10 while it works at its laptop;
+  the hooks spend a few percent of a core on it. A tile whose swap is
+  refused is swapped in again at the next frame. Over the picture is a
+  `Client` drawing nothing
   (`hooks/scene-hit.tsx`). It numbers each pointer event and posts its recent
   ones, so a press, a drag and a throw reach the world whole, and a click
   still asks to inspect.
@@ -258,120 +255,6 @@ the stretch, pick up, dangle, throw and tumble.
   own `Client` with its blocks, for the session. The same happens when swaps
   are refused for three seconds, or the hit layer fails. `mascotArt: blocks`
   keeps the blocks on every surface. The TV (below) is drawn smooth too.
-
-## The world tour
-
-With the vector art and `scenery` on (the default), the mascots stand in a
-world (`hooks/scenery.ts`, its stops drawn in `hooks/scenery-stops.ts`): the
-band's session mascot walks along in front of it, the pane's subagents stand
-in it, both at the same stop at the same hour. The tour goes round the world
-eastward, 33 stops in order of longitude. It stays at each 45 seconds
-(`STAY_MS`), its name and hour there fading in by a pin as it arrives, then
-pans on to the next over 7 seconds, eased. A stop is 110 units of the
-world's strip at its art's scale (`STOP`: 55 cells in the band, more in a
-pane, whose landmarks are drawn bigger), so a wide band shows the stops
-either side of it too, each in its own sky, the skies blending over the seam
-between them.
-
-**Its days.** Each stop is at its own time of day, Greenwich's hour and its
-longitude over 15 (`daylight`: by default a world day goes by in 24 minutes,
-so each time round the tour comes to a stop at a new hour; `real`, its time
-now by its sun). From the hour comes the sun's height, and from that:
-
-- its **sky**, from night through twilight's blues, the sunset's reds and
-  golds and the golden hour to noon's blue, greyer under London's and
-  Stonehenge's clouds, dusty low over the desert, pale low in the mountains'
-  mist;
-- the **sun** on its arc, rising on the left and setting on the right,
-  bigger and golder as it sets (behind a landmark, or into the sea); the
-  **moon** at its real phase, rising later each day, pale by day; the
-  **stars** coming out as it darkens, twinkling; clouds lit from below in the
-  low sun, dark by night;
-- the **land** graded for the hour (a colour matrix): warm in the low sun,
-  dim, blue and greyer by night;
-- its **lights** (windows, floodlights, lanterns, the northern lights,
-  fireflies) fading in at dusk and out at dawn, never dimmed.
-
-| stop | its landmark | by night | its air and weather |
-| --- | --- | --- | --- |
-| Hawaii, USA | Diamond Head over Waikiki, surf rolling in, an outrigger canoe, a surfer, a morning rainbow | hotel windows, torches lit at sunset, the lighthouse | birds |
-| San Francisco, USA | the Golden Gate Bridge, the Marin headlands, a yacht | the towers floodlit, deck lamps, beacons blinking | fog drifting through the towers |
-| Grand Canyon, USA | its buttes and mesas in bands of red and cream, the river far down, the Desert View Watchtower | the tower's window, the Milky Way | desert haze, condors |
-| Easter Island, Chile | the moai on their platform by the sea | the stars | |
-| Chichén Itzá, Mexico | El Castillo over the jungle | El Castillo floodlit | birds |
-| Niagara Falls, Canada | the Horseshoe Falls and their spray, the Maid of the Mist, the Skylon Tower, a rainbow | the falls lit in changing colours | |
-| New York, USA | the skyline, the Statue of Liberty | windows, the torch flickering | |
-| Machu Picchu, Peru | its terraces and peak, a llama | the stars | mountain mist |
-| Rio, Brazil | Christ the Redeemer on Corcovado, Sugarloaf, palms | the statue lit, the city's lights | birds |
-| Stonehenge, UK | the sarsen circle, its trilithons, the Heel Stone, sheep grazing | lanterns of a solstice gathering | grey skies |
-| London, UK | Big Ben (its clock at London's hour), Westminster, a red bus | windows, the clock face, the bus | grey skies, rain |
-| Barcelona, Spain | the Sagrada Família and its crane, the Eixample, the sea | the spires floodlit | |
-| Paris, France | the Eiffel Tower, rooftops, plane trees | the tower gold and sparkling, windows | falling leaves |
-| Amsterdam, Netherlands | windmills turning, canal houses, tulip fields | windows | birds |
-| Neuschwanstein, Germany | the castle on its crag, the Alps, pines | the castle floodlit | birds |
-| Venice, Italy | the Grand Canal's palazzi, St Mark's Campanile, a gondola | lanterns and windows | |
-| Rome, Italy | the Colosseum, cypresses, umbrella pines | the arches floodlit | birds |
-| Tromsø, Norway | snowy fjords, a red cabin, pines | the northern lights, the cabin's window | snow |
-| Santorini, Greece | Oia's white houses and blue domes down the caldera, windmills, a sailing boat | windows all down the cliff | |
-| Giza, Egypt | the pyramids and the Sphinx, palms | floodlit for the night's show | desert haze |
-| Cappadocia, Turkey | the fairy chimneys and their caves, hot-air balloons rising | the chimneys uplit, the balloons glowing | haze |
-| Serengeti, Tanzania | Kilimanjaro, acacias, giraffes | the stars | haze |
-| Petra, Jordan | the Treasury carved in the rose-red rock, the Siq, a camel | Petra by Night's candles | |
-| Moscow, Russia | St Basil's onion domes | floodlit | snow |
-| Dubai, UAE | the Burj Khalifa, the city, the Burj Al Arab, dunes | the city glittering, the Burj's beacon | desert haze |
-| Agra, India | the Taj Mahal and its pool | the Taj lit | haze, fireflies by night |
-| Everest, Nepal | Everest and Lhotse, snow blowing off the summit, prayer flags, base camp | the tents glowing | the cold |
-| Angkor Wat, Cambodia | its five towers, the causeway, the reflecting pool, palms | floodlit, lanterns on the causeway | haze, fireflies by night |
-| Ha Long Bay, Vietnam | karst islands in the mist, a junk with red sails | lanterns | mist |
-| Great Wall, China | the Wall over misty ridges, its towers | lanterns in its towers | mist |
-| Uluru, Australia | the red rock, desert oaks, a kangaroo hopping | the Field of Light | haze |
-| Mt Fuji, Japan | Fuji, a pagoda, a torii, cherry trees | the pagoda's lanterns | falling petals |
-| Sydney, Australia | the Opera House, the Harbour Bridge | the sails lit, the bridge's lights | birds |
-
-- **Its layers.** Back to front: the sky's colours (a rect a stop, the
-  next's faded in over each seam), what is in the sky, the land (still:
-  drawn once per leg in daylight colours, `Land.still`, and seen from where
-  a pan has got to, `Land.shift`), its lights, what moves on it, the stop's
-  name (`Land.caption`), the weather, the mascots and their shadows, then the
-  motes nearest the eye. Only the stops whose art reaches the view are
-  drawn.
-- **The ground.** Its field begins a little behind the back row's feet, each
-  stop's ground blending into the next's; nearer it is darker, and it has
-  its texture (tufts, ripples of sand, drifts of snow, paving stones).
-- **In a terminal's picture** (`smoothPixels`) the scenery is a still
-  picture: it moves on (its sky and light, its boats, its weather) every 15
-  seconds (`PICTURE_SCENERY_MS`), and goes on to the next stop at once,
-  halfway through what would be the pan's time, never panning; the stop's
-  name is drawn as it is now, over it. A frame between is the mascots over
-  the pixels kept. The sky and the still land are kept as one layer
-  (`Scenery.still`), what moves on the land and the weather as another
-  (`Scenery.behind`), each by the light the land is lit for
-  (`hooks/scenery-pixels.ts`). The still land is rasterized once a leg in
-  daylight colours, graded for the hour column by column with its lights
-  laid over, and kept until its light changes (`Land.litKey`, a
-  two-hundredth of the sun's height). That work is done a few shapes or
-  sixteen rows at a time, 4 ms of each timer's frame (`workScenery`): the
-  next leg's land and its light drawn ahead (`prefetchScenery`); a new light
-  is drawn in the frame the scenery steps on in, so the picture is sent once
-  for it. Each picture keeps its own (`SceneryPicture`): its leg's land and
-  the next one's, no other.
-- **On the desktop** (`smoothSvg`) the scenery is two `Svg`s under the
-  mascots' (`pixelsOf`): the sky and the still land of the stops in view
-  (`Land.parts`) with their lights, a document that changes only as the sky
-  or the light moves on (twice a second at most while the tour stays), and
-  over it what moves on the land, the stop's name and the weather, at each
-  of the scenery's steps; the mascots' small `Svg` changes every frame.
-  While the tour pans, the scenery changes every frame too, so the pan is
-  smooth. Shapes painted alike are one path each (`partMarkup`'s `merged`),
-  the still land relit as shapes and kept by `Land.litKey`. Short of room
-  (90,000 characters for the three `Svg`s together), it gives up the
-  ground's texture first, then the weather, the sky's sun, moon, stars and
-  clouds, what moves on the land, then the lights, never a mascot for it,
-  and the stop's name last. A band up to about 150 cells across has room for
-  all of it; a wider one, two times in three, else mostly without the
-  texture; a pane with several agents mostly leaves out the texture.
-- Off (`scenery: false`), or with the block art, the scene is drawn as
-  before: no world, the band its usual five rows.
 
 ## Layout
 

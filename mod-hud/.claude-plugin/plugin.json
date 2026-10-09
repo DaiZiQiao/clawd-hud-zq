@@ -1,11 +1,11 @@
 {
   "name": "mod-hud",
-  "version": "1.7.0",
+  "version": "1.8.0",
   "author": {
     "name": "Dai Zi Qiao",
     "url": "https://github.com/DaiZiQiao"
   },
-  "description": "A side pane, toggled by /mod-hud: a HUD of the session (header, alerts, then session, context and prompt cache, limits, usage and todos in labelled sections) above every subagent in it (type, model, status, elapsed time, tool calls, current tool, result), with an opt-in status line; the session's own mascot walks the band above the prompt and tidies the conversation up (compacts it) when its context has grown; in the desktop app and in Ghostty or kitty the mascots are smooth vector art, on a tour of the world's wonders.",
+  "description": "A side pane, toggled by /mod-hud: a HUD of the session (header, alerts, then session, context and prompt cache, limits, usage and todos in labelled sections) above every subagent in it (type, model, status, elapsed time, tool calls, current tool, result), with an opt-in status line; the session's own mascot walks the band above the prompt and tidies the conversation up (compacts it) when its context has grown; in the desktop app and in Ghostty or kitty the mascots are smooth vector art.",
   "types": "./types/index.d.ts",
   "userConfig": {
     "stalledAfterSec": {
@@ -113,20 +113,8 @@
     "mascotArt": {
       "type": "string",
       "title": "Mascot art",
-      "description": "vector (default): in the desktop app, and in Ghostty or kitty (known by their own environment variables, never under tmux), the mascots are drawn shapes that move smoothly, every pose eased into the next (30 frames a second on the desktop; in a terminal a lighter 8, the scenery a still picture between its steps); blocks: the block characters there too. Other terminals (macOS Terminal, Windows Terminal) and VS Code draw the blocks either way, as does a terminal that refuses a picture. The scene needs motion smooth for it; the TV is drawn smooth with either motion.",
+      "description": "vector (default): in the desktop app, and in Ghostty or kitty (known by their own environment variables, never under tmux), the mascots are drawn shapes that move smoothly, every pose eased into the next (30 frames a second on the desktop; in a terminal a lighter 8); blocks: the block characters there too. Other terminals (macOS Terminal, Windows Terminal) and VS Code draw the blocks either way, as does a terminal that refuses a picture. The scene needs motion smooth for it; the TV is drawn smooth with either motion.",
       "default": "vector"
-    },
-    "scenery": {
-      "type": "boolean",
-      "title": "World tour",
-      "description": "With the vector art, the mascots tour the world's wonders behind them, in the band and the pane: a stop at each landmark in its own weather (Big Ben in the rain, Mount Fuji in cherry blossom, snow in Tromsø, and more) and at its own time of day (see daylight), its name and hour shown as it arrives, then a pan to the next (in Ghostty or kitty, a cut).",
-      "default": true
-    },
-    "daylight": {
-      "type": "string",
-      "title": "World tour's days",
-      "description": "fast (default): a world day goes by in 24 minutes, each stop at its own hour by its longitude, so the tour sees each one at a new time of day each time round: dawn, the golden hour, noon, sunset, dusk and night (its lights on, the moon at its real phase and the stars out). real: each stop at its time of day now, by its sun.",
-      "default": "fast"
     },
     "todoRows": {
       "type": "number",

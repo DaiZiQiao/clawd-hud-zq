@@ -2,16 +2,15 @@ import type { JsonValue } from 'claude-code'
 import { describe, expect, mock, test } from 'claude-code/testing'
 
 import type { HudSelection } from '../types'
-import { IDENTITY, documentOf, rasterOf, scale, shapesMarkup } from './clawd-vector'
+import { IDENTITY, rasterOf, scale, svgOf } from './clawd-vector'
 import { CROWN } from './mascot-sprites'
 import { base64Of, deflate, pngOf } from './png'
 import { bytesOf, countColour, inflate, pngPixels } from './png.fixtures'
 import { glyphShapes, textWidth } from './raster-font'
 import { arrange, mount } from './scene-client.fixtures'
-import { BYTES_A_SECOND, IMAGE_FRAME_MS, PICTURE_SCENERY_MS, STILL_EVERY, TILE_COLUMNS, TILE_ROWS, cellPixels, createStage, hitsOf, refusedTiles, restage, stageHits, stageTick, stageTiles, tilesOf } from './scene-image'
+import { BYTES_A_SECOND, IMAGE_FRAME_MS, STILL_EVERY, TILE_COLUMNS, TILE_ROWS, cellPixels, createStage, hitsOf, refusedTiles, restage, stageHits, stageTick, stageTiles, tilesOf } from './scene-image'
 import type { HitEvent, Stage, Tile } from './scene-image'
 import type { SceneInputs } from './scene-types'
-import { LEG_MS, STAY_MS } from './scenery'
 import { TYPIST, inputs, press } from './scene-world.fixtures'
 import { USAGI } from './usagi-sprites'
 
@@ -96,7 +95,7 @@ describe('the rasterizer', () => {
     expect(outlined(1.5, 1.5)).toEqual([255, 0, 0, 255])
     expect(outlined(0.75, 1.5)).toEqual([0, 0, 255, 255])
     expect(outlined(0.25, 1.5)[3]).toBe(0)
-    const svg = documentOf(shapesMarkup([line, square], IDENTITY), 24, 24)
+    const svg = svgOf([line, square], 24, 24, IDENTITY)
     expect(svg).toContain(`<polyline points='0.5,0.5 2.5,0.5 2.5,2.5' fill='none' stroke='#FF0000' stroke-width='0.5' stroke-linecap='round' stroke-linejoin='round'/>`)
     expect(svg).toContain(`fill='#FF0000' stroke='#0000FF' stroke-width='1' stroke-linejoin='round' paint-order='stroke'`)
   })
@@ -175,7 +174,7 @@ describe('the stage', () => {
   })
 
   test('its pace: a tile refused is swapped in again at the next frame, due or not; a press draws at once; past its bytes a second it waits, whatever moves', () => {
-    const stage = createStage(inputs([TYPIST], { columns: 60, rows: 10, art: 'vector', scenery: 'fast' }))
+    const stage = createStage(inputs([TYPIST], { columns: 60, rows: 10, art: 'vector' }))
     stageTiles(stage, 'dark')
     const [tile] = stage.tiles ?? []
     if (tile === undefined) throw new Error('no tiles')
@@ -194,30 +193,6 @@ describe('the stage', () => {
     expect(stageTick(stage, IMAGE_FRAME_MS, 'dark')).toEqual([])
     stage.still = false
     expect(stageTick(stage, 1000, 'dark')).toHaveLength(tilesOf(60, 10).length)
-  })
-
-  test('its scenery a still picture: held PICTURE_SCENERY_MS between its steps, the stop\'s name over it as the tour arrives; on to the next stop at once, never panning', () => {
-    const leg = Math.ceil(1_800_000_000_000 / LEG_MS)
-    const stage = createStage(inputs([TYPIST], { columns: 60, rows: 10, art: 'vector', scenery: 'fast', now: leg * LEG_MS + 1000 }))
-    stageTiles(stage, 'dark')
-    const at = (now: number): void => {
-      restage(stage, { ...stage.world.props, now })
-      stage.still = false
-      stage.wait = 0
-      stage.allowance = BYTES_A_SECOND
-      stageTick(stage, IMAGE_FRAME_MS, 'dark')
-    }
-    at(leg * LEG_MS + 1000)
-    const first = stage.held
-    at(leg * LEG_MS + 1000 + PICTURE_SCENERY_MS / 2)
-    expect(stage.held).toBe(first)
-    at(leg * LEG_MS + 1000 + PICTURE_SCENERY_MS + 100)
-    expect(stage.held).toBeGreaterThan(first ?? Infinity)
-    // Its land the leg's own as a pan would begin, the next stop's halfway through it.
-    at(leg * LEG_MS + STAY_MS + 1000)
-    expect(stage.ahead).toContain(`:${leg}:`)
-    at(leg * LEG_MS + STAY_MS + (LEG_MS - STAY_MS) / 2 + 100)
-    expect(stage.ahead).toContain(`:${leg + 1}:`)
   })
 
   test('the hit layer\'s posts: read back oldest first, anything else none; each event taken once; a layer mounted afresh counts again', () => {
@@ -347,8 +322,8 @@ describe('in a terminal that shows pictures', () => {
     }), { width: 8, height: 16 })
     expect(picture.width).toBe(Number(hit?.props.width) * 8)
     expect(countColour(picture, CROWN.colour)).toBeGreaterThan(5)
-    // The world behind it: the ground under its feet is drawn, edge to edge.
-    for (const x of [0, picture.width - 1]) expect(picture.pixels[((picture.height - 1) * picture.width + x) * 4 + 3]).toBe(255)
+    // Nothing behind it: the band shows through at its corners.
+    for (const x of [0, picture.width - 1]) expect(picture.pixels[((picture.height - 1) * picture.width + x) * 4 + 3]).toBe(0)
     await ui.unmount()
   })
 
