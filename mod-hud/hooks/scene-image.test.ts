@@ -8,8 +8,8 @@ import { base64Of, deflate, pngOf } from './png'
 import { bytesOf, countColour, inflate, pngPixels } from './png.fixtures'
 import { glyphShapes, textWidth } from './raster-font'
 import { arrange, mount } from './scene-client.fixtures'
-import { IMAGE_FRAME_MS, STILL_EVERY, cellPixels, createStage, hitsOf, restage, stageFrame, stageHits, stageTick } from './scene-image'
-import type { HitEvent } from './scene-image'
+import { IMAGE_FRAME_MS, STILL_EVERY, TILE_COLUMNS, TILE_ROWS, cellPixels, createStage, hitsOf, restage, stageHits, stageTick, stageTiles, tilesOf } from './scene-image'
+import type { HitEvent, Stage, Tile } from './scene-image'
 import type { SceneInputs } from './scene-types'
 import { TYPIST, inputs, press } from './scene-world.fixtures'
 import { USAGI } from './usagi-sprites'
@@ -19,6 +19,20 @@ import { USAGI } from './usagi-sprites'
 // drawing an Image the hooks swap frames into, a hit layer over it.
 
 const CLAWD_BODY = '#D77757'
+
+/** A picture's tiles put back together: its pixels as one. */
+const joined = (tiles: readonly Pick<Tile, 'x' | 'y' | 'png'>[], cell: { width: number; height: number }): { width: number; height: number; pixels: Uint8Array } => {
+  const parts = tiles.map(tile => ({ tile, picture: pngPixels(tile.png) }))
+  const width = Math.max(...parts.map(({ tile, picture }) => tile.x * cell.width + picture.width))
+  const height = Math.max(...parts.map(({ tile, picture }) => tile.y * cell.height + picture.height))
+  const pixels = new Uint8Array(width * height * 4)
+  for (const { tile, picture } of parts) for (let y = 0; y < picture.height; y += 1) pixels.set(picture.pixels.subarray(y * picture.width * 4, (y + 1) * picture.width * 4), ((tile.y * cell.height + y) * width + tile.x * cell.width) * 4)
+
+  return { width, height, pixels }
+}
+
+/** A stage's picture now, its tiles put back together. */
+const pictureOf = (stage: Stage): { width: number; height: number; pixels: Uint8Array } => joined(stageTiles(stage, 'dark'), stage.cell)
 
 // The terminals the engine draws an Image in, as their environment says so.
 const GHOSTTY = { TERM: 'xterm-ghostty', TERM_PROGRAM: 'ghostty' }
@@ -105,11 +119,20 @@ describe('the raster font', () => {
 })
 
 describe('the stage', () => {
-  test('a frame is a PNG of the region: its cells 8 by 16 pixels, twice that for a small region; the mascots in their colours on a clear ground', () => {
+  test('a frame is the region in tiles, each a PNG: its cells 8 by 16 pixels, twice that for a small region; the mascots in their colours on a clear ground', () => {
     expect(cellPixels(72, 12)).toEqual({ width: 8, height: 16 })
     expect(cellPixels(28, 5)).toEqual({ width: 16, height: 32 })
+    // Tiles cover the region exactly, row by row, the last of each smaller.
+    expect(tilesOf(45, 12)).toEqual([
+      { x: 0, y: 0, columns: TILE_COLUMNS, rows: TILE_ROWS },
+      { x: 20, y: 0, columns: TILE_COLUMNS, rows: TILE_ROWS },
+      { x: 40, y: 0, columns: 5, rows: TILE_ROWS },
+      { x: 0, y: 10, columns: TILE_COLUMNS, rows: 2 },
+      { x: 20, y: 10, columns: TILE_COLUMNS, rows: 2 },
+      { x: 40, y: 10, columns: 5, rows: 2 },
+    ])
     const stage = createStage(inputs([TYPIST], { columns: 60, rows: 10, art: 'vector' }))
-    const picture = pngPixels(stageFrame(stage, 'dark'))
+    const picture = pictureOf(stage)
     expect([picture.width, picture.height]).toEqual([60 * 8, 10 * 16])
     expect(countColour(picture, CLAWD_BODY)).toBeGreaterThan(200)
     expect(countColour(picture, CROWN.colour)).toBeGreaterThan(5)
@@ -123,25 +146,29 @@ describe('the stage', () => {
 
   test('Usagi\'s frame in its own colours: cream, its thin dark line', () => {
     const stage = createStage(inputs([TYPIST], { columns: 60, rows: 10, art: 'vector', character: 'usagi' }))
-    const picture = pngPixels(stageFrame(stage, 'dark'))
+    const picture = pictureOf(stage)
     expect(countColour(picture, USAGI.cream)).toBeGreaterThan(200)
     expect(countColour(picture, USAGI.line)).toBeGreaterThan(40)
     expect(countColour(picture, CLAWD_BODY)).toBeLessThan(40)
   })
 
-  test('the timer\'s frame: the world on by a step, the picture every frame while anything moves, every third while all stand still, nothing when unchanged or paused', () => {
+  test('the timer\'s frame: the world on by a step, the tiles that changed every frame while anything moves, every third while all stand still; none when unchanged, not due, or paused', () => {
     const stage = createStage(inputs([TYPIST], { columns: 60, rows: 10, art: 'vector' }))
-    stage.png = stageFrame(stage, 'dark')
+    stageTiles(stage, 'dark')
     const before = stage.world.ms
-    const drawn: (string | undefined)[] = []
+    const drawn: Tile[][] = []
     for (let index = 0; index < 3 * STILL_EVERY; index += 1) drawn.push(stageTick(stage, IMAGE_FRAME_MS, 'dark'))
     expect(stage.world.ms).toBe(before + 3 * STILL_EVERY * IMAGE_FRAME_MS)
-    // At work and breathing: still, so a frame every third.
+    // At work and breathing: still, so a frame every third, and of it only the tiles the mascot is in.
     expect(stage.still).toBe(true)
-    expect(drawn.filter(one => one !== undefined).length).toBeLessThanOrEqual(3)
-    expect(drawn.filter(one => one !== undefined).length).toBeGreaterThanOrEqual(1)
+    expect(drawn.filter(one => one.length > 0).length).toBeLessThanOrEqual(3)
+    expect(drawn.filter(one => one.length > 0).length).toBeGreaterThanOrEqual(1)
+    expect(Math.max(...drawn.map(one => one.length))).toBeLessThan(tilesOf(60, 10).length)
+    // Not due: the world steps on (by the time gone), nothing drawn.
+    expect(stageTick(stage, 70, 'dark', false)).toEqual([])
+    expect(stage.world.ms).toBe(before + 3 * STILL_EVERY * IMAGE_FRAME_MS + 70)
     restage(stage, { ...stage.world.props, paused: true })
-    expect(stageTick(stage, IMAGE_FRAME_MS, 'dark')).toBe(undefined)
+    expect(stageTick(stage, IMAGE_FRAME_MS, 'dark')).toEqual([])
   })
 
   test('the hit layer\'s posts: read back oldest first, anything else none; each event taken once; a layer mounted afresh counts again', () => {
@@ -149,7 +176,7 @@ describe('the stage', () => {
     expect(hitsOf({ hits: [] })).toBe(undefined)
     expect(hitsOf({ layer: 'x', hits: [{ seq: 2, type: 'up', x: 1, y: 1 }, { seq: 1, type: 'down', x: 1, y: 1 }, { seq: 3, type: 'jump', x: 1, y: 1 }, 'z'] })?.hits.map(one => one.seq)).toEqual([1, 2])
     const stage = createStage(inputs([TYPIST], { columns: 100, rows: 16, art: 'vector' }))
-    stageFrame(stage, 'dark')
+    stageTiles(stage, 'dark')
     const at = press(stage.world, 'a')
     const asks: JsonValue[] = []
     const click: HitEvent[] = [{ seq: 1, type: 'down', ...at, button: 'left' }, { seq: 2, type: 'up', ...at, button: 'left' }]
@@ -190,26 +217,30 @@ const blits = (on: Parameters<typeof arrange>[0]) => {
 }
 
 describe('in a terminal that shows pictures', () => {
-  test('the pane\'s scene is an Image the region\'s size, the hit layer over it; the hooks swap a frame in on their clock', { timeoutMs: 20_000 }, async ($, on) => {
+  test('the pane\'s scene is tiles of Images over the region, the hit layer over them; the hooks swap in the tiles that changed on their clock', { timeoutMs: 20_000 }, async ($, on) => {
     const { clock } = arrange(on, [TYPIST])
     mock.env(on, GHOSTTY)
     const { sent } = blits(on)
     const ui = await mount($, 'terminal')
-    const image = await ui.find({ type: 'Image' })
-    expect(image?.key).toBe('mascots:picture')
+    const images = await ui.findAll({ type: 'Image' })
+    expect(images[0]?.key).toBe('mascots:picture:0:0')
     const hit = await ui.find({ type: 'Client' })
     expect(hit?.key).toBe('mascots')
     expect(hit?.props.module).toBe('hooks/scene-hit.tsx')
-    expect([image?.props.columns, image?.props.rows]).toEqual([hit?.props.width, hit?.props.height])
-    const first = pngPixels(String((image?.props.source as { png: string }).png))
-    expect(first.width).toBe(Number(image?.props.columns) * 8)
+    const tiles = images.map(image => {
+      const [x = 0, y = 0] = String(image.key).split(':').slice(-2).map(Number)
+
+      return { x, y, columns: Number(image.props.columns), rows: Number(image.props.rows), png: String((image.props.source as { png: string }).png) }
+    })
+    expect(tiles.map(({ x, y, columns, rows }) => ({ x, y, columns, rows }))).toEqual(tilesOf(Number(hit?.props.width), Number(hit?.props.height)))
+    const first = joined(tiles, { width: 8, height: 16 })
+    expect(first.width).toBe(Number(hit?.props.width) * 8)
     expect(countColour(first, CLAWD_BODY)).toBeGreaterThan(100)
     // No scene module in the terminal: the hooks run its world.
     expect((await ui.findAll({ type: 'Client' })).map(one => one.props.module)).toEqual(['hooks/scene-hit.tsx'])
     await clock.advance(IMAGE_FRAME_MS * STILL_EVERY * 4)
     expect(sent.length).toBeGreaterThan(0)
-    expect(sent.every(one => one.requestId === 'hud' && one.key === 'mascots:picture')).toBe(true)
-    expect(pngPixels(sent[sent.length - 1]!.png).width).toBe(first.width)
+    expect(sent.every(one => one.requestId === 'hud' && tiles.some(tile => one.key === `mascots:picture:${tile.x}:${tile.y}`))).toBe(true)
     await ui.unmount()
   })
 
@@ -256,11 +287,16 @@ describe('in a terminal that shows pictures', () => {
     mock.env(on, GHOSTTY)
     blits(on)
     const ui = await $.ui.mount({ plugin: 'mod-hud', surface: 'terminal', component: 'AbovePrompt', props: { hasSurvey: false, isWorking: false, maxRows: 12, bodyColumns: 100, scroll: { offset: 0, bodyRows: 12 }, view: {} }, requestId: 'band', viewport: { columns: 160, rows: 40, isFullscreen: true } })
-    const image = await ui.find({ type: 'Image' })
-    expect(image?.key).toBe('session:picture')
-    expect((await ui.find({ type: 'Client' }))?.key).toBe('session')
-    const picture = pngPixels(String((image?.props.source as { png: string }).png))
-    expect(picture.width).toBe(Number(image?.props.columns) * 8)
+    const images = await ui.findAll({ type: 'Image' })
+    expect(images[0]?.key).toBe('session:picture:0:0')
+    const hit = await ui.find({ type: 'Client' })
+    expect(hit?.key).toBe('session')
+    const picture = joined(images.map(image => {
+      const [x = 0, y = 0] = String(image.key).split(':').slice(-2).map(Number)
+
+      return { x, y, png: String((image.props.source as { png: string }).png) }
+    }), { width: 8, height: 16 })
+    expect(picture.width).toBe(Number(hit?.props.width) * 8)
     expect(countColour(picture, CROWN.colour)).toBeGreaterThan(5)
     // The world behind it: the ground under its feet is drawn, edge to edge.
     for (const x of [0, picture.width - 1]) expect(picture.pixels[((picture.height - 1) * picture.width + x) * 4 + 3]).toBe(255)

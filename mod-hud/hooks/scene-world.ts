@@ -23,6 +23,12 @@ import type { Seen } from './scene-view'
  */
 export const FRAME_MS = 50
 
+/** The most a frame steps the world on, however late it comes: a stall is a pause, never a leap. */
+export const MOST_STEP_MS = 250
+
+/** The runtime's clock in ms where it has one (`performance.now`): how long a frame took, how late one came. */
+export const clockMs = (): number | undefined => (globalThis as { performance?: { now?: () => number } }).performance?.now?.()
+
 /** A landing's squash, a wobble after a bounce, a flier's wobble after a bonk, a ride on a flier. */
 export const SQUASH_MS = 150
 export const WOBBLE_MS = 700

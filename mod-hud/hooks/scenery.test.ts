@@ -2,8 +2,8 @@ import { describe, expect, test } from 'claude-code/testing'
 
 import { graded, overlay, paintRects, partMarkup, rgbOf, scale } from './clawd-vector'
 import type { Shape } from './clawd-vector'
-import { smoothPixels, smoothSvg } from './scene-smooth'
-import { STAY_MS, litLights, sceneryOf } from './scenery'
+import { SCENERY_STEP_MS, smoothPixels, smoothSvg } from './scene-smooth'
+import { SKY_MS, STAY_MS, litLights, sceneryOf } from './scenery'
 import type { Scenery } from './scenery'
 import { STOPS } from './scenery-stops'
 
@@ -51,8 +51,10 @@ describe('the tour', () => {
   })
 
   test('it stays, then pans on to the next stop: the leg\'s strip kept, seen from further along each frame', () => {
+    // The strip the leg's own, its stay and its pan: from the stop in the middle on to the next.
     const stay = sceneryAt(ROUND + 10_000).land
-    expect([stay.shift, stay.span]).toEqual([0, 240])
+    expect(stay.shift).toBe(0)
+    expect(stay.span).toBeGreaterThan(240 + 100)
     // Through the pan's seven seconds, to the last millisecond before the next stay.
     const shifts = Array.from({ length: 8 }, (_, step) => sceneryAt(ROUND + STAY_MS + 1 + step * 999.8).land)
     expect(new Set(shifts.map(one => one.key)).size).toBe(1)
@@ -123,7 +125,7 @@ describe('its days', () => {
     expect(seams.length).toBeGreaterThan(0)
     for (const seam of seams) expect(seam.fade).toEqual([seam.x, seam.x + seam.w])
     expect(scenery.sky.top).toBeGreaterThan(0)
-    const svg = smoothSvg({ shapes: [], wholes: [], width: 240, height: 24, still: false, scenery }, 120, 6, 90_000).source
+    const svg = smoothSvg({ shapes: [], wholes: [], width: 240, height: 24, still: false, scenery }, 120, 6, 90_000).scenery ?? ''
     expect(svg).toContain(`<g mask='url(#sky)'>`)
     expect((svg.match(/<mask /g) ?? []).length).toBe(seams.length + 1)
   })
@@ -191,7 +193,11 @@ describe('on the desktop', () => {
   test('the scenery takes what room the mascots leave: never a mascot for it; short of room, the ground\'s texture goes first, then the weather, the sky\'s sun and stars, what moves on the land, then all of it', () => {
     const scenery = sceneryAt(visit('ROME · ITALY', 12.5, 5000), 'real')
     const mascot = (size: number): Shape[] => Array.from({ length: size }, (_, index) => ({ kind: 'ellipse', x: index % 200, y: 10, w: 1.3, h: 1.1, fill: '#D77757' }))
-    const svg = (shapes: Shape[]) => smoothSvg({ shapes, wholes: [[0, shapes.length]], width: 240, height: 24, still: false, scenery }, 120, 6, 90_000).source
+    const svg = (shapes: Shape[]) => {
+      const drawn = smoothSvg({ shapes, wholes: [[0, shapes.length]], width: 240, height: 24, still: false, scenery }, 120, 6, 90_000)
+
+      return drawn.source + (drawn.scenery ?? '')
+    }
     const roomy = svg(mascot(10))
     expect(roomy).toContain('linearGradient')
     // The sun and the stop's name, while there is room.
@@ -216,5 +222,50 @@ describe('on the desktop', () => {
     expect(keyAt(dusk + 33)).toBe(keyAt(dusk))
     expect(keyAt(dusk + 30_000)).not.toBe(keyAt(dusk))
     for (const hour of [11.5, 23.5]) expect(keyAt(visit('ROME · ITALY', hour, 2000, 'fast') + 40_000)).toBe(keyAt(visit('ROME · ITALY', hour, 2000, 'fast')))
+  })
+})
+
+describe('drawn only when it changes', () => {
+  const held = (now: number): number => now - (now % SCENERY_STEP_MS)
+
+  test('what is behind the mascots holds between its steps (its weather, boats and sails), the sky and the light between theirs; the pan alone moves on every frame', () => {
+    const now = held(ROUND + 10_000)
+    const first = sceneryOf(240, 24, 20, now, 'fast', now)
+    const later = sceneryOf(240, 24, 20, now + 60, 'fast', now)
+    expect(later.behind).toBe(first.behind)
+    expect(JSON.stringify([later.land.moving, later.weather, later.front, later.sky])).toBe(JSON.stringify([first.land.moving, first.weather, first.front, first.sky]))
+    // A step on, what moves has moved; the sky waits for its own.
+    const next = sceneryOf(240, 24, 20, now + SCENERY_STEP_MS, 'fast', now + SCENERY_STEP_MS)
+    expect(next.behind).not.toBe(first.behind)
+    if (Math.floor(now / SKY_MS) === Math.floor((now + SCENERY_STEP_MS) / SKY_MS)) expect(next.still).toBe(first.still)
+    // Panning on, the sky and the land move every frame.
+    const pan = held(ROUND + STAY_MS + 2000)
+    expect(sceneryOf(240, 24, 20, pan + 33, 'fast', pan).still).not.toBe(sceneryOf(240, 24, 20, pan, 'fast', pan).still)
+  })
+
+  test('on the desktop the scenery is a document of its own, the very same string between its steps; the mascots\' document over it every frame', () => {
+    const now = held(ROUND + 10_000)
+    const mascot: Shape = { kind: 'ellipse', x: 100, y: 10, w: 1.3, h: 1.1, fill: '#D77757' }
+    const draw = (at: number, x: number) => smoothSvg({ shapes: [{ ...mascot, x }], wholes: [[0, 1]], width: 240, height: 24, still: false, scenery: sceneryOf(240, 24, 20, at, 'fast', now) }, 120, 6, 90_000)
+    const first = draw(now, 100)
+    const later = draw(now + 40, 101)
+    expect(first.scenery).toBeDefined()
+    expect(later.scenery).toBe(first.scenery)
+    expect(later.source).not.toBe(first.source)
+    expect(first.source).toContain(`fill='#D77757'`)
+    expect(first.scenery).not.toContain(`fill='#D77757'`)
+  })
+
+  test('in a picture, a frame between the scenery\'s steps is its pixels kept, the mascots over them: only where a mascot moved do two differ', () => {
+    const now = held(ROUND + 10_000)
+    const mascot: Shape = { kind: 'rect', x: 100, y: 10, w: 4, h: 6, fill: '#D77757' }
+    const draw = (at: number, x: number) => smoothPixels({ shapes: [{ ...mascot, x }], wholes: [[0, 1]], width: 240, height: 24, still: false, scenery: sceneryOf(240, 24, 20, at, 'fast', now) }, 120, 6, { width: 8, height: 16 })
+    const first = draw(now, 100)
+    const later = draw(now + 40, 110)
+    const changed = new Set<number>()
+    for (let at = 0; at < first.pixels.length; at += 4) if (first.pixels[at] !== later.pixels[at] || first.pixels[at + 1] !== later.pixels[at + 1] || first.pixels[at + 2] !== later.pixels[at + 2]) changed.add(Math.floor((at / 4) % first.width / 4))
+    // Units 100 to 104 (the mascot's first place) and 110 to 114 (its next), each four pixels across: nothing else.
+    expect([...changed].every(unit => (unit >= 99 && unit <= 104) || (unit >= 109 && unit <= 114))).toBe(true)
+    expect(changed.size).toBeGreaterThan(0)
   })
 })

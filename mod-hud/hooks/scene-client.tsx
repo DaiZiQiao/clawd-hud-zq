@@ -39,6 +39,8 @@ type State = {
 /** The vector art's frame: thirty a second, where the cells step at FRAME_MS. */
 export const VECTOR_FRAME_MS = 33
 
+
+
 /** Each world's eased poses, kept with it from frame to frame. */
 const smoothers = new WeakMap<World, Smoother>()
 
@@ -62,20 +64,32 @@ export type SceneElements = Pick<ClientElements, 'Box' | 'Text'> & { Svg?: Eleme
 const svgOf = (elements: SceneElements): ElementConstructor<SvgProps> => elements.Svg ?? (props => h('Svg', props) as RenderElement)
 
 /**
- * The scene in pixels: the `Svg` the region's size, and over it a box as big
- * with nothing in it, the region's hit layer. The desktop draws an `Svg` as an
- * image, and a press on an image starts the page's own drag of it, which
+ * The scene in pixels: the `Svg` the region's size (over the scenery's own,
+ * when it has one: a document that stays the same while what is behind the
+ * mascots does, so the page draws it again only then), and over them a box as
+ * big with nothing in it, the region's hit layer. The desktop draws an `Svg`
+ * as an image, and a press on an image starts the page's own drag of it, which
  * takes the pointer's moves and its release from the region: the layer over it
  * is what the press lands on, so the region's `onPointer` hears the whole
  * gesture; whose mascot was pressed still comes from the frame's cells.
  */
-const pixelsOf = (elements: SceneElements, drawn: SceneSvg, room: { columns: number; rows: number }): RenderElement => {
+const pixelsOf = (elements: SceneElements, drawn: SceneSvg & { scenery?: string }, room: { columns: number; rows: number }): RenderElement => {
   const { Box } = elements
   const Svg = svgOf(elements)
+  const mascots = <Svg source={drawn.source} alt={drawn.alt} width={drawn.width} height={drawn.height} />
 
   return (
     <Box key="scene" width={room.columns} height={room.rows} flexShrink={0}>
-      <Svg source={drawn.source} alt={drawn.alt} width={drawn.width} height={drawn.height} />
+      {drawn.scenery === undefined ? (
+        mascots
+      ) : (
+        <Box key="layers" width={room.columns} height={room.rows}>
+          <Svg key="scenery" source={drawn.scenery} alt=" " width={drawn.width} height={drawn.height} />
+          <Box key="figures" position="absolute" top={0} left={0} width={room.columns} height={room.rows}>
+            {mascots}
+          </Box>
+        </Box>
+      )}
       <Box position="absolute" top={0} left={0} width={room.columns} height={room.rows} />
     </Box>
   )
@@ -118,7 +132,7 @@ export const draw = (world: World, elements: SceneElements): RenderElement => {
   if (!pixels) return renderCanvas(elements, canvas.grid, 'scene')
   const alt = sceneAlt(scene, canvas.layers, plan.collapsed.length)
   // The vector art: the same plan and view, each mascot's pose eased from its last frame.
-  const frame = world.props.art === 'vector' ? smoothFrame(scene, layout, plan, view.sprites, smootherOf(world), world.sceneNow, world.props.scenery ?? false) : undefined
+  const frame = world.props.art === 'vector' ? smoothFrame(scene, layout, plan, view.sprites, smootherOf(world), world.sceneNow, world.props.scenery === undefined ? false : { daylight: world.props.scenery }) : undefined
   if (frame !== undefined) return pixelsOf(elements, { ...smoothSvg(frame, room.columns, room.rows, SVG_MAX), alt }, room)
 
   return pixelsOf(elements, sceneSvg(canvas.layers, room, alt), room)

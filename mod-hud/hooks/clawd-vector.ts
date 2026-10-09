@@ -451,6 +451,8 @@ const layPixel = (pixels: Uint8Array, at: number, r: number, g: number, b: numbe
  */
 export const overlay = (below: Uint8Array, above: Uint8Array, width: number, stride = width, from = 0, grades?: readonly (Grade | undefined)[]): void => {
   const rows = below.length / (4 * width)
+  // Ungraded, an opaque pixel is copied whole, four bytes at once, where both sit on four-byte bounds.
+  const words = below.byteOffset % 4 === 0 && above.byteOffset % 4 === 0 ? { below: new Uint32Array(below.buffer, below.byteOffset, below.length / 4), above: new Uint32Array(above.buffer, above.byteOffset, above.length / 4) } : undefined
   // A column at a time, its grade's numbers at hand.
   for (let x = 0; x < width; x += 1) {
     const grade = grades?.[x]
@@ -460,11 +462,21 @@ export const overlay = (below: Uint8Array, above: Uint8Array, width: number, str
     for (let y = 0, at = (from + x) * 4, to = x * 4; y < rows; y += 1, at += stride * 4, to += width * 4) {
       const a = above[at + 3] ?? 0
       if (a === 0) continue
+      if (grade === undefined && a === 255 && words !== undefined) {
+        words.below[to / 4] = words.above[at / 4] ?? 0
+        continue
+      }
       const r = above[at] ?? 0
       const g = above[at + 1] ?? 0
       const b = above[at + 2] ?? 0
       if (grade === undefined) layPixel(below, to, r, g, b, a / 255)
-      else layPixel(below, to, channel(rr * r + rg * g + rb * b + ar), channel(gr * r + gg * g + gb * b + ag), channel(br * r + bg * g + bb * b + ab), a * scale)
+      else if (a === 255 && scale === 1 / 255) {
+        // Opaque and graded: the graded colour itself.
+        below[to] = channel(rr * r + rg * g + rb * b + ar)
+        below[to + 1] = channel(gr * r + gg * g + gb * b + ag)
+        below[to + 2] = channel(br * r + bg * g + bb * b + ab)
+        below[to + 3] = 255
+      } else layPixel(below, to, channel(rr * r + rg * g + rb * b + ar), channel(gr * r + gg * g + gb * b + ag), channel(br * r + bg * g + bb * b + ab), a * scale)
     }
   }
 }
@@ -500,7 +512,21 @@ export const paintRects = (pixels: Uint8Array, width: number, height: number, vi
       one[2] = b0 + (b1 - b0) * k
       one[3] = 255 * (a0 + (a1 - a0) * k) * (shape.alpha ?? 1)
       if (faded === undefined) words.fill(word[0] ?? 0, py * width + left, py * width + right)
-      else for (let px = left; px < right; px += 1) layPixel(pixels, (py * width + px) * 4, one[0] ?? 0, one[1] ?? 0, one[2] ?? 0, ((one[3] ?? 0) / 255) * (faded[px - left] ?? 1))
+      else {
+        const [r = 0, g = 0, b = 0, a = 0] = one
+        for (let px = left, at = (py * width + left) * 4; px < right; px += 1, at += 4) {
+          const w = (a / 255) * (faded[px - left] ?? 1)
+          // Over a colour as opaque as it is: the two mixed, else as `layPixel` lays it.
+          if ((pixels[at + 3] ?? 0) === a && a === 255) {
+            const r0 = pixels[at] ?? 0
+            const g0 = pixels[at + 1] ?? 0
+            const b0 = pixels[at + 2] ?? 0
+            pixels[at] = r0 + (r - r0) * w + 0.5
+            pixels[at + 1] = g0 + (g - g0) * w + 0.5
+            pixels[at + 2] = b0 + (b - b0) * w + 0.5
+          } else layPixel(pixels, at, r, g, b, w)
+        }
+      }
     }
   }
 }
@@ -530,7 +556,104 @@ const rampOf = (grad: Gradient): { rgba: Uint8Array; x: number; y: number; dx: n
 }
 
 /** One shape's pixels laid over `pixels` (straight alpha), a theme key in `scheme`'s colour. */
+/**
+ * A square rectangle placed without turning, laid exactly as `layShape` lays
+ * it (each pixel covered as far as its middle is inside, a pixel's width
+ * blurring the edge) but with the distances across worked out once a column
+ * and down once a row, and a gradient's colour likewise: the scenery's
+ * grounds and skies, hundreds of thousands of pixels each.
+ */
+const layRect = (pixels: Uint8Array, width: number, height: number, shape: Shape, m: Matrix, scheme: 'dark' | 'light'): void => {
+  const alpha = shape.alpha ?? 1
+  const pixel = 1 / Math.sqrt(Math.abs(m[0] * m[3]))
+  const corners = [shape.x * m[0] + m[4], (shape.x + shape.w) * m[0] + m[4], shape.y * m[3] + m[5], (shape.y + shape.h) * m[3] + m[5]] as const
+  const x0 = Math.max(0, Math.floor(Math.min(corners[0], corners[1])) - 1)
+  const x1 = Math.min(width - 1, Math.ceil(Math.max(corners[0], corners[1])) + 1)
+  const y0 = Math.max(0, Math.floor(Math.min(corners[2], corners[3])) - 1)
+  const y1 = Math.min(height - 1, Math.ceil(Math.max(corners[2], corners[3])) + 1)
+  if (x1 < x0 || y1 < y0) return
+  const [red, green, blue] = rgbOf(hexOf(shape.fill, scheme))
+  const ramp = shape.grad === undefined ? undefined : rampOf(shape.grad)
+  const fade = shape.fade
+  // Each column's middle in local units, how far outside the rect across, how far faded in, and its share of the gradient; each row's likewise.
+  const lxs = Array.from({ length: x1 - x0 + 1 }, (_, i) => (x0 + i + 0.5 - m[4]) / m[0])
+  const qxs = lxs.map(lx => Math.abs(lx - shape.x - shape.w / 2) - shape.w / 2)
+  const fades = lxs.map(lx => (fade === undefined ? 1 : smooth((lx - fade[0]) / (fade[1] - fade[0]))))
+  const tx = lxs.map(lx => (ramp === undefined ? 0 : (lx - ramp.x) * ramp.dx))
+  // The columns it covers whole (a run, a rectangle being convex): within them, on a row it covers whole too, a colour
+  // of the row's or a gradient across copied as it is, or a row's colour laid over an opaque ground at once.
+  const whole = qxs.map(qx => qx <= -0.5 * pixel)
+  const first = whole.indexOf(true)
+  const last = whole.lastIndexOf(true)
+  const opaque = alpha === 1 && fade === undefined && (ramp === undefined || shape.grad?.stops.every(([, , a]) => a === 1) === true)
+  const across = ramp !== undefined && ramp.dy === 0 && opaque && first >= 0 ? new Uint8Array((last - first + 1) * 4) : undefined
+  if (across !== undefined && ramp !== undefined) {
+    for (let i = first; i <= last; i += 1) {
+      const t = tx[i] ?? 0
+      const step = 4 * Math.round(255 * (t < 0 ? 0 : t > 1 ? 1 : t))
+      across.set(ramp.rgba.subarray(step, step + 3), (i - first) * 4)
+      across[(i - first) * 4 + 3] = 255
+    }
+  }
+  for (let py = y0; py <= y1; py += 1) {
+    const ly = (py + 0.5 - m[5]) / m[3]
+    const qy = Math.abs(ly - shape.y - shape.h / 2) - shape.h / 2
+    const ty = ramp === undefined ? 0 : (ly - ramp.y) * ramp.dy
+    let skip = -1
+    if (first >= 0 && qy <= -0.5 * pixel && fade === undefined && (ramp === undefined || ramp.dx === 0 || across !== undefined)) {
+      const row = (py * width + x0) * 4
+      if (across !== undefined) pixels.set(across, row + first * 4)
+      else {
+        // The row's colour (its own, or its gradient's down here) and alpha, laid over each pixel of the run.
+        const step = ramp === undefined ? 0 : 4 * Math.round(255 * (ty < 0 ? 0 : ty > 1 ? 1 : ty))
+        const [r, g, b] = ramp === undefined ? [red, green, blue] : [ramp.rgba[step] ?? 0, ramp.rgba[step + 1] ?? 0, ramp.rgba[step + 2] ?? 0]
+        const a = alpha * (ramp === undefined ? 1 : (ramp.rgba[step + 3] ?? 0) / 255)
+        for (let at = row + first * 4, end = row + last * 4; at <= end; at += 4) {
+          if (a >= 1) {
+            pixels[at] = r
+            pixels[at + 1] = g
+            pixels[at + 2] = b
+            pixels[at + 3] = 255
+          } else if ((pixels[at + 3] ?? 0) === 255) {
+            const r0 = pixels[at] ?? 0
+            const g0 = pixels[at + 1] ?? 0
+            const b0 = pixels[at + 2] ?? 0
+            pixels[at] = r0 + (r - r0) * a + 0.5
+            pixels[at + 1] = g0 + (g - g0) * a + 0.5
+            pixels[at + 2] = b0 + (b - b0) * a + 0.5
+          } else layPixel(pixels, at, r, g, b, a)
+        }
+      }
+      skip = first
+    }
+    for (let i = 0, px = x0; px <= x1; i += 1, px += 1) {
+      if (skip >= 0 && i === skip) {
+        i = last
+        px = x0 + last
+        continue
+      }
+      const qx = qxs[i] ?? 0
+      const d = qx > 0 || qy > 0 ? Math.hypot(Math.max(qx, 0), Math.max(qy, 0)) : Math.max(qx, qy)
+      const cover = 0.5 - d / pixel
+      if (cover <= 0) continue
+      const a = (cover >= 1 ? 1 : cover) * alpha * (fades[i] ?? 1)
+      const at = (py * width + px) * 4
+      if (ramp === undefined) {
+        layPixel(pixels, at, red, green, blue, a)
+        continue
+      }
+      const t = (tx[i] ?? 0) + ty
+      const step = 4 * Math.round(255 * (t < 0 ? 0 : t > 1 ? 1 : t))
+      layPixel(pixels, at, ramp.rgba[step] ?? 0, ramp.rgba[step + 1] ?? 0, ramp.rgba[step + 2] ?? 0, (a * (ramp.rgba[step + 3] ?? 0)) / 255)
+    }
+  }
+}
+
 const layShape = (pixels: Uint8Array, width: number, height: number, shape: Shape, m: Matrix, scheme: 'dark' | 'light'): void => {
+  if (shape.kind === 'rect' && (shape.r ?? 0) === 0 && m[1] === 0 && m[2] === 0 && m[0] !== 0 && m[3] !== 0) {
+    layRect(pixels, width, height, shape, m, scheme)
+    return
+  }
   const back = invert(m)
   if (back === undefined) return
   const alpha = shape.alpha ?? 1
@@ -552,12 +675,47 @@ const layShape = (pixels: Uint8Array, width: number, height: number, shape: Shap
   const ramp = shape.outline === undefined && shape.grow === undefined && shape.ring === undefined && shape.kind !== 'line' && shape.grad !== undefined ? rampOf(shape.grad) : undefined
   const fade = shape.kind === 'rect' ? shape.fade : undefined
   const lay = (at: number, r: number, g: number, b: number, a: number, lx: number): void => layPixel(pixels, at, r, g, b, fade === undefined ? a : a * smooth((lx - fade[0]) / (fade[1] - fade[0])))
+  // A plain polygon a row at a time: where its edges (in pixels) cross the row's middle says which pixels are inside it,
+  // and only those near an edge are worked out exactly; the rest are wholly in or out.
+  const scan = shape.kind === 'poly' && (shape.grow ?? 0) === 0 && outline === undefined ? edgesOf((shape.points ?? []).map(([x, y]) => applyTo(m, x, y)), true) : undefined
+  const crossings: number[] = []
+  const near = new Uint8Array(scan === undefined ? 0 : Math.max(0, x1 - x0 + 1))
   for (let py = y0; py <= y1; py += 1) {
     // The row's first pixel's middle, back in local units; each pixel on, a step along the row.
     let lx = b0 * (x0 + 0.5) + b2 * (py + 0.5) + b4
     let ly = b1 * (x0 + 0.5) + b3 * (py + 0.5) + b5
+    let inside = false
+    let crossed = 0
+    if (scan !== undefined) {
+      const middle = py + 0.5
+      crossings.length = 0
+      near.fill(0)
+      for (let i = 0; i < scan.length; i += 5) {
+        const ax = scan[i] ?? 0
+        const ay = scan[i + 1] ?? 0
+        const dx = scan[i + 2] ?? 0
+        const dy = scan[i + 3] ?? 0
+        if (ay > middle !== ay + dy > middle) crossings.push(ax + ((middle - ay) * dx) / dy)
+        // The pixels within one of it, a pixel above or below the row's middle: near.
+        const top = Math.max(Math.min(ay, ay + dy), middle - 1)
+        const bottom = Math.min(Math.max(ay, ay + dy), middle + 1)
+        if (top > bottom) continue
+        const xa = dy === 0 ? ax : ax + ((top - ay) * dx) / dy
+        const xb = dy === 0 ? ax + dx : ax + ((bottom - ay) * dx) / dy
+        for (let x = Math.max(x0, Math.floor(Math.min(xa, xb) - 1.5)), to = Math.min(x1, Math.ceil(Math.max(xa, xb) + 0.5)); x <= to; x += 1) near[x - x0] = 1
+      }
+      crossings.sort((a, b) => a - b)
+    }
     for (let px = x0; px <= x1; px += 1, lx += b0, ly += b1) {
-      const d = distance(lx, ly)
+      if (scan !== undefined) {
+        while (crossed < crossings.length && (crossings[crossed] ?? Infinity) < px + 0.5) {
+          inside = !inside
+          crossed += 1
+        }
+      }
+      const exact = scan === undefined || near[px - x0] === 1
+      if (!exact && !inside) continue
+      const d = exact ? distance(lx, ly) : -Infinity
       const cover = 0.5 - d / pixel
       const at = (py * width + px) * 4
       // Its outline where its fill does not cover the pixel whole.

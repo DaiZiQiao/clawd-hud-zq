@@ -5,6 +5,7 @@ import type { HudSelection } from '../types'
 import { CROWN, HEADS, flipped } from './mascot-sprites'
 import { VECTOR_FRAME_MS } from './scene-client'
 import { arrange, headAt, mount, rowsOf } from './scene-client.fixtures'
+import type { Found, Reads } from './scene-client.fixtures'
 import { NOW, entry } from './scene-model.fixtures'
 import { SCENE_FRAME_MS } from './scene-phases'
 import { SVG_MAX } from './scene-svg'
@@ -327,13 +328,16 @@ describe('its own clock', () => {
   })
 })
 
+/** The scene's mascots' Svg: the one that says what it shows (the scenery's under it says nothing). */
+const mascotsSvg = async (ui: Reads): Promise<Found | undefined> => (await ui.findAll({ type: 'Svg', in: 'mascots' })).find(one => one.props.alt !== ' ')
+
 describe('the vector art', () => {
   test('on the desktop the mascots are drawn shapes, one Svg the region\'s size, a frame every 33 ms (each pose eased into the next); the terminal keeps its rows', { timeoutMs: 20_000 }, async ($, on) => {
     arrange(on, [TYPIST])
     const ui = await mount($, 'desktop')
     const props = (await ui.find({ type: 'Client' }))?.props.props as SceneInputs
     expect(props.art).toBe('vector')
-    const svg = await ui.find({ type: 'Svg', in: 'mascots' })
+    const svg = await mascotsSvg(ui)
     const source = String(svg?.props.source)
     expect([svg?.props.width, svg?.props.height]).toEqual([72 * CELL_WIDTH, props.rows * CELL_HEIGHT])
     expect(source.length).toBeLessThanOrEqual(SVG_MAX)
@@ -346,7 +350,7 @@ describe('the vector art', () => {
     expect(String(svg?.props.alt)).toMatch(/^2 mascots: session /)
     // Alive between the scene's frames: the next one differs (a breath, the keys under its hand).
     await ui.advance(VECTOR_FRAME_MS)
-    expect(String((await ui.find({ type: 'Svg', in: 'mascots' }))?.props.source)).not.toBe(source)
+    expect(String((await mascotsSvg(ui))?.props.source)).not.toBe(source)
     await ui.unmount()
     // A text terminal draws its rows of cells either way.
     const text = await mount($, 'terminal')
@@ -358,7 +362,7 @@ describe('the vector art', () => {
   test('Usagi too, as Chiikawa draws it: cream, its bold dark line, its pink ears and cheeks', { options: { character: 'usagi' }, timeoutMs: 20_000 }, async ($, on) => {
     arrange(on, [TYPIST])
     const ui = await mount($, 'desktop')
-    const source = String((await ui.find({ type: 'Svg', in: 'mascots' }))?.props.source)
+    const source = String((await mascotsSvg(ui))?.props.source)
     expect(source).toMatch(new RegExp(`<ellipse [^>]*fill='${USAGI.cream}'`))
     expect(source).toMatch(new RegExp(`<ellipse [^>]*fill='${USAGI.line}'`))
     expect(source).toMatch(new RegExp(`<rect [^>]*fill='${USAGI.ear}'`))

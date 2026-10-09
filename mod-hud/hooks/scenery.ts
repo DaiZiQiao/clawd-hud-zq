@@ -46,9 +46,15 @@ export type Land = { key: string; still: Shape[]; detail: number; lights: Shape[
  * stretch, all of them fading in from the terminal's own background down to
  * `top` units; then its stars, sun or moon and clouds), the land, the
  * weather behind the mascots, then (after them) the weather nearest the eye;
- * and whether the tour is panning on.
+ * whether the tour is panning on; keys that change when the sky and the land
+ * (`still`), or all of it behind the mascots (`behind`), would be drawn
+ * otherwise: a drawing keeps what it drew under them till then; and the
+ * scenery as the next leg begins, for a drawing to draw its land ahead.
  */
-export type Scenery = { sky: { fill: Shape[]; top: number; moving: Shape[] }; land: Land; weather: Shape[]; front: Shape[]; panning: boolean }
+export type Scenery = { sky: { fill: Shape[]; top: number; moving: Shape[] }; land: Land; weather: Shape[]; front: Shape[]; panning: boolean; still: string; behind: string; upcoming: () => Scenery }
+
+/** How often the sky and the light move on (its sun, moon, stars and clouds), ms: a step too small to see. */
+export const SKY_MS = 500
 
 // --- the light -------------------------------------------------------------------
 
@@ -151,12 +157,18 @@ const MONTH_MS = 29.530_589 * 86_400_000
 
 const stopAt = (j: number): Stop => STOPS[mod(j, STOPS.length)] as Stop
 
-/** Where the tour is at `now`: the stop it stays at or pans on from (`leg`), how far into the leg, and how far it has panned on (eased). */
-const tourAt = (now: number): { leg: number; into: number; pan: number } => {
+/**
+ * Where the tour is at `now`: the stop it stays at or pans on from (`leg`),
+ * how far into the leg, and how far it has panned on (eased); when it `pans`
+ * not, at the next stop from halfway through the pan, as if its leg had
+ * begun (its name not yet shown).
+ */
+const tourAt = (now: number, pans = true): { leg: number; into: number; pan: number } => {
   const leg = Math.floor(now / LEG_MS)
   const into = now - leg * LEG_MS
+  if (!pans && into >= STAY_MS + PAN_MS / 2) return { leg: leg + 1, into: into - LEG_MS, pan: 0 }
 
-  return { leg, into, pan: into < STAY_MS ? 0 : smooth((into - STAY_MS) / PAN_MS) }
+  return { leg, into, pan: into < STAY_MS || !pans ? 0 : smooth((into - STAY_MS) / PAN_MS) }
 }
 
 /** The land's scale: the band's few rows, a pane's many. */
@@ -430,20 +442,25 @@ const caption = (stop: Stop, hour: number, into: number, horizon: number): Shape
 
 /**
  * The scenery of a frame `width` by `height` units at `now` (ms), its ground
- * from `horizon` down, each stop at its hour by `daylight`: the sky, drawn
- * afresh; the land, still (the whole leg's strip, seen from where the pan
- * has got to) and lit for the hour, and what moves on it; and the weather
- * nearest the eye.
+ * from `horizon` down, each stop at its hour by `daylight`: the sky; the
+ * land, still (the whole leg's strip, seen from where the pan has got to)
+ * and lit for the hour, and what moves on it; and the weather nearest the
+ * eye. The tour pans on by `now` (or, for a drawing that `pans` not, goes on
+ * to the next stop at once halfway); all else is as it was at `held` (a
+ * drawing holds it a while, so as not to draw it all every frame), the sky
+ * and the light as at the last SKY_MS step.
  */
-export const sceneryOf = (width: number, height: number, horizon: number, now: number, daylight: Daylight = 'fast'): Scenery => {
-  const { leg, into, pan } = tourAt(now)
+export const sceneryOf = (width: number, height: number, horizon: number, now: number, daylight: Daylight = 'fast', held = now, pans = true): Scenery => {
+  const { leg, into, pan } = tourAt(now, pans)
+  const sky = Math.floor(held / SKY_MS) * SKY_MS
   const stretch = STOP * scaleOf(horizon)
-  // The view's left along the world's strip at the leg's start (its stop in the middle), and now.
+  // The view's left along the world's strip at the leg's start (its stop in the middle), and now; the strip the
+  // whole leg's, its stay and its pan, drawn once.
   const left = (leg + 0.5) * stretch - width / 2
-  const span = width + (pan > 0 ? stretch : 0)
+  const span = width + (pans ? stretch : 0)
   const view = left + pan * stretch
   const key = `land:${width}x${height}@${horizon}:${leg}:${span}`
-  const hour = worldHour(now, daylight)
+  const hour = worldHour(sky, daylight)
   // Each stop's light now, by its place along the strip: made as first asked for.
   const lights = new Map<number, { light: Light; lit: Lit; sky: readonly string[] }>()
   const lightOf = (j: number): { light: Light; lit: Lit; sky: readonly string[] } => {
@@ -475,7 +492,7 @@ export const sceneryOf = (width: number, height: number, horizon: number, now: n
   const moving: Shape[] = []
   for (const { stop, at, j } of seen) {
     const { light, lit } = lightOf(j)
-    moving.push(...relit(stop.moving?.(at, now, light) ?? [], lit.grade), ...(stop.birds === true && light.day > 0 ? birds(at, now, light) : []), ...(stop.glowing?.(at, now, light) ?? []))
+    moving.push(...relit(stop.moving?.(at, held, light) ?? [], lit.grade), ...(stop.birds === true && light.day > 0 ? birds(at, held, light) : []), ...(stop.glowing?.(at, held, light) ?? []))
   }
   // The weather of the stop each mote starts over, lit as it is.
   const weatherAt = (x: number): Weathered => {
@@ -487,7 +504,7 @@ export const sceneryOf = (width: number, height: number, horizon: number, now: n
   const land = keptIn(made, key, () => landStill(left, span, height, horizon))
 
   return {
-    sky: { fill: skyFill(stopsIn(view, width, horizon, height, stretch / 2), width, horizon, j => lightOf(j).sky), top: 0.22 * horizon, moving: skyMoving(seen, width, horizon, now, lightOf) },
+    sky: { fill: skyFill(stopsIn(view, width, horizon, height, stretch / 2), width, horizon, j => lightOf(j).sky), top: 0.22 * horizon, moving: skyMoving(seen, width, horizon, sky, lightOf) },
     land: {
       key,
       still: land.shapes,
@@ -497,11 +514,14 @@ export const sceneryOf = (width: number, height: number, horizon: number, now: n
       shift: pan * stretch,
       litAt,
       litKey,
-      moving: [...moving, ...(pan === 0 ? caption(stopAt(leg), lightOf(leg).light.hour, into, horizon) : [])],
+      moving: [...moving, ...(pan === 0 ? caption(stopAt(leg), lightOf(leg).light.hour, into - (now - held), horizon) : [])],
     },
-    weather: weather(width, height, horizon, now, false, weatherAt),
-    front: weather(width, height, horizon, now, true, weatherAt),
+    weather: weather(width, height, horizon, held, false, weatherAt),
+    front: weather(width, height, horizon, held, true, weatherAt),
     panning: pan > 0,
+    upcoming: () => sceneryOf(width, height, horizon, (leg + 1) * LEG_MS, daylight, (leg + 1) * LEG_MS, pans),
+    still: `${key}:${daylight}:${pan * stretch}:${sky}`,
+    behind: `${key}:${daylight}:${pan * stretch}:${sky}:${held}`,
   }
 }
 

@@ -96,8 +96,9 @@ import type { AgentBody, InspectAction, InspectHeader, InspectRow, Trails } from
 import { inspectedOf, overviewOf } from './inspect-model'
 import { STARTLED_MS } from './mascot-poses'
 import { GRID_ROWS, SLOT } from './mascot-sprites'
-import { IMAGE_FRAME_MS, createStage, hitsOf, restage, stageFrame, stageHits, stageTick } from './scene-image'
-import type { HitPost, Stage } from './scene-image'
+import { IMAGE_FRAME_MS, createStage, hitsOf, redrawTiles, restage, stageHits, stageTick, stageTiles } from './scene-image'
+import type { HitPost, Stage, Tile } from './scene-image'
+import { MOST_STEP_MS, clockMs } from './scene-world'
 import { sceneInputsOf, sceneOf } from './scene-model'
 import { MESSAGE_TICKS, SCENE_FRAME_MS } from './scene-phases'
 import { mascotPlan } from './scene-plan'
@@ -1231,17 +1232,23 @@ const factsText = async ($: EngineInterface, settings: Settings): Promise<string
 // --- the band above the prompt -------------------------------------------------
 // --- the vector scene as a picture ---------------------------------------------
 // In a terminal that shows pictures (Ghostty, kitty), with the vector art,
-// the pane's scene and the band's yard are each an `Image` the hooks swap a
-// frame into (hooks/scene-image.ts), the scene's world run here as the
-// `Client` runs it on its surface; over the picture a `Client` drawing
-// nothing hands them the pointer (hooks/scene-hit.tsx). A terminal that
-// draws the Image's alt instead (no pictures there) refuses the first swap:
-// the scene's own `Client` and its blocks on that surface for the session.
-// Module memory, never state: a picture is its drawing's alone.
+// the pane's scene and the band's yard are each a picture of tiles, each an
+// `Image` the hooks swap a frame into when it changed (hooks/scene-image.ts),
+// the scene's world run here as the `Client` runs it on its surface; over the
+// tiles a `Client` drawing nothing hands them the pointer
+// (hooks/scene-hit.tsx). A terminal that draws the Image's alt instead (no
+// pictures there) refuses the first swap: the scene's own `Client` and its
+// blocks on that surface for the session. Module memory, never state: a
+// picture is its drawing's alone.
 
 const HIT_MODULE = 'hooks/scene-hit.tsx'
-/** Each picture by its site (`<requestId>:<surface>`): its stage, its Image's key, frames left in which a swap may find it not yet mounted, swaps refused in a row. */
-type Picture = { stage: Stage; requestId: string; surface: string; key: string; fresh: number; refused: number }
+/**
+ * Each picture by its site (`<requestId>:<surface>`): its stage, its tiles'
+ * Images' key, frames left in which a swap may find it not yet mounted, swaps
+ * refused in a row, when its world last stepped (the hooks' clock), and the
+ * timer's frames to wait before it draws again.
+ */
+type Picture = { stage: Stage; requestId: string; surface: string; key: string; fresh: number; refused: number; stepped?: number; wait: number }
 const pictures = new Map<string, Picture>()
 /** Surfaces whose terminal shows no pictures, or whose hit layer failed: the scene's `Client` there. */
 const pictureless = new Set<string>()
@@ -1249,6 +1256,16 @@ const pictureless = new Set<string>()
 const PICTURE_FRESH = 10
 /** Refusals in a row, the alt's aside, that give up on pictures there: three seconds' worth. */
 const PICTURE_GIVE_UP = Math.ceil(3000 / IMAGE_FRAME_MS)
+/**
+ * A picture's share of the time, its inverse: after a frame that took t ms
+ * its next waits PICTURE_SHARE × t (in the timer's frames), so it takes at
+ * most a third or so of the hooks' time, and a costly frame (the tour panning
+ * on) comes less often instead of late.
+ */
+const PICTURE_SHARE = 3
+
+/** A tile's Image's key within its picture. */
+const tileKey = (picture: { key: string }, tile: Tile): string => `${picture.key}:${tile.x}:${tile.y}`
 /**
  * The TV's giant as a picture under its glass, by site: its Image's key, who
  * and where it was drawn for, its frames by eyes and propeller blade (each
@@ -1318,21 +1335,44 @@ const startPictures = ($: EngineInterface): void => {
     void quietly($, async () => {
       try {
         const scheme = pictureScheme?.scheme ?? 'dark'
+        const now = await $.clock.now()
+        // Each picture's world on by the time gone, its changed tiles drawn when its frame is due; then all the swaps at once.
+        const swaps: Promise<void>[] = []
         for (const [site, picture] of pictures) {
           if (picture.fresh > 0) picture.fresh -= 1
-          const png = stageTick(picture.stage, IMAGE_FRAME_MS, scheme)
-          if (png === undefined) continue
-          // A swap that throws is refused as much as one denied.
-          let deny: string | undefined
-          try {
-            deny = (await $.ui.blit({ requestId: picture.requestId, key: picture.key, source: { png } })).deny
-          } catch (error) {
-            deny = String(error)
-          }
-          if (deny === undefined) picture.refused = 0
-          else if (drawsAlt(deny)) noPictures($, picture.surface, deny)
-          else if (/mount/i.test(deny) && picture.fresh === 0) pictures.delete(site)
-          else if (++picture.refused >= PICTURE_GIVE_UP) noPictures($, picture.surface, deny)
+          // On by a frame, or by the time gone since the last when the timer came late (a costly frame before it).
+          const step = picture.stepped === undefined ? IMAGE_FRAME_MS : Math.max(IMAGE_FRAME_MS, Math.min(MOST_STEP_MS, now - picture.stepped))
+          picture.stepped = now
+          const due = picture.wait <= 0
+          picture.wait -= 1
+          const at = clockMs()
+          const tiles = stageTick(picture.stage, step, scheme, due)
+          if (at !== undefined && tiles.length > 0) picture.wait = Math.ceil((((clockMs() ?? at) - at) * PICTURE_SHARE) / IMAGE_FRAME_MS) - 1
+          if (tiles.length === 0) continue
+          swaps.push(
+            (async () => {
+              // A swap that throws is refused as much as one denied.
+              const denies = await Promise.all(
+                tiles.map(async tile => {
+                  try {
+                    return (await $.ui.blit({ requestId: picture.requestId, key: tileKey(picture, tile), source: { png: tile.png } })).deny
+                  } catch (error) {
+                    return String(error)
+                  }
+                }),
+              )
+              const deny = denies.find(one => one !== undefined)
+              if (deny === undefined) {
+                picture.refused = 0
+                return
+              }
+              // A tile refused may show an old frame: all of them again next time.
+              redrawTiles(picture.stage)
+              if (drawsAlt(deny)) noPictures($, picture.surface, deny)
+              else if (/mount/i.test(deny) && picture.fresh === 0) pictures.delete(site)
+              else if (++picture.refused >= PICTURE_GIVE_UP) noPictures($, picture.surface, deny)
+            })(),
+          )
         }
         for (const [site, giant] of giantPictures) {
           giant.ms += IMAGE_FRAME_MS
@@ -1340,19 +1380,24 @@ const startPictures = ($: EngineInterface): void => {
           if (frame.key === giant.shown) continue
           giant.shown = frame.key
           const png = giantPng(giant, frame)
-          let deny: string | undefined
-          try {
-            deny = (await $.ui.blit({ requestId: giant.requestId, key: giant.key, source: { png } })).deny
-          } catch (error) {
-            deny = String(error)
-          }
-          if (deny === undefined) continue
-          if (drawsAlt(deny)) noPictures($, giant.surface, deny)
-          else giantPictures.delete(site)
+          swaps.push(
+            (async () => {
+              let deny: string | undefined
+              try {
+                deny = (await $.ui.blit({ requestId: giant.requestId, key: giant.key, source: { png } })).deny
+              } catch (error) {
+                deny = String(error)
+              }
+              if (deny === undefined) return
+              if (drawsAlt(deny)) noPictures($, giant.surface, deny)
+              else giantPictures.delete(site)
+            })(),
+          )
         }
+        await Promise.all(swaps)
         // Nothing to draw: no pictures, or only scenes held paused (their next drawing starts the timer again).
-        const drawing = giantPictures.size > 0 || [...pictures.values()].some(picture => picture.stage.world.props.paused !== true)
-        if (!drawing && pictureTimer === mine) stopPictures()
+        const live = giantPictures.size > 0 || [...pictures.values()].some(picture => picture.stage.world.props.paused !== true)
+        if (!live && pictureTimer === mine) stopPictures()
       } finally {
         pictureBusy = false
       }
@@ -1427,14 +1472,13 @@ const pictureOf = async (
   const site = `${requestId}:${surface}`
   let picture = pictures.get(site)
   if (picture === undefined) {
-    picture = { stage: createStage(inputs), requestId, surface, key: `${key}:picture`, fresh: PICTURE_FRESH, refused: 0 }
+    picture = { stage: createStage(inputs), requestId, surface, key: `${key}:picture`, fresh: PICTURE_FRESH, refused: 0, wait: 0 }
     pictures.set(site, picture)
   } else {
     restage(picture.stage, inputs)
     picture.fresh = PICTURE_FRESH
   }
-  const png = picture.stage.png ?? stageFrame(picture.stage, scheme)
-  picture.stage.png = png
+  const tiles = stageTiles(picture.stage, scheme)
   startPictures($)
   const { columns, rows } = inputs
   const { Box, Image, Client } = table as {
@@ -1443,9 +1487,17 @@ const pictureOf = async (
     Client: (props: { key: string; module: string; props?: unknown; width?: number; height?: number }) => RenderElement
   }
 
+  const rowsOfTiles = [...new Set(tiles.map(tile => tile.y))].map(y => tiles.filter(tile => tile.y === y))
+
   return (
-    <Box key={`${key}:stage`} width={columns} height={rows} flexShrink={0}>
-      <Image key={picture.key} source={{ png }} columns={columns} rows={rows} alt=" " />
+    <Box key={`${key}:stage`} width={columns} height={rows} flexShrink={0} flexDirection="column">
+      {rowsOfTiles.map(row => (
+        <Box key={`${picture.key}:row:${row[0]?.y ?? 0}`} flexDirection="row" height={row[0]?.rows ?? 1} flexShrink={0}>
+          {row.map(tile => (
+            <Image key={tileKey(picture, tile)} source={{ png: tile.png }} columns={tile.columns} rows={tile.rows} alt=" " />
+          ))}
+        </Box>
+      ))}
       <Box position="absolute" top={0} left={0} width={columns} height={rows}>
         <Client key={key} module="./scene-hit.tsx" props={{ columns, rows }} width={columns} height={rows} />
       </Box>
