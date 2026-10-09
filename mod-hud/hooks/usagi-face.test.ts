@@ -10,7 +10,7 @@ import { HAT_SEAT, figureShapes, usagiHatShapes, usagiMouthShapes } from './smoo
 import { NEUTRAL, fullTarget } from './smooth-pose'
 import { usagiFigure } from './usagi-glyphs'
 import { quirkPose } from './usagi-moves'
-import { HATS, ROLE_HATS, USAGI } from './usagi-sprites'
+import { EARS, HATS, ROLE_HATS, USAGI } from './usagi-sprites'
 import type { MascotRole } from './scene-types'
 
 // Usagi's face as Chiikawa draws it: never squeezed shut `> <` (spirals in a
@@ -72,7 +72,7 @@ describe('its lids', () => {
     expect(drowsy).toBeGreaterThan(0)
   })
 
-  test('failed: unimpressed, hmph, under its cross, its ears up, a smug smile', () => {
+  test('failed: unimpressed, hmph, under its cross, its ears lowered, not drooping (the cells\' as the shapes\'), a smug smile', () => {
     const failed = working('a', 'thinking', { status: 'failed' })
     const look = agentLook(failed, { kind: 'sit', step: 0 } as never, 0)
     expect(look.lids).toBe('hmph')
@@ -80,6 +80,8 @@ describe('its lids', () => {
     expect(pose.eyes).toBe('half')
     expect(pose.mouthShape).toBe('smirk')
     expect(pose.droop).toBe(0)
+    expect(pose.earsDown).toBeGreaterThan(0.5)
+    expect(usagiFigure(look, { energy: 0 }).bitmap.slice(0, 3)).toEqual([...EARS.short])
   })
 
   test('drawn half lidded smooth (Usagi alone; Clawd keeps its own eyes), and in its cells its eyes low', () => {

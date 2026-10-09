@@ -77,7 +77,7 @@ export const stageFrame = (stage: Stage, scheme: 'dark' | 'light'): string => {
     frame = smoothFrame(scene, layout, plan, view.sprites, stage.smoother, world.sceneNow)
   }
   stage.still = (frame === undefined || frame.still) && world.carried.size === 0
-  const { pixels, width, height } = smoothPixels(frame ?? { shapes: [], width: 0, height: 0, still: true }, columns, rows, stage.cell, scheme)
+  const { pixels, width, height } = smoothPixels(frame ?? { shapes: [], wholes: [], width: 0, height: 0, still: true }, columns, rows, stage.cell, scheme)
 
   return base64Of(pngOf(pixels, width, height))
 }

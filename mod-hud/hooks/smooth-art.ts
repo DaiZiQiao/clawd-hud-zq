@@ -477,7 +477,7 @@ const ellipsePoints = (cx: number, cy: number, rx: number, ry: number, from: num
 const nearRing = (r: number, y = 0, steps = 10): Point[] => ellipsePoints(0, y, r, r * TILT, 0, Math.PI, steps)
 
 /** How many points round a brim. */
-const BRIM_STEPS = 36
+const BRIM_STEPS = 28
 
 /** A brim all round, `r` out at its sides and `ahead` more at its front (tipped `dip` down there), its sides turned up `curl`. */
 const brimPoints = (r: number, ahead: number, dip: number, curl: number): Point[] =>
@@ -701,8 +701,8 @@ const BERET: HatDesign = (() => {
   const main = HATS.beret.colour
   const band = [...nearRing(4.35), ...nearRing(4.32, -0.45).reverse()]
   const turn = 0.13
-  const puff = Array.from({ length: 36 }, (_, index): Point => {
-    const a = (index / 36) * 2 * Math.PI
+  const puff = Array.from({ length: 28 }, (_, index): Point => {
+    const a = (index / 28) * 2 * Math.PI
     const c = Math.cos(a)
     const s = Math.sin(a)
     // Round as a squashed ball, fuller where it hangs over its right.
@@ -1047,13 +1047,14 @@ const thoughtShapes = (m: Matrix, text: string, grow: number, t: number): Shape[
 const rowY = (row: number, usagi: boolean): number => 4 * row - (usagi ? 14 : 12)
 
 /** One thing beside it, in its head's frame (`m`: where it stands, lowered as it is, upright). */
-const besideShapes = (one: Beside, m: Matrix, info: FigureInfo, t: number, usagi: boolean): Shape[] => {
+const besideShapes = (one: Beside, m: Matrix, info: FigureInfo, t: number, usagi: boolean, ceiling: number): Shape[] => {
   const row = (index: number): number => rowY(index, usagi)
   switch (one.kind) {
     case 'thought':
       return thoughtShapes(m, one.text, one.grow, t)
     case 'shout':
-      return burstShapes(m, one.text, row(-1) + 1, t)
+      // Over its head where the room goes that high; else lower, beside its head, the room's top over it.
+      return burstShapes(m, one.text, Math.max(row(-1) + 1, -ceiling + BURST_REACH), t)
     case 'zzz':
       return [0, 1, 2].flatMap(index => {
         const phase = ((t / 2600) + index / 3) % 1
@@ -1206,6 +1207,9 @@ const besideShapes = (one: Beside, m: Matrix, info: FigureInfo, t: number, usagi
 }
 
 /** A shout burst out over its head: a spiky balloon, a dark rim round it, its words bold inside; it pops in time. */
+/** How far over its middle a shout's balloon reaches, its spikes, line and pop all out. */
+const BURST_REACH = 5.8
+
 const burstShapes = (m: Matrix, text: string, y: number, t: number): Shape[] => {
   const size = 3
   const rx = textWidth(text, size) / 2 + 2
@@ -1235,9 +1239,10 @@ const burstShapes = (m: Matrix, text: string, y: number, t: number): Shape[] => 
 /**
  * One mascot's shapes, back to front: under its blanket's or laptop's,
  * its figure, then what is beside it, `m` placing its feet's middle (a
- * mini's scaled down).
+ * mini's scaled down); `ceiling` how high over its feet the room goes, in
+ * its units.
  */
-export const figureShapes = (pose: FigurePose, info: FigureInfo, m: Matrix, t: number): Shape[] => {
+export const figureShapes = (pose: FigurePose, info: FigureInfo, m: Matrix, t: number, ceiling = Infinity): Shape[] => {
   const usagi = info.character === 'usagi'
   const figure = (usagi ? usagiShapes(pose, info, t) : clawdShapes(pose, info, t)).map(shape => ({ ...shape, m: shape.m === undefined ? m : multiply(m, shape.m) }))
   const ground = chain(m, translate(pose.dx, 0))
@@ -1248,7 +1253,7 @@ export const figureShapes = (pose: FigurePose, info: FigureInfo, m: Matrix, t: n
     ...blanketShapes(chain(upright), pose.blanket, t, usagi),
     // Usagi narrower than Clawd, its laptop nearer.
     ...laptopShapes(usagi ? chain(ground, translate(-2.6, 0)) : ground, pose.laptop, t),
-    ...pose.beside.flatMap(one => besideShapes(one, upright, info, t, usagi)),
+    ...pose.beside.flatMap(one => besideShapes(one, upright, info, t, usagi, ceiling + pose.drop)),
   ]
 }
 

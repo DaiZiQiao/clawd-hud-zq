@@ -29,6 +29,14 @@ const KINDS: Readonly<Record<QuirkPlace, readonly (readonly [QuirkKind, number])
   desk: [['bash', 4], ['huh', 2], ['shake', 2], ['yaha', 1]],
 }
 
+/**
+ * The rows of sky over its box each quirk that rises needs, for the shapes
+ * to stay in the room (its leap and its line up with it, the backflip's arc,
+ * HUHHH?'s lean-in, Yaha!'s bounce, the twirl's lift): with fewer (the band
+ * above the prompt has one), it is never picked, in the cells or the shapes.
+ */
+const SKY_NEEDED: Readonly<Partial<Record<QuirkKind, number>>> = { ura: 4, flip: 4, huh: 2, yaha: 2, twirl: 2 }
+
 /** Three five-second windows in four have a quirk somewhere in them (one every six or seven seconds); one ends before its window does. */
 export const QUIRK_WINDOW_MS = 5000
 const QUIRK_CHANCE = 75
@@ -48,13 +56,13 @@ const pick = (table: readonly (readonly [QuirkKind, number])[], roll: number): Q
   return table[0]?.[0] ?? 'yaha'
 }
 
-/** The quirk Usagi `id` is in at `now` (the scene's time, ms) where it is; undefined between them. */
-export const quirkAt = (id: string, now: number, place: QuirkPlace): Quirk | undefined => {
+/** The quirk Usagi `id` is in at `now` (the scene's time, ms) where it is, `sky` rows free over its box; undefined between them. */
+export const quirkAt = (id: string, now: number, place: QuirkPlace, sky = Infinity): Quirk | undefined => {
   // Each Usagi's windows start at a time of its own, so no two burst out together.
   const offset = hashOf(id, 'quirk') % QUIRK_WINDOW_MS
   const window = Math.floor((now + offset) / QUIRK_WINDOW_MS)
   if (hashOf(id, 'quirk', window) % 100 >= QUIRK_CHANCE) return undefined
-  const kind = pick(KINDS[place], hashOf(id, 'quirk-kind', window))
+  const kind = pick(KINDS[place].filter(([one]) => sky >= (SKY_NEEDED[one] ?? 0)), hashOf(id, 'quirk-kind', window))
   const start = window * QUIRK_WINDOW_MS - offset + (hashOf(id, 'quirk-at', window) % (QUIRK_WINDOW_MS - LONGEST))
   const at = now - start
 

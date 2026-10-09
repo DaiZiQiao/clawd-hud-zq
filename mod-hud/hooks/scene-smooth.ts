@@ -1,4 +1,4 @@
-import { chain, rasterOf, scale, svgOf, translate } from './clawd-vector'
+import { chain, rasterOf, scale, shapesMarkup, svgOf, translate } from './clawd-vector'
 import type { Shape } from './clawd-vector'
 import { BODY_WIDTH, BODY_X, BOX_ROWS, MINI, SKY } from './mascot-sprites'
 import { ACCENT } from './scene-model'
@@ -29,7 +29,8 @@ export const MINI_SCALE = 0.6
  * a scene's step, tidying up; no pipe, no mark): only a breath or a blink
  * between this frame and the next.
  */
-export type SmoothFrame = { shapes: Shape[]; width: number; height: number; still: boolean }
+/** A frame of the smooth scene: its shapes, each mascot's run of them (`wholes`, from and to), its size in units, and whether all of it stands still. */
+export type SmoothFrame = { shapes: Shape[]; wholes: (readonly [number, number])[]; width: number; height: number; still: boolean }
 
 /** The phases a mascot keeps still in: at work, stalled, slumped. */
 const RESTING: ReadonlySet<string> = new Set(['work', 'stalled', 'sit'])
@@ -80,6 +81,7 @@ export const smoothFrame = (scene: MascotScene, layout: MascotLayout, plan: Masc
   const room = placed.headroom
   const rows = room + BOX_ROWS + placed.depth - 1
   const shapes: Shape[] = []
+  const wholes: (readonly [number, number])[] = []
   const kept = new Set<string>()
   let still = placed.pipes.length === 0 && placed.marks.length === 0
   for (const sprite of placed.sprites) {
@@ -119,14 +121,17 @@ export const smoothFrame = (scene: MascotScene, layout: MascotLayout, plan: Masc
     const bounce = context.motion?.kind === 'walk' ? (sprint ? 0.8 : 0.5) : figure.phase?.kind === 'cheer' ? 1.4 : 0
     if (bounce > 0) pose = { ...pose, drop: pose.drop - bounce * Math.abs(Math.sin((2 * Math.PI * now) / (sprint ? 260 : 520) + context.seed)) }
     // Usagi's quirk, if one has come over it (hooks/usagi-quirks.ts): over the eased pose, by time.
-    const quirk = figure.quirk === undefined ? undefined : quirkAt(sprite.id, now, figure.quirk)
+    const quirk = figure.quirk === undefined ? undefined : quirkAt(sprite.id, now, figure.quirk.place, figure.quirk.sky)
     if (quirk !== undefined) {
       pose = quirkPose(pose, quirk, context.facing)
       still = false
     }
     pose = livelyOf(pose, context, !sprite.moving && quirk === undefined)
     const info = mini ? { ...figure.info, energy: 0 as const, letter: undefined } : figure.info
-    shapes.push(...figureShapes(pose, info, chain(translate(middle * 2, feet * 4), scale(mini ? MINI_SCALE : 1)), now))
+    // The room's top is the canvas's: its feet's height over it, in the figure's units.
+    const from = shapes.length
+    shapes.push(...figureShapes(pose, info, chain(translate(middle * 2, feet * 4), scale(mini ? MINI_SCALE : 1)), now, (feet * 4) / (mini ? MINI_SCALE : 1)))
+    wholes.push([from, shapes.length])
   }
   smoother.keep(kept)
   for (const pipe of placed.pipes) {
@@ -134,7 +139,7 @@ export const smoothFrame = (scene: MascotScene, layout: MascotLayout, plan: Masc
   }
   for (const mark of placed.marks) shapes.push(...markShapes(mark.ch, (mark.x + 0.5) * 2, (room + mark.row + 0.5) * 4, mark.colour, now))
 
-  return { shapes, width: plan.columns * 2, height: rows * 4, still }
+  return { shapes, wholes, width: plan.columns * 2, height: rows * 4, still }
 }
 
 /** The units a desktop CSS pixel is: a cell is 8 by 16 pixels, 2 by 4 units. */
@@ -147,7 +152,23 @@ const PIXELS_PER_UNIT = CELL_WIDTH / 2
 export const smoothSvg = (frame: SmoothFrame, columns: number, rows: number, limit: number): { source: string; width: number; height: number } => {
   const width = Math.max(1, Math.floor(columns)) * CELL_WIDTH
   const height = Math.max(1, Math.floor(rows)) * CELL_HEIGHT
-  const source = svgOf(frame.shapes, width, height, scale(PIXELS_PER_UNIT), limit - 400, ` font-family='ui-monospace,Menlo,Consolas,monospace' text-anchor='middle'`)
+  const view = scale(PIXELS_PER_UNIT)
+  const extra = ` font-family='ui-monospace,Menlo,Consolas,monospace' text-anchor='middle'`
+  const budget = limit - 400
+  let shapes: readonly Shape[] = frame.shapes
+  // Past the limit, whole mascots are left out, the last drawn first: never one drawn in part.
+  if (shapesMarkup(shapes, view).markup.length > budget) {
+    const sizes = frame.wholes.map(([from, to]) => shapesMarkup(frame.shapes.slice(from, to), view).markup.length)
+    let over = shapesMarkup(shapes, view).markup.length - budget
+    const dropped = new Set<number>()
+    for (let index = frame.wholes.length - 1; index >= 0 && over > 0; index -= 1) {
+      dropped.add(index)
+      over -= sizes[index] ?? 0
+    }
+    const gone = new Set(frame.wholes.flatMap(([from, to], index) => (dropped.has(index) ? Array.from({ length: to - from }, (_, at) => from + at) : [])))
+    shapes = frame.shapes.filter((_, index) => !gone.has(index))
+  }
+  const source = svgOf(shapes, width, height, view, budget, extra)
 
   return { source, width, height }
 }

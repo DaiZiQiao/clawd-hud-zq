@@ -85,6 +85,24 @@ describe('its quirks', () => {
     expect(quirkLook(STAND, { kind: 'ura', at: 500 }).bob).toBe(true)
   })
 
+  test('with little sky over its box (the band above the prompt has a row), only what stays in the room: no leap, backflip, lean-in, dance or twirl', () => {
+    const kinds = (sky: number): Set<string> => {
+      const seen = new Set<string>()
+      for (let t = 0; t < 400 * QUIRK_WINDOW_MS; t += 250) {
+        const quirk = quirkAt('u1', t, 'free', sky)
+        if (quirk !== undefined) seen.add(quirk.kind)
+      }
+
+      return seen
+    }
+    expect([...kinds(1)].sort()).toEqual(['fuun', 'shake', 'zoom'])
+    expect([...kinds(2)].sort()).toEqual(['fuun', 'huh', 'shake', 'twirl', 'yaha', 'zoom'])
+    expect(kinds(4).has('ura') && kinds(4).has('flip')).toBe(true)
+    // At its laptop, a cramped one bashes the keys or shakes.
+    const desk = new Set(Array.from({ length: 4000 }, (_, step) => quirkAt('u1', step * 250, 'desk', 1)?.kind).filter(Boolean))
+    expect([...desk].sort()).toEqual(['bash', 'shake'])
+  })
+
   test('in the scene: an idle Usagi bursts out in its cells and its shapes alike; Clawd never', () => {
     // A moment, on a frame of the scene's, a third of a second or more into a quirk of the session's Usagi.
     const from = Math.ceil(inputs([]).now / SCENE_FRAME_MS) * SCENE_FRAME_MS
@@ -98,7 +116,7 @@ describe('its quirks', () => {
     const layout = room(60, 10, at! / SCENE_FRAME_MS, { motion: 'smooth', wander: false })
     const plan = mascotPlan(scene, layout)!
     const sprite = placedSprites(scene, layout, plan)?.sprites.find(one => one.id === 'main')
-    expect(sprite?.figure?.quirk).toBe('free')
+    expect(sprite?.figure?.quirk?.place).toBe('free')
     expect(sprite?.cells.map(row => row.map(cell => cell?.ch ?? ' ').join('')).join('\n')).toContain(said)
     const frame = smoothFrame(scene, layout, plan, undefined, createSmoother(), at!)!
     expect(frame.still).toBe(false)

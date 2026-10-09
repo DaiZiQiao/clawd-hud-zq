@@ -2,6 +2,8 @@ import type { RenderElement, SvgProps } from 'claude-code'
 import { describe, expect, test } from 'claude-code/testing'
 
 import type { HudSelection } from '../types'
+import { scale, shapesMarkup, translate } from './clawd-vector'
+import type { Shape } from './clawd-vector'
 import { CROWN, HAT_X, HEADS } from './mascot-sprites'
 import { draw } from './scene-client'
 import type { SceneElements } from './scene-client'
@@ -15,7 +17,11 @@ import { viewOf } from './scene-view'
 import { FRAME_MS, createWorld, pointer, tick } from './scene-world'
 import type { World } from './scene-world'
 import { LAPTOP, TYPIST, frameLines, inputs, press, ticks } from './scene-world.fixtures'
+import { smoothSvg } from './scene-smooth'
+import { figureShapes } from './smooth-art'
+import { NEUTRAL } from './smooth-pose'
 import { CELL_HEIGHT, CELL_WIDTH, SCENE_THEMES } from './svg-style'
+import { USAGI } from './usagi-sprites'
 
 // The scene in pixels on the desktop: one Svg as big as the region, read
 // back into the text rows' cells, under the cap, in both themes.
@@ -244,6 +250,44 @@ describe('the desktop draws it in pixels', () => {
     expect(kept).toBeGreaterThan(50)
     expect(kept).toBeLessThan(400)
     expect(svg.source.startsWith(sceneSvg(layers.slice(0, kept), { columns: 60, rows: 12 }, 'crowd').source.slice(0, -'</svg>'.length))).toBe(true)
+  })
+
+  test('the smooth scene past the cap leaves out whole mascots, the last drawn first, never part of one', () => {
+    const roles = ['reviewer', 'debugger', 'planner', 'worker', 'frontend', 'explorer'] as const
+    const shapes: Shape[] = []
+    const wholes: (readonly [number, number])[] = []
+    for (let index = 0; index < 24; index += 1) {
+      const from = shapes.length
+      shapes.push(...figureShapes(NEUTRAL, { character: 'usagi', colour: USAGI.body, role: roles[index % roles.length], energy: 1 }, translate(14 + 28 * (index % 8), 30 + 24 * Math.floor(index / 8)), 0))
+      wholes.push([from, shapes.length])
+    }
+    const { source } = smoothSvg({ shapes, wholes, width: 230, height: 90, still: true }, 115, 23, SVG_MAX)
+    expect(source.length).toBeLessThanOrEqual(SVG_MAX)
+    expect(wellFormed(source)).toBe(true)
+    // Each mascot's markup is there whole, or not a shape of it is.
+    const view = scale(CELL_WIDTH / 2)
+    const innerOf = (some: readonly Shape[]): string => {
+      const { markup } = shapesMarkup(some, view)
+
+      return markup.slice(markup.indexOf('>') + 1, -'</g>'.length)
+    }
+    // Its shapes in runs as the markup groups them, those in a row placed alike.
+    const runsOf = (some: readonly Shape[]): Shape[][] => some.reduce<Shape[][]>((runs, one) => {
+      const last = runs[runs.length - 1]
+      if (last !== undefined && last[0]?.m === one.m) last.push(one)
+      else runs.push([one])
+
+      return runs
+    }, [])
+    const kept = wholes.map(([from, to]) => {
+      if (source.includes(innerOf(shapes.slice(from, to)))) return true
+      expect(runsOf(shapes.slice(from, to)).some(run => source.includes(innerOf(run)))).toBe(false)
+
+      return false
+    })
+    expect(kept.filter(Boolean).length).toBeGreaterThan(4)
+    expect(kept.filter(Boolean).length).toBeLessThan(24)
+    expect(kept.indexOf(false)).toBe(kept.filter(Boolean).length)
   })
 
   test('theme keys carry the dark theme\'s colours, and the light theme\'s for a light page; raw colours as they are', () => {

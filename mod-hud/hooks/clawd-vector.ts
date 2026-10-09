@@ -175,6 +175,26 @@ const rgbOf = (hex: string): [number, number, number] => {
   return Number.isFinite(n) ? [(n >> 16) & 255, (n >> 8) & 255, n & 255] : [255, 255, 255]
 }
 
+/**
+ * The stretches between points (round to the first again when `closed`),
+ * packed five numbers each for the pixel loops: where each starts, its run
+ * across and down, and one over its length squared (0 for none).
+ */
+const edgesOf = (points: readonly (readonly [number, number])[], closed: boolean): Float64Array => {
+  const count = closed ? points.length : Math.max(0, points.length - 1)
+  const edges = new Float64Array(count * 5)
+  for (let i = 0; i < count; i += 1) {
+    const [ax, ay] = points[i] ?? [0, 0]
+    const [bx, by] = points[(i + 1) % points.length] ?? [ax, ay]
+    const dx = bx - ax
+    const dy = by - ay
+    const length = dx * dx + dy * dy
+    edges.set([ax, ay, dx, dy, length > 0 ? 1 / length : 0], i * 5)
+  }
+
+  return edges
+}
+
 /** How far a local point is outside a shape (negative inside), in local units: a function made once per shape, its constants worked out. */
 const distanceTo = (shape: Shape): ((x: number, y: number) => number) => {
   const cx = shape.x + shape.w / 2
@@ -195,45 +215,49 @@ const distanceTo = (shape: Shape): ((x: number, y: number) => number) => {
       // grown, that much nearer.
       const points = shape.points ?? []
       const grow = shape.grow ?? 0
-      const edges = points.map((point, i) => {
-        const [ax, ay] = point
-        const [bx, by] = points[(i + 1) % points.length] ?? [0, 0]
-
-        return [ax, ay, bx - ax, by - ay, (bx - ax) * (bx - ax) + (by - ay) * (by - ay)] as const
-      })
+      const edges = edgesOf(points, true)
 
       return (x, y) => {
         let nearest = Infinity
         let inside = false
-        for (const [ax, ay, dx, dy, length] of edges) {
-          const t = length > 0 ? Math.max(0, Math.min(1, ((x - ax) * dx + (y - ay) * dy) / length)) : 0
-          const ex = x - ax - t * dx
-          const ey = y - ay - t * dy
-          nearest = Math.min(nearest, ex * ex + ey * ey)
-          if (ay > y !== ay + dy > y && x < ax + ((y - ay) * dx) / dy) inside = !inside
+        for (let i = 0; i < edges.length; i += 5) {
+          const ax = edges[i] ?? 0
+          const ay = edges[i + 1] ?? 0
+          const dx = edges[i + 2] ?? 0
+          const dy = edges[i + 3] ?? 0
+          const px = x - ax
+          const py = y - ay
+          const along = (px * dx + py * dy) * (edges[i + 4] ?? 0)
+          const t = along < 0 ? 0 : along > 1 ? 1 : along
+          const ex = px - t * dx
+          const ey = py - t * dy
+          const d = ex * ex + ey * ey
+          if (d < nearest) nearest = d
+          if (ay > y !== ay + dy > y && x < ax + (py * dx) / dy) inside = !inside
         }
+        const distance = Math.sqrt(nearest)
 
-        return (inside ? -Math.sqrt(nearest) : Math.sqrt(nearest)) - grow
+        return (inside ? -distance : distance) - grow
       }
     }
     case 'line': {
       // A line through its points: the distance to its nearest stretch, less half its width.
-      const points = shape.points ?? []
       const half = (shape.stroke ?? 0) / 2
-      const stretches = points.slice(1).map((point, i) => {
-        const [ax, ay] = points[i] ?? point
-        const [bx, by] = point
-
-        return [ax, ay, bx - ax, by - ay, (bx - ax) * (bx - ax) + (by - ay) * (by - ay)] as const
-      })
+      const stretches = edgesOf(shape.points ?? [], false)
 
       return (x, y) => {
         let nearest = Infinity
-        for (const [ax, ay, dx, dy, length] of stretches) {
-          const t = length > 0 ? Math.max(0, Math.min(1, ((x - ax) * dx + (y - ay) * dy) / length)) : 0
-          const ex = x - ax - t * dx
-          const ey = y - ay - t * dy
-          nearest = Math.min(nearest, ex * ex + ey * ey)
+        for (let i = 0; i < stretches.length; i += 5) {
+          const px = x - (stretches[i] ?? 0)
+          const py = y - (stretches[i + 1] ?? 0)
+          const dx = stretches[i + 2] ?? 0
+          const dy = stretches[i + 3] ?? 0
+          const along = (px * dx + py * dy) * (stretches[i + 4] ?? 0)
+          const t = along < 0 ? 0 : along > 1 ? 1 : along
+          const ex = px - t * dx
+          const ey = py - t * dy
+          const d = ex * ex + ey * ey
+          if (d < nearest) nearest = d
         }
 
         return Math.sqrt(nearest) - half
@@ -284,32 +308,44 @@ const layShape = (pixels: Uint8Array, width: number, height: number, shape: Shap
   const y0 = Math.max(0, Math.floor(Math.min(...corners.map(one => one[1]))) - 1)
   const y1 = Math.min(height - 1, Math.ceil(Math.max(...corners.map(one => one[1]))) + 1)
   const [red, green, blue] = rgbOf(hexOf(shape.fill, scheme))
+  // An outlined polygon's outline, laid under its fill in the same pass: its colour and how far out it reaches.
+  const outline = shape.kind === 'poly' ? shape.outline : undefined
+  const [lineRed, lineGreen, lineBlue] = rgbOf(outline?.fill ?? '#000000')
+  const reach = outline?.width ?? 0
   const distance = distanceTo(shape)
   const [b0, b1, b2, b3, b4, b5] = back
+  // A colour laid over pixel `at` at `a` (straight alpha).
+  const lay = (at: number, r: number, g: number, b: number, a: number): void => {
+    const below = (pixels[at + 3] ?? 0) / 255
+    if (a >= 1 || below === 0) {
+      // Opaque over anything, or anything over nothing: the colour itself.
+      pixels[at] = r
+      pixels[at + 1] = g
+      pixels[at + 2] = b
+      pixels[at + 3] = Math.round(a * 255)
+      return
+    }
+    const keep = below * (1 - a)
+    const out = a + keep
+    pixels[at] = Math.round((r * a + (pixels[at] ?? 0) * keep) / out)
+    pixels[at + 1] = Math.round((g * a + (pixels[at + 1] ?? 0) * keep) / out)
+    pixels[at + 2] = Math.round((b * a + (pixels[at + 2] ?? 0) * keep) / out)
+    pixels[at + 3] = Math.round(out * 255)
+  }
   for (let py = y0; py <= y1; py += 1) {
     // The row's first pixel's middle, back in local units; each pixel on, a step along the row.
     let lx = b0 * (x0 + 0.5) + b2 * (py + 0.5) + b4
     let ly = b1 * (x0 + 0.5) + b3 * (py + 0.5) + b5
     for (let px = x0; px <= x1; px += 1, lx += b0, ly += b1) {
-      const cover = 0.5 - distance(lx, ly) / pixel
-      if (cover <= 0) continue
-      const a = (cover >= 1 ? 1 : cover) * alpha
+      const d = distance(lx, ly)
+      const cover = 0.5 - d / pixel
       const at = (py * width + px) * 4
-      const below = (pixels[at + 3] ?? 0) / 255
-      if (a >= 1 || below === 0) {
-        // Opaque over anything, or anything over nothing: the colour itself.
-        pixels[at] = red
-        pixels[at + 1] = green
-        pixels[at + 2] = blue
-        pixels[at + 3] = Math.round(a * 255)
-        continue
+      // Its outline where its fill does not cover the pixel whole.
+      if (outline !== undefined && (cover < 1 || alpha < 1)) {
+        const under = 0.5 - (d - reach) / pixel
+        if (under > 0) lay(at, lineRed, lineGreen, lineBlue, (under >= 1 ? 1 : under) * alpha)
       }
-      const keep = below * (1 - a)
-      const out = a + keep
-      pixels[at] = Math.round((red * a + (pixels[at] ?? 0) * keep) / out)
-      pixels[at + 1] = Math.round((green * a + (pixels[at + 1] ?? 0) * keep) / out)
-      pixels[at + 2] = Math.round((blue * a + (pixels[at + 2] ?? 0) * keep) / out)
-      pixels[at + 3] = Math.round(out * 255)
+      if (cover > 0) lay(at, red, green, blue, (cover >= 1 ? 1 : cover) * alpha)
     }
   }
 }
@@ -330,8 +366,6 @@ export const rasterOf = (shapes: readonly Shape[], width: number, height: number
       for (const one of glyphs?.(shape) ?? []) layShape(pixels, width, height, one, multiply(m, one.m ?? IDENTITY), scheme)
       continue
     }
-    // Outlined: its outline first, the polygon grown that far in the outline's colour.
-    if (shape.kind === 'poly' && shape.outline !== undefined) layShape(pixels, width, height, { ...shape, grow: (shape.grow ?? 0) + shape.outline.width, fill: shape.outline.fill }, m, scheme)
     layShape(pixels, width, height, shape, m, scheme)
   }
 

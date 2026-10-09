@@ -344,8 +344,8 @@ export type SpriteFigure = {
   stretchMs?: number
   /** The rows its cells were raised this frame for a bounce (the walk's, the dance's): the smooth scene bounces its own way. */
   bob?: number
-  /** Usagi standing where a quirk may come over it (hooks/usagi-quirks.ts): free, or at its laptop. */
-  quirk?: 'free' | 'desk'
+  /** Usagi standing where a quirk may come over it (hooks/usagi-quirks.ts): free, or at its laptop, and the rows of sky over its box. */
+  quirk?: { place: 'free' | 'desk'; sky: number }
 }
 
 /**

@@ -26,7 +26,15 @@ import type { Smoother } from './smooth-pose'
 // vector art (hooks/scene-smooth.ts) draws a frame every VECTOR_FRAME_MS.
 // docs/mascots.md, "Physics and controls".
 
-type State = { world: World; frame: number; step?: number; drawing?: string; stopEvery?: () => void }
+type State = {
+  world: World
+  frame: number
+  step?: number
+  drawing?: string
+  /** What the clock drew for its frame, with the props it drew from: shown as it is on the redraw it asks for. */
+  drawn?: { frame: number; props: SceneInputs; element: ReturnType<typeof draw> }
+  stopEvery?: () => void
+}
 
 /** The vector art's frame: thirty a second, where the cells step at FRAME_MS. */
 export const VECTOR_FRAME_MS = 33
@@ -143,10 +151,13 @@ const SceneClient: ClientModule<JsonValue, State> = (props, surface) => {
       const held = surface.state
       if (held === undefined || held.world.props.paused === true) return
       tick(held.world, step)
-      const drawing = JSON.stringify(draw(held.world, surface.elements))
-      if (drawing !== held.drawing) surface.setState({ ...held, frame: held.frame + 1, drawing })
+      const element = draw(held.world, surface.elements)
+      const drawing = JSON.stringify(element)
+      if (drawing !== held.drawing) surface.setState({ ...held, frame: held.frame + 1, drawing, drawn: { frame: held.frame + 1, props: held.world.props, element } })
     })
   }
+  // The frame the clock has just drawn (its setState brought this redraw), from the same props: not drawn twice.
+  if (state.drawn !== undefined && state.drawn.frame === state.frame && state.drawn.props === state.world.props) return state.drawn.element
   const rendered = draw(state.world, surface.elements)
   state.drawing = JSON.stringify(rendered)
 

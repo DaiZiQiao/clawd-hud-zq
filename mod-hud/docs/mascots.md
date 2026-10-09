@@ -174,8 +174,8 @@ the stretch, pick up, dangle, throw and tumble.
   and energy marks. Usagi is drawn as Chiikawa draws it: cream, a bold
   near-black line round it all, a big round head (10.6 units across) on a
   smaller round body (6.9), its long ears close together, a sliver apart,
-  pink inside (up through holes in its hat, lowered squatting, drooping
-  slumped bare-headed, trailing a walk), its little feet, its hands stubby nubs
+  pink inside (up through holes in its hat, lowered squatting or slumped,
+  trailing a walk), its little feet, its hands stubby nubs
   sticking out of its sides (their line the silhouette's at rest, over it
   raised); its dot eyes with a small glint in their top right under brows
   high over them (a quarter of an ellipse each, level by the face's middle,
@@ -504,8 +504,8 @@ its hat (or crown) lies on the floor beside it.
 
 **Its looks.** The same looks as Clawd's, drawn its own way:
 
-- Its ears stand through a hat; bare, they lower while it squats or sleeps,
-  their tips trail a walk, and they droop when it slumps, failed.
+- Its ears stand through a hat; bare, they lower while it squats, sleeps or
+  slumps, failed and unimpressed, and their tips trail a walk.
 - Its eyes move with the look (left, right, crossed, apart, wide, down,
   shut); its mouth is small, turned with them, or wide open with its hands
   up (a hop, the cheer, a stretch).

@@ -93,7 +93,8 @@ const RUN_FEET: Partial<Record<Look['legs'], readonly number[]>> = { step: [4, 7
 const earsOf = (look: Look, hatted: boolean, crowned: boolean): Ears => {
   if (hatted) return 'up'
   const squat = look.pose === 'sit' || look.pose === 'crouch' || look.pose === 'squash'
-  if (squat) return !crowned && look.pose === 'sit' && look.overlays.some(one => CROSS.has(one)) ? 'droop' : 'short'
+  // Slumped under its cross they droop (the shapes' rule too), unless it is unimpressed, `hmph`: then lowered.
+  if (squat) return !crowned && look.pose === 'sit' && look.lids !== 'hmph' && look.overlays.some(one => CROSS.has(one)) ? 'droop' : 'short'
   if (look.pose === 'blanket') return 'short'
   if (look.lean !== undefined) return look.lean === 1 ? 'trailLeft' : 'trailRight'
 

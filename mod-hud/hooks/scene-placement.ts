@@ -205,11 +205,11 @@ export const placedSprites = (scene: MascotScene, layout: MascotLayout, plan = m
     const character = usagi ? 'usagi' as const : 'clawd' as const
     // Usagi on its floor, the session's or at work, nothing moving it: a quirk may come over it.
     const still = usagi && piped === undefined && !shaken && context.motion === undefined && context.pose === undefined && context.startled === undefined && (one.kind === 'main' || one.phase?.kind === 'work' || one.phase?.kind === 'stalled')
-    const quirked = (look: Look): { drawn: Look; place?: 'free' | 'desk' } => {
+    const quirked = (look: Look): { drawn: Look; place?: { place: 'free' | 'desk'; sky: number } } => {
       const place = still ? quirkPlaceOf(look) : undefined
-      const quirk = place === undefined ? undefined : quirkAt(one.id, tick * SCENE_FRAME_MS, place)
+      const quirk = place === undefined ? undefined : quirkAt(one.id, tick * SCENE_FRAME_MS, place, sky)
 
-      return { drawn: quirk === undefined ? look : quirkLook(look, quirk), ...(place === undefined ? {} : { place }) }
+      return { drawn: quirk === undefined ? look : quirkLook(look, quirk), ...(place === undefined ? {} : { place: { place, sky } }) }
     }
     // Drawn as the scene's character: Clawd, or Usagi.
     if (one.kind === 'main') {

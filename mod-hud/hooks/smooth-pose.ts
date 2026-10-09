@@ -411,8 +411,10 @@ export const createSmoother = (): Smoother => {
   return {
     ease: (id, target, now) => {
       const before = held.get(id)
-      // New, or a jump in time (a pause, a reload): straight to the target.
-      if (before === undefined || now <= before.at || now - before.at > 500) {
+      // The same moment drawn again (a surface's redraw): the pose it already has.
+      if (before !== undefined && now === before.at) return before.pose
+      // New, or a jump in time (back, a pause, a reload): straight to the target.
+      if (before === undefined || now < before.at || now - before.at > 500) {
         held.set(id, { pose: target, v: { dx: 0, drop: 0, sx: 0, sy: 0, tilt: 0, flat: 0 }, at: now })
 
         return target
