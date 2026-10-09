@@ -138,6 +138,16 @@ describe('the stage', () => {
     // A new layer's events, numbered from 1 again, are.
     expect(stageHits(stage, { layer: 'two', hits: click }, data => asks.push(data))).toBe(true)
     expect(asks).toHaveLength(2)
+    // A stage made afresh under a layer that lived on (a session ended, the next began) takes its new events, never its old again.
+    const taken = new Map<string, number>()
+    expect(stageHits(stage, { layer: 'three', hits: click }, data => asks.push(data), taken)).toBe(true)
+    expect(asks).toHaveLength(3)
+    const afresh = createStage(inputs([TYPIST], { columns: 60, rows: 10, art: 'vector' }))
+    expect(stageHits(afresh, { layer: 'three', hits: click }, data => asks.push(data), taken)).toBe(false)
+    expect(asks).toHaveLength(3)
+    const later: HitEvent[] = [...click, { seq: 3, type: 'move', ...at }]
+    expect(stageHits(afresh, { layer: 'three', hits: later }, data => asks.push(data), taken)).toBe(true)
+    expect(asks).toHaveLength(3)
   })
 })
 
@@ -228,6 +238,16 @@ describe('in a terminal that shows pictures', () => {
     const picture = pngPixels(String((image?.props.source as { png: string }).png))
     expect(picture.width).toBe(Number(image?.props.columns) * 16)
     expect(countColour(picture, CROWN.colour)).toBeGreaterThan(5)
+    await ui.unmount()
+  })
+
+  test('a region past what an Image holds (255 cells across) keeps the scene\'s own Client', { timeoutMs: 20_000 }, async ($, on) => {
+    arrange(on, [TYPIST])
+    mock.env(on, GHOSTTY)
+    blits(on)
+    const ui = await mount($, 'terminal', 300, 24)
+    expect(await ui.find({ type: 'Image' })).toBe(undefined)
+    expect((await ui.find({ type: 'Client' }))?.props.module).toBe('hooks/scene-client.tsx')
     await ui.unmount()
   })
 

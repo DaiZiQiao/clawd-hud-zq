@@ -231,7 +231,10 @@ const eyeShapes = (m: Matrix, pose: FigurePose, cx: readonly [number, number], y
         break
       case 'wide':
         shapes.push({ kind: 'ellipse', x: x - w * 0.8, y: cy - h * 0.62, w: w * 1.6, h: h * 1.24, fill, m })
-        shapes.push({ kind: 'ellipse', x: x - w * 0.1, y: cy - h * 0.5, w: w * 0.6, h: w * 0.6, fill: '#FFFFFF', alpha: 0.95, m })
+        // Clawd's glint big in its top left; Usagi's a small dot in its top right.
+        shapes.push(shine
+          ? { kind: 'ellipse', x: x + w * 0.2, y: cy - h * 0.42, w: w * 0.34, h: w * 0.34, fill: '#FFFFFF', alpha: 0.95, m }
+          : { kind: 'ellipse', x: x - w * 0.45, y: cy - h * 0.45, w: w * 0.55, h: w * 0.55, fill: '#FFFFFF', alpha: 0.9, m })
         break
       case 'spiral':
         shapes.push({ kind: 'ellipse', x: x - w * 0.8, y: cy - w * 0.8, w: w * 1.6, h: w * 1.6, ring: w * 0.35, fill, m })
@@ -242,8 +245,8 @@ const eyeShapes = (m: Matrix, pose: FigurePose, cx: readonly [number, number], y
         const open = Math.max(0.08, Math.min(1.2, pose.eyeOpen))
         const eh = h * open
         shapes.push({ kind: shapeOfEye(w, eh), x: x - w / 2, y: cy - eh / 2, w, h: eh, r: Math.min(w, eh) * 0.45, fill, m })
-        // Its glint: a round white dot in the eye's top right.
-        if (shine && open > 0.6) shapes.push({ kind: 'ellipse', x: x - w * 0.06, y: cy - eh * 0.4, w: w * 0.46, h: w * 0.46, fill: '#FFFFFF', alpha: 0.95, m })
+        // Its glint: a small white dot in the eye's top right.
+        if (shine && open > 0.6) shapes.push({ kind: 'ellipse', x: x + w * 0.04, y: cy - eh * 0.36, w: w * 0.26, h: w * 0.26, fill: '#FFFFFF', alpha: 0.95, m })
       }
     }
   }
@@ -315,37 +318,60 @@ const wheelShapes = (body: Matrix, run: number, t: number): Shape[] => {
   ]
 }
 
-/** Usagi's mouth by its shape (`mouthShape`, else small and open, wide open past `mouth` 0.45), its middle at the face's. */
-const mouthShapes = (m: Matrix, pose: FigurePose): Shape[] => {
-  const open = Math.max(0, Math.min(1, pose.mouth))
-  const shape = pose.mouthShape ?? (open > 0.45 ? 'scream' : 'dot')
-  switch (shape) {
-    case 'scream': {
-      // A wide D, flat along its top, its tongue at the bottom.
-      const width = 3.6 * Math.max(0.6, open)
-      const depth = 2.8 * Math.max(0.6, open)
-      const top = -6.3
-      const arc = Array.from({ length: 11 }, (_, index): readonly [number, number] => {
-        const a = (index * Math.PI) / 10
+/** Usagi's mouths as Chiikawa draws them: its cat's `ω` at rest, wide open shouting, a small round `o`, smug, a grin. */
+export type UsagiMouth = 'cat' | 'scream' | 'o' | 'smirk' | 'grin'
 
-        return [(width / 2) * Math.cos(a), top + depth * Math.sin(a)]
+/** Its mouth for a pose: as the pose says, else wide open past `mouth` 0.45, a grin with its eyes happy, else its `ω`. */
+export const usagiMouthOf = (pose: FigurePose): { kind: UsagiMouth; open: number } => {
+  const open = Math.max(0, Math.min(1, pose.mouth))
+  const kind: UsagiMouth = pose.mouthShape === 'dot' ? 'cat' : pose.mouthShape ?? (open > 0.45 ? 'scream' : pose.eyes === 'happy' ? 'grin' : 'cat')
+
+  return { kind, open }
+}
+
+/**
+ * Usagi's mouth about its middle, in its face's units, drawn in its line:
+ * its cat's `ω`, the ends curling up past its middle; shouting, wide open,
+ * tall and round, outlined, its tongue at the bottom (`open` how wide); a
+ * small round `o`; smug, a sideways smile hooked at its end, a dot under it;
+ * a grin, two peaks side by side.
+ */
+export const usagiMouthShapes = (m: Matrix, kind: UsagiMouth, open = 1): Shape[] => {
+  switch (kind) {
+    case 'cat': {
+      // A rabbit's: a short line down from its nose, then either side a small round lobe, its end turned up.
+      const lobe = (side: number): (readonly [number, number])[] => Array.from({ length: 13 }, (_, index) => {
+        const a = (index / 12) * Math.PI * 1.15
+
+        return [side * (0.3 - 0.3 * Math.cos(a)), 0.3 * Math.sin(a)] as const
       })
 
       return [
-        { kind: 'poly', x: 0, y: 0, w: 0, h: 0, points: arc, fill: USAGI.mouth, m },
-        { kind: 'ellipse', x: -width * 0.27, y: top + depth * 0.5, w: width * 0.54, h: depth * 0.42, fill: USAGI.blush, m },
+        ...strokeShapes(m, [[0, -0.42], [0, 0.02]], 0.24, USAGI.line),
+        ...strokeShapes(m, lobe(-1), 0.24, USAGI.line),
+        ...strokeShapes(m, lobe(1), 0.24, USAGI.line),
       ]
     }
-    case 'o':
-      return [{ kind: 'ellipse', x: -0.55, y: -6.3, w: 1.1, h: 1.35, fill: USAGI.mouth, m }]
+    case 'scream': {
+      const size = Math.max(0.6, open)
+      const w = 1.5 * size
+      const h = 2 * size
+      const mouth: Shape = { kind: 'rect', x: -w / 2, y: -0.55, w, h, r: w * 0.48, fill: USAGI.mouth, m }
+
+      return [grownBy(mouth, 0.2, USAGI.line), mouth, { kind: 'ellipse', x: -w * 0.33, y: -0.55 + h * 0.6, w: w * 0.66, h: h * 0.32, fill: USAGI.blush, m }]
+    }
+    case 'o': {
+      const mouth: Shape = { kind: 'rect', x: -0.45, y: -0.5, w: 0.9, h: 1.15, r: 0.45, fill: USAGI.mouth, m }
+
+      return [grownBy(mouth, 0.18, USAGI.line), mouth]
+    }
     case 'smirk':
       return [
-        { kind: 'rect', x: -0.95, y: -5.5, w: 1.9, h: 0.3, r: 0.15, fill: USAGI.mouth, m: multiply(m, about(0, -5.35, rotate(-0.16))) },
-        { kind: 'rect', x: 0.75, y: -5.85, w: 0.7, h: 0.28, r: 0.14, fill: USAGI.mouth, m: multiply(m, about(0.85, -5.7, rotate(-0.9))) },
+        ...strokeShapes(m, [[-0.7, -0.02], [-0.42, 0.17], [0, 0.24], [0.36, 0.15], [0.6, -0.06], [0.55, -0.3]], 0.26, USAGI.line),
+        { kind: 'ellipse', x: -0.15, y: 0.5, w: 0.26, h: 0.26, fill: USAGI.line, m },
       ]
-    case 'dot':
-      // Its small cat's mouth, `ω`, drawn in its line.
-      return [-0.5, 0.5].flatMap(cx => arcShapes(m, cx, -5.95, 0.5, 0, Math.PI, 0.3, USAGI.line))
+    case 'grin':
+      return [-1, 1].flatMap(side => strokeShapes(m, [[side * 0.04, 0.28], [side * 0.43, -0.22], [side * 0.84, 0.28]], 0.26, USAGI.line))
   }
 }
 
@@ -386,6 +412,38 @@ const arcShapes = (m: Matrix, cx: number, cy: number, r: number, from: number, t
   return [{ kind: 'poly', x: 0, y: 0, w: 0, h: 0, points: [...outer, ...inner], fill, m }]
 }
 
+/** A stroke `width` thick along a line of points, its ends round. */
+export const strokeShapes = (m: Matrix, points: readonly (readonly [number, number])[], width: number, fill: string): Shape[] => {
+  const last = points.length - 1
+  if (last < 1) return []
+  // Each point pushed half the width out either side, square to the line there.
+  const edge = (index: number, sign: number): readonly [number, number] => {
+    const [x, y] = points[index] ?? [0, 0]
+    const [ax, ay] = points[Math.max(0, index - 1)] ?? [x, y]
+    const [bx, by] = points[Math.min(last, index + 1)] ?? [x, y]
+    const length = Math.hypot(bx - ax, by - ay) || 1
+
+    return [x - (sign * (by - ay) * width) / (2 * length), y + (sign * (bx - ax) * width) / (2 * length)]
+  }
+  const band = [...points.map((_, index) => edge(index, 1)), ...points.map((_, index) => edge(last - index, -1))]
+  const ends = [points[0], points[last]].map(([x, y] = [0, 0]): Shape => ({ kind: 'ellipse', x: x - width / 2, y: y - width / 2, w: width, h: width, fill, m }))
+
+  return [{ kind: 'poly', x: 0, y: 0, w: 0, h: 0, points: band, fill, m }, ...ends]
+}
+
+/**
+ * A brow's line, as Chiikawa draws Usagi's: a quarter of an ellipse, level
+ * at its end near the face's middle (`inner`, at `top`), curving down ever
+ * faster to the side till it falls straight (`outer`, `drop` lower). Points
+ * from the inner end out.
+ */
+export const browLine = (inner: number, outer: number, top: number, drop: number): (readonly [number, number])[] =>
+  Array.from({ length: 15 }, (_, index) => {
+    const turn = (index / 14) * (Math.PI / 2)
+
+    return [inner + (outer - inner) * Math.sin(turn), top + drop * (1 - Math.cos(turn))] as const
+  })
+
 /** A cheek's blush: a pink oval, three short dark strokes on it. */
 const blushShapes = (m: Matrix, cx: number, cy: number): Shape[] => [
   { kind: 'ellipse', x: cx - 1.25, y: cy - 0.72, w: 2.5, h: 1.44, fill: USAGI.blush, alpha: 0.95, m },
@@ -394,17 +452,17 @@ const blushShapes = (m: Matrix, cx: number, cy: number): Shape[] => [
 
 /** Its tail, at its back as it goes: a white puff, its edge tufted in short dark strokes, `alpha` seen. */
 const tailShapes = (m: Matrix, cx: number, cy: number, alpha: number): Shape[] => [
-  { kind: 'ellipse', x: cx - 1.1, y: cy - 1.1, w: 2.2, h: 2.2, fill: '#FFFFFF', alpha, m },
+  { kind: 'ellipse', x: cx - 0.9, y: cy - 0.9, w: 1.8, h: 1.8, fill: '#FFFFFF', alpha, m },
   ...Array.from({ length: 12 }, (_, index): Shape => {
     const a = (index * Math.PI) / 6
 
-    return { kind: 'rect', x: -0.09, y: -0.32, w: 0.18, h: 0.5, r: 0.09, fill: USAGI.line, alpha, m: chain(m, translate(cx + 1.25 * Math.cos(a), cy + 1.25 * Math.sin(a)), rotate(a + Math.PI / 2 + (index % 2 === 0 ? 0.25 : -0.25))) }
+    return { kind: 'rect', x: -0.08, y: -0.27, w: 0.16, h: 0.42, r: 0.08, fill: USAGI.line, alpha, m: chain(m, translate(cx + 1.02 * Math.cos(a), cy + 1.02 * Math.sin(a)), rotate(a + Math.PI / 2 + (index % 2 === 0 ? 0.25 : -0.25))) }
   }),
 ]
 
 /**
- * Usagi as Chiikawa draws it: a big round head on a body three quarters its
- * width, its long ears together (pink inside; lowered squatting, trailing a walk,
+ * Usagi as Chiikawa draws it: a big round head on a small round body, its
+ * long ears together (pink inside; lowered squatting, trailing a walk,
  * drooping slumped), its little feet, its hands nubs at its sides (raised
  * beside its face, out to its laptop), a thin dark line round it all; its dot
  * eyes with a glint under fine brows, its hatched pink cheeks, its small
@@ -434,37 +492,44 @@ const usagiShapes = (pose: FigurePose, info: FigureInfo, t: number): Shape[] => 
     part({ kind: 'rect', x: side * 0.95 - 0.85, y: -11.4 - earLength, w: 1.7, h: earLength + 0.4, r: 0.85, fill: USAGI.cream, m: ear })
     inside.push({ kind: 'rect', x: side * 0.95 - 0.45, y: -10.95 - earLength, w: 0.9, h: Math.max(0.6, earLength - 2.2), r: 0.45, fill: USAGI.ear, m: ear })
   }
-  const footHeight = Math.max(0, 1.3 * (1 - 0.45 * pose.tuck) * (1 - pose.hideLegs) * (1 - pose.run))
-  for (const [index, x] of [[0, -1.75], [1, 1.75]] as const) {
-    if (footHeight > 0.05) part({ kind: 'rect', x: x - 0.95, y: -footHeight - (pose.legs[index] ?? 0), w: 1.9, h: footHeight, r: Math.min(0.75, footHeight / 2), fill: USAGI.cream, m: body })
+  const footHeight = Math.max(0, 1.2 * (1 - 0.45 * pose.tuck) * (1 - pose.hideLegs) * (1 - pose.run))
+  for (const [index, x] of [[0, -1.3], [1, 1.3]] as const) {
+    if (footHeight > 0.05) part({ kind: 'rect', x: x - 0.85, y: -footHeight - (pose.legs[index] ?? 0), w: 1.7, h: footHeight, r: Math.min(0.7, footHeight / 2), fill: USAGI.cream, m: body })
   }
-  part({ kind: 'ellipse', x: -4, y: -7.55, w: 8, h: 7.2, fill: USAGI.cream, m: body })
+  // Its body, small under its big head: some three fifths of the head's height, a little over half its width.
+  part({ kind: 'ellipse', x: -2.88, y: -5.53, w: 5.76, h: 5.18, fill: USAGI.cream, m: body })
   part({ kind: 'ellipse', x: -5.3, y: -12.7, w: 10.6, h: 8.6, fill: USAGI.cream, m: body })
-  const shapes: Shape[] = [...lines, ...parts.slice(0, 2), ...inside, ...parts.slice(2)]
-  // Going, its tail shows at its back: a white puff out of its side.
-  const going = Math.min(1, Math.abs(pose.trail) / 1.5)
-  if (going > 0.05) shapes.push(...tailShapes(body, Math.sign(pose.trail) * 3.95, -2.7, going))
-  // Sprinting: its legs a spinning wheel under it, a blur and four legs turning five times a second.
-  if (pose.run > 0.05) shapes.unshift(...wheelShapes(body, pose.run, t))
-  // Its hands: nubs out of its sides under its cheeks, each outlined over it; raised beside its face, out to its laptop.
-  for (const side of [-1, 1]) {
+  // Its hands: nubs sticking out of its sides under its cheeks, raised beside its face, out to its laptop. At rest their
+  // line is the silhouette's, under its body (only what sticks out is outlined); raised, in front of it, their line over it.
+  const hands = [-1, 1].map(side => {
     const raise = side === -1 ? pose.armL : pose.armR
     const reach = side === 1 ? pose.reach : 0
-    const hand = multiply(body, chain(translate(side * 3.9, -5.3), scale(side, 1), rotate(0.35 * (1 - reach) - raise)))
-    const nub: Shape = { kind: 'rect', x: -0.6, y: -0.7, w: 2.1 + 2.2 * reach, h: 1.4, r: 0.7, fill: USAGI.cream, m: hand }
-    shapes.push(grownBy(nub, LINE, USAGI.line), nub)
-  }
-  // Its face: dot eyes with a glint, its brows arched high over them (higher wide-eyed), its cheeks blushing with three strokes, its mouth.
-  const brow = pose.eyes === 'wide' ? -0.5 : 0
+    const hand = multiply(body, chain(translate(side * 2.55, -4.1), scale(side, 1), rotate(0.35 * (1 - reach) - raise)))
+    const nub: Shape = { kind: 'rect', x: -0.9, y: -0.65, w: 2.5 + 3 * reach, h: 1.3, r: 0.65, fill: USAGI.cream, m: hand }
+
+    return { nub, line: grownBy(nub, LINE, USAGI.line), front: Math.max(0, Math.min(1, (raise - 0.45) / 0.6)) }
+  })
+  const shapes: Shape[] = [...lines, ...hands.map(one => one.line), ...parts.slice(0, 2), ...inside, ...parts.slice(2)]
+  for (const { nub, line, front } of hands) shapes.push(...(front > 0.01 ? [{ ...line, alpha: front }] : []), nub)
+  // Going, its tail shows at its back: a white puff out of its side.
+  const going = Math.min(1, Math.abs(pose.trail) / 1.5)
+  if (going > 0.05) shapes.push(...tailShapes(body, Math.sign(pose.trail) * 2.95, -2.4, going))
+  // Sprinting: its legs a spinning wheel under it, a blur and four legs turning five times a second.
+  if (pose.run > 0.05) shapes.unshift(...wheelShapes(body, pose.run, t))
+  // Its face: dot eyes with a small glint, its brows high over them (higher wide-eyed), level over the middle and falling
+  // away to the sides, its cheeks blushing with three strokes, its mouth.
+  const browTop = -10.75 + (pose.eyes === 'wide' ? -0.5 : 0)
   shapes.push(
     ...blushShapes(body, -3.7, -6.85),
     ...blushShapes(body, 3.7, -6.85),
-    ...eyeShapes(body, pose, [-2.25, 2.25], -8.1, 1.3, 1.6, USAGI.eye, true),
-    ...arcShapes(body, -2.25 + pose.eyeX, -8.05 + brow, 1.9, Math.PI * 1.2, Math.PI * 1.8, 0.4, USAGI.line),
-    ...arcShapes(body, 2.25 + pose.eyeX, -8.05 + brow, 1.9, Math.PI * 1.2, Math.PI * 1.8, 0.4, USAGI.line),
+    ...eyeShapes(body, pose, [-2.25, 2.25], -8.1, 1.2, 1.5, USAGI.eye, true),
+    ...[-1, 1].flatMap(side => strokeShapes(body, browLine(side * 1.05 + pose.eyeX, side * 3.55 + pose.eyeX, browTop, 1.75), 0.4, USAGI.line)),
   )
   // Its mouth, turned with its eyes: small and open, wide open screaming, a round `o`, a smirk.
-  if (pose.blanket < 0.5 && pose.eyes !== 'down') shapes.push(...mouthShapes(chain(body, translate(0.5 * pose.eyeX, -1.55), about(0, -6.3, scale(0.8))), pose))
+  if (pose.blanket < 0.5 && pose.eyes !== 'down') {
+    const mouth = usagiMouthOf(pose)
+    shapes.push(...usagiMouthShapes(chain(body, translate(0.5 * pose.eyeX, -6.75)), mouth.kind, mouth.open))
+  }
   // Asleep: a bubble from its nose, swelling and shrinking with each breath.
   if (pose.blanket > 0.5) shapes.push(...noseBubbleShapes(chain(body, translate(-0.5, -1.4)), t))
   // What it wears on its head's top (two units over the sprite's), cut to its narrower head.

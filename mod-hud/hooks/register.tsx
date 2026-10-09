@@ -1251,6 +1251,8 @@ const PICTURE_GIVE_UP = Math.ceil(3000 / IMAGE_FRAME_MS)
 /** The TV's giant as a picture under its glass, by site: its Image's key, who and where it was drawn for, its frames (eyes open; shut, drawn at its first blink), the one shown, and its own clock for the blinks. */
 type GiantPicture = { requestId: string; surface: string; key: string; drawn: string; open: string; shut?: string; shown: 'open' | 'shut'; ms: number; draw: (eyes: 'open' | 'shut') => string }
 const giantPictures = new Map<string, GiantPicture>()
+/** The last event taken from each hit layer, by its name: kept past the stages, which a session's end clears while their layers live on. */
+const hitSeqs = new Map<string, number>()
 let pictureTimer: Timer | undefined
 let pictureBusy = false
 /** The person's theme as the picture's scheme (a light theme's colours on a light one), read again after ten seconds. */
@@ -1273,6 +1275,14 @@ const noPictures = ($: EngineInterface, surface: string, why: string): void => {
   if (pictures.size === 0 && giantPictures.size === 0) stopPictures()
   $.ui.log(`the scene's picture on ${surface} is refused (${printable(why).slice(0, 160)}): its blocks there`, { to: 'debug' })
   $.clock.after(0, () => $.ui.invalidate('ui.render'))
+}
+
+/** The pane closed: its scene's pictures go (one held paused while inspecting draws no frame to find it gone), and the TV's giant with them. */
+const dropPanePictures = (): void => {
+  for (const [site, picture] of pictures) if (picture.requestId === PANE) pictures.delete(site)
+  giantPictures.clear()
+  tvGiants.clear()
+  if (pictures.size === 0) stopPictures()
 }
 
 // Every IMAGE_FRAME_MS each picture's world steps on and, when its frame is due
@@ -1318,7 +1328,9 @@ const startPictures = ($: EngineInterface): void => {
           if (drawsAlt(deny)) noPictures($, giant.surface, deny)
           else giantPictures.delete(site)
         }
-        if (pictures.size === 0 && giantPictures.size === 0 && pictureTimer === mine) stopPictures()
+        // Nothing to draw: no pictures, or only scenes held paused (their next drawing starts the timer again).
+        const drawing = giantPictures.size > 0 || [...pictures.values()].some(picture => picture.stage.world.props.paused !== true)
+        if (!drawing && pictureTimer === mine) stopPictures()
       } finally {
         pictureBusy = false
       }
@@ -1356,9 +1368,14 @@ const terminalShowsPictures = async ($: EngineInterface): Promise<boolean> => {
   return picturesHere
 }
 
-/** Whether the scene is a picture on this surface: the vector art, a terminal that shows pictures (`terminalShowsPictures`) whose table has `Image`, not refused there. */
-const picturedOn = async ($: EngineInterface, settings: Settings, surface: string, table: object): Promise<boolean> =>
-  settings.mascotArt === 'vector' && surface === 'terminal' && 'Image' in table && 'Client' in table && !pictureless.has(surface) && (await terminalShowsPictures($))
+/** An `Image` is 1 to 255 cells either way. */
+const PICTURE_MOST = 255
+
+/** Whether a region of `columns` by `rows` is a picture on this surface: the vector art, a terminal that shows pictures (`terminalShowsPictures`) whose table has `Image`, not refused there, the region no bigger than an `Image` is. */
+const picturedOn = async ($: EngineInterface, settings: Settings, surface: string, table: object, columns: number, rows: number): Promise<boolean> =>
+  settings.mascotArt === 'vector' && surface === 'terminal' && 'Image' in table && 'Client' in table && !pictureless.has(surface)
+  && columns >= 1 && rows >= 1 && columns <= PICTURE_MOST && rows <= PICTURE_MOST
+  && (await terminalShowsPictures($))
 
 /** A picture's stage handed the props while it is not drawn (paused while inspecting): it keeps its world for when it is back. */
 const holdPicture = (requestId: string, surface: string, inputs: SceneInputs): void => {
@@ -1443,7 +1460,7 @@ const pictureHits = (requestId: string, surface: string, post: HitPost): JsonVal
   const picture = pictures.get(`${requestId}:${surface}`)
   if (picture === undefined) return []
   const asks: JsonValue[] = []
-  stageHits(picture.stage, post, data => asks.push(data))
+  stageHits(picture.stage, post, data => asks.push(data), hitSeqs)
 
   return asks
 }
@@ -1667,7 +1684,7 @@ const bandYard = async (
       ...(settings.character === 'usagi' ? { character: 'usagi' as const } : {}),
     })
     // A terminal that shows pictures: the vector art as one, swapped frame by frame.
-    if (await picturedOn($, settings, surface, table)) return pictureOf($, table, surface, requestId, BAND_KEY, props, now)
+    if (await picturedOn($, settings, surface, table, props.columns, props.rows)) return pictureOf($, table, surface, requestId, BAND_KEY, props, now)
     const { Client } = table as { Client: (props: { key: string; module: string; props?: unknown; width?: number; height?: number }) => RenderElement }
 
     return <Client key={BAND_KEY} module="./scene-client.tsx" props={props} width={columns} height={GRID_ROWS} />
@@ -1942,6 +1959,18 @@ export const register: Register = (on, options) => {
     return verdict
   })
 
+  // A prompt sent: the `auto` countdown stops at once, before the turn it starts is under way.
+  on('prompt.submit', async ($, e, next) => {
+    if (countdownTimer !== undefined) {
+      stopCountdown()
+      await quietly($, async () => {
+        if ((await read($, tidyFacts)).countdownSince !== undefined) await update($, tidyFacts, held => defined({ ...held, countdownSince: undefined }))
+      })
+    }
+
+    return next(e)
+  })
+
   on('turn.complete', async ($, e, next) => {
     const id = e.agentId
     if (id !== undefined) {
@@ -2149,6 +2178,7 @@ export const register: Register = (on, options) => {
     const result = await next(e)
     if (result.deny === undefined && !(await $.ui.panes()).some(pane => pane.id === PANE)) {
       dropPaneScenes()
+      dropPanePictures()
       stopTicking()
       if (Object.values(await read($, agents)).some(isRunning) || (await workflowHeld($, settings))) startTicking($, settings)
     }
@@ -2395,7 +2425,7 @@ export const register: Register = (on, options) => {
             const { Client } = table as { Client: (props: { key: string; module: string; props?: unknown; width?: number; height?: number }) => RenderElement }
             // A terminal that shows pictures: the vector art as one, swapped frame by frame; while
             // inspecting none is drawn, its world kept, paused, for when it is back.
-            if (await picturedOn($, settings, e.surface, table)) {
+            if (await picturedOn($, settings, e.surface, table, props.columns, props.rows)) {
               if (inspecting === undefined) scene = await pictureOf($, table, e.surface, e.requestId, SCENE_KEY, props, now)
               else holdPicture(e.requestId, e.surface, props)
             } else {
@@ -2473,7 +2503,7 @@ export const register: Register = (on, options) => {
       const mascots = settings.mascots ? sceneOf(list, hudData, now, { stalledMs: settings.stalledMs, main, shadows: workflow, scenes: settings.scenes, character: settings.character }) : undefined
       const who: Who = { ...tvWhoOf(choice, mascots, settings.character), ...(flying ? { cap: true as const } : {}) }
       // Grown into the giant in a terminal that shows pictures: the giant one, smooth, under the module's glass.
-      const pictured = tvGiants.has(e.surface) && (await picturedOn($, settings, e.surface, table))
+      const pictured = tvGiants.has(e.surface) && (await picturedOn($, settings, e.surface, table, tvRoom.width, tvRoom.height))
       const giant = pictured ? await giantPictureOf($, table, e.surface, e.requestId, tvRoom, who, now) : undefined
       if (!pictured) giantPictures.delete(`${e.requestId}:${e.surface}`)
       const inputs: TvInputs = {

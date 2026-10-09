@@ -212,6 +212,8 @@ describe('tidying up', () => {
 
   test('tidy auto: a main turn\'s end counts down in the band, then tidies up; a prompt meanwhile, or Not now, stops it', { options: { tidy: 'auto' } }, async ($, on) => {
     const { clock, asked, context, tidyFacts, held } = tidyWorld(on)
+    // The engine beneath takes a prompt in.
+    on('prompt.submit', (_$, e) => ({ text: (e as { text: string }).text }) as never)
     await $.session.start(START)
     await clock.settle()
     context(182_000)
@@ -240,8 +242,18 @@ describe('tidying up', () => {
     expect(asked).toHaveLength(1)
     expect(tidyFacts()?.countdownSince).toBeUndefined()
 
-    // Again, and Not now.
+    // Again, and a prompt sent at once: the countdown stops then, before the turn is under way.
     held.set('main', { value: { idleSince: clock.now() }, version: 91 })
+    await endMainTurn($)
+    expect(tidyFacts()?.countdownSince).toBe(clock.now())
+    await $.prompt.submit({ text: 'and one more thing', wait: false, origin: { kind: 'composer' } })
+    expect(tidyFacts()?.countdownSince).toBeUndefined()
+    await clock.advance(TIDY_COUNTDOWN_MS)
+    await clock.settle()
+    expect(asked).toHaveLength(1)
+
+    // Again, and Not now.
+    held.set('main', { value: { idleSince: clock.now() }, version: 92 })
     await endMainTurn($)
     expect(tidyFacts()?.countdownSince).toBe(clock.now())
     await band.press({ key: 'tidy:later' })

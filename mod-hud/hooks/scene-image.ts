@@ -127,25 +127,37 @@ export const hitsOf = (data: unknown): HitPost | undefined => {
 /**
  * The hit layer's events not yet taken, played on the stage's world as the
  * Client plays its own; what the world posts (a click asking to inspect) goes
- * to `post`. True when one was taken.
+ * to `post`. `taken`, the last event taken from each layer, outlives the
+ * stages: a stage made afresh under a layer that lived on (a session ended
+ * and the next began) takes only its new events, never its old ones again.
+ * True when one was taken.
  */
-export const stageHits = (stage: Stage, post: HitPost, send: (data: JsonValue) => void): boolean => {
+export const stageHits = (stage: Stage, post: HitPost, send: (data: JsonValue) => void, taken?: Map<string, number>): boolean => {
   if (post.layer !== stage.layer) {
     stage.layer = post.layer
-    stage.seq = 0
+    stage.seq = taken?.get(post.layer) ?? 0
   }
-  let taken = false
+  let took = false
   for (const hit of post.hits) {
     if (hit.seq <= stage.seq) continue
     stage.seq = hit.seq
     const { seq: _, ...event } = hit
     pointer(stage.world, event as ClientPointerEvent, send)
-    taken = true
+    took = true
   }
-  if (taken) {
+  if (took) {
     stage.still = false
     stage.skipped = STILL_EVERY
   }
+  if (taken !== undefined) {
+    taken.delete(post.layer)
+    taken.set(post.layer, stage.seq)
+    // The few layers mounted lately are all a session sees.
+    for (const old of taken.keys()) {
+      if (taken.size <= 64) break
+      taken.delete(old)
+    }
+  }
 
-  return taken
+  return took
 }

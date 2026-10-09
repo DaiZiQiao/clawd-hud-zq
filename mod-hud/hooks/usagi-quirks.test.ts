@@ -152,9 +152,10 @@ describe('its sprint', () => {
     const shapes = figureShapes(walking, INFO, [1, 0, 0, 1, 0, 0], 1000)
     // The wheel's pale blur, its legs turning over the frames.
     expect(shapes.some(shape => shape.fill === '#FFF7DC')).toBe(true)
-    // Its tail: a white puff out of its back (its left, going right).
-    expect(shapes.some(shape => shape.kind === 'ellipse' && shape.fill === '#FFFFFF' && shape.x < -4.5)).toBe(true)
-    expect(figureShapes(NEUTRAL, INFO, [1, 0, 0, 1, 0, 0], 1000).some(shape => shape.kind === 'ellipse' && shape.fill === '#FFFFFF' && Math.abs(shape.x) > 4.5)).toBe(false)
+    // Its tail: a white puff out of its back (its left, going right); none standing still.
+    const puff = (shape: (typeof shapes)[number]): boolean => shape.kind === 'ellipse' && shape.fill === '#FFFFFF' && shape.w > 1.5
+    expect(shapes.some(shape => puff(shape) && shape.x + shape.w / 2 < -1.5)).toBe(true)
+    expect(figureShapes(NEUTRAL, INFO, [1, 0, 0, 1, 0, 0], 1000).some(puff)).toBe(false)
     const legAt = (t: number) => figureShapes(sprintPose(walking, t, 'right', 0.3), INFO, [1, 0, 0, 1, 0, 0], t).filter(shape => shape.kind === 'rect' && shape.h === 2.9).map(shape => shape.m)
     expect(legAt(1000)).not.toEqual(legAt(1050))
     // Clawd walks as it did.

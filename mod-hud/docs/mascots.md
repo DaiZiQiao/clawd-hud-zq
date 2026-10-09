@@ -173,15 +173,19 @@ the stretch, pick up, dangle, throw and tumble.
   proportions (its logo's 18 by 6 quadrants) and wears its accessory, letter
   and energy marks. Usagi is drawn as Chiikawa draws it: cream, a bold
   near-black line round it all, a big round head (10.6 units across) on a
-  body three quarters as wide (8), its long ears together, their lines
-  touching, pink inside (up through its hat, lowered squatting, drooping
-  slumped bare-headed, trailing a walk), its little feet and its hands stubby
-  nubs at its sides under its cheeks; its dot eyes with a round glint in
-  their top right under brows arched high over them, its cheeks pink with
-  three short dark strokes, its small cat's mouth `ω` (wide open on a
-  shout); going, its tail, a white puff tufted in short strokes, out of its
-  back; its hat, side crown and energy. Its laptop stands nearer it than
-  Clawd's, its body being narrower. Its thoughts are its phrases (`Yahaa!`, `HUHHH?`) in the cloud, its
+  small round body (5.8), its long ears together, their lines touching, pink
+  inside (up through its hat, lowered squatting, drooping slumped
+  bare-headed, trailing a walk), its little feet, its hands stubby nubs
+  sticking out of its sides (their line the silhouette's at rest, over it
+  raised); its dot eyes with a small glint in their top right under brows
+  high over them (a quarter of an ellipse each, level by the face's middle,
+  curving down to the side), its cheeks pink with three short dark strokes,
+  its rabbit's mouth (a short line down from its nose into two small round
+  lobes); wide open and tall, its tongue at the bottom, on a shout; a small
+  `o`, a smug hooked smile, a grin of two peaks; going, its tail, a white
+  puff tufted in short strokes, out of its back; its hat, side crown and
+  energy. Its laptop stands nearer it than Clawd's, its body being narrower.
+  Its thoughts are its phrases (`Yahaa!`, `HUHHH?`) in the cloud, its
   shouts on the cigarette's puffs (`Ura!`, `HUHHH?`, `UNA!`, hands up), and
   `HUHHH?` getting up from a fall. Knocked flat, a hat or crown lies on the
   floor beside it. A child's mini is the same figure at 0.6 the size.
@@ -556,11 +560,12 @@ shifted each frame (`RUN_FEET`). The vector art draws a cartoon's run
 round its rim, four legs five turns a second), leaning hard into its way,
 arms pumping, ears streaming back, dust kicked up and speed lines behind.
 
-**The face** (vector art). Dot eyes with a round glint under brows arched
-high over them (higher when it is startled), squeezed shut `> <` in a burst,
-half lidded when smug, wide when startled; its cheeks pink with three short
-dark strokes; its small cat's mouth `ω`, a wide D when it screams, a round
-`o`, a smirk. Its ears twitch,
+**The face** (vector art). Dot eyes with a small glint under brows high over
+them, level by the middle and curving down to the side (higher when it is
+startled), squeezed shut `> <` in a burst, half lidded when smug, wide when
+startled; its cheeks pink with three short dark strokes; its rabbit's mouth,
+open wide and tall when it screams, a round `o`, a smug hooked smile, a grin
+of two peaks with its eyes happy. Its ears twitch,
 one at a time, every three to six seconds. Asleep, a bubble swells and
 shrinks from its nose. Its shouts (the cigarette's puffs, `HUHHH?` dazed,
 `HUHHH?!` startled, its quirks) burst out in the same spiky balloon.

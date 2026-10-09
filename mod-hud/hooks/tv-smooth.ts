@@ -2,7 +2,7 @@ import { chain, rasterOf, rotate, scale, translate } from './clawd-vector'
 import type { Shape } from './clawd-vector'
 import { BOX_ROWS, HAT_X, SKY } from './mascot-sprites'
 import type { MascotRole } from './scene-types'
-import { EYE, accessoryShapes, crownShapes, figureShapes, propellerShapes, shade, usagiHatShapes } from './smooth-art'
+import { EYE, accessoryShapes, browLine, crownShapes, figureShapes, propellerShapes, shade, strokeShapes, usagiHatShapes, usagiMouthShapes } from './smooth-art'
 import type { FigureInfo } from './smooth-art'
 import { base64Of, pngOf } from './png'
 import { NEUTRAL } from './smooth-pose'
@@ -44,7 +44,7 @@ const infoOf = (who: Who): FigureInfo => ({
  */
 const FIGURE = {
   clawd: { w: 16, h: 14, below: 0, feet: SKY + BOX_ROWS - 0.5 },
-  usagi: { w: 12.3, h: 20.2, below: 0.45, feet: SKY + BOX_ROWS },
+  usagi: { w: 11.5, h: 20.2, below: 0.45, feet: SKY + BOX_ROWS },
 } as const
 
 /** The propeller's turn, radians, by the TV's blade frame. */
@@ -136,7 +136,7 @@ const arc = (cx: number, cy: number, r: number, from: number, to: number, width:
 const turned = (a: number, x: number, y: number) => [Math.cos(a), Math.sin(a), -Math.sin(a), Math.cos(a), x - x * Math.cos(a) + y * Math.sin(a), y - x * Math.sin(a) - y * Math.cos(a)] as const
 
 /**
- * Usagi's face under the TV, as Chiikawa draws it: its dot eyes with a round
+ * Usagi's face under the TV, as Chiikawa draws it: its dot eyes with a small
  * glint in their top right under brows arched high over them (wide, bigger,
  * the brows higher; shut, lines), its cheeks blushing pink with three short
  * dark strokes, its small cat's mouth `ω` (open, wide-eyed).
@@ -152,23 +152,22 @@ const usagiFace = (x: number, w: number, y: number, eyes: Eyes): Shape[] => {
     shapes.push({ kind: 'ellipse', x: cx - 17, y: cy - 9, w: 34, h: 18, fill: USAGI.blush, alpha: 0.95 })
     for (const dx of [-8, 0, 8]) shapes.push({ kind: 'rect', x: cx + dx - 1.6, y: cy - 5, w: 3.2, h: 10, r: 1.6, fill: USAGI.line, m: turned(0.3, cx + dx, cy) })
   }
-  for (const at of [0.34, 0.66]) {
+  for (const at of [0.34, 0.66] as const) {
     const cx = x + w * at
     const cy = y + CH / 2 - (eyes === 'wide' ? CH / 4 : 0)
     if (eyes === 'shut') shapes.push({ kind: 'rect', x: cx - ew / 2, y: cy - 2.5, w: ew, h: 5, r: 2.5, fill: USAGI.eye })
     else {
       shapes.push({ kind: 'ellipse', x: cx - ew / 2, y: cy - eh / 2, w: ew, h: eh, fill: USAGI.eye })
-      shapes.push({ kind: 'ellipse', x: cx - ew * 0.06, y: cy - eh * 0.4, w: ew * 0.46, h: ew * 0.46, fill: '#FFFFFF', alpha: 0.95 })
+      shapes.push({ kind: 'ellipse', x: cx + ew * 0.04, y: cy - eh * 0.36, w: ew * 0.26, h: ew * 0.26, fill: '#FFFFFF', alpha: 0.95 })
     }
-    // Its brows: arched high over each eye, higher when it is wide-eyed.
-    shapes.push(arc(cx, cy + eh * 0.1 - (eyes === 'wide' ? CH / 4 : 0), ew * 1.45, Math.PI * 1.2, Math.PI * 1.8, 4))
+    // Its brows: high over each eye (higher wide-eyed), level over the face's middle and falling away to the side.
+    const side = at < 0.5 ? -1 : 1
+    const top = cy - eh / 2 - eh * 1.1 - (eyes === 'wide' ? CH / 4 : 0)
+    shapes.push(...strokeShapes([1, 0, 0, 1, 0, 0], browLine(cx - side * ew * 1.0, cx + side * ew * 1.5, top, eh * 0.8), 4.5, USAGI.line))
   }
-  const mouth = x + w / 2
-  const my = y + CH * 0.8
-  if (eyes === 'wide') {
-    shapes.push({ kind: 'ellipse', x: mouth - 6, y: my - 4, w: 12, h: 12, fill: USAGI.mouth })
-    shapes.push({ kind: 'ellipse', x: mouth - 3.5, y: my + 4, w: 7, h: 3.5, fill: USAGI.blush, alpha: 0.9 })
-  } else for (const dx of [-4.5, 4.5]) shapes.push(arc(mouth + dx, my - 3, 4.5, 0, Math.PI, 3))
+  // Its mouth as the scene's, its face's units blown up as its eyes are: its cat's `ω`; wide-eyed, a small `o`.
+  const k = ew / 1.2
+  shapes.push(...usagiMouthShapes([k, 0, 0, k, x + w / 2, y + CH * 0.95], eyes === 'wide' ? 'o' : 'cat'))
 
   return shapes
 }

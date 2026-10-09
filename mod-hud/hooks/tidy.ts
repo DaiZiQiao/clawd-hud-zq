@@ -55,8 +55,10 @@ export const isTidying = (tidy: HudTidyFacts, now: number): boolean =>
 
 /**
  * Whether the context is due a tidy: the option on, the context past
- * `tidyAt` (and TIDY_MIN), the main loop idle and not compacting, and not
- * put off by Not now within TIDY_AGAIN tokens.
+ * `tidyAt` (and TIDY_MIN), the main loop idle and not compacting, not put
+ * off by Not now within TIDY_AGAIN tokens, and grown TIDY_AGAIN tokens past
+ * what the last compaction left (a context that stays past `tidyAt` after
+ * one, its tools and instructions alone, is not tidied again and again).
  */
 export const isTidyDue = ({ mode, at, tokens, main, tidy, now }: TidyInputs): boolean =>
   mode !== 'off'
@@ -65,6 +67,7 @@ export const isTidyDue = ({ mode, at, tokens, main, tidy, now }: TidyInputs): bo
   && main.busySince === undefined
   && !isTidying(tidy, now)
   && (tidy.dismissedAt === undefined || tokens >= tidy.dismissedAt + TIDY_AGAIN)
+  && (tidy.last?.after === undefined || tokens >= tidy.last.after + TIDY_AGAIN)
 
 /**
  * After how many main requests a tidy pays for itself, at the model's list

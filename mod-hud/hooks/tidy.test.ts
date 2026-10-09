@@ -43,6 +43,16 @@ describe('when a tidy is due', () => {
     expect(isTidyDue(due({ tidy: { runningSince: NOW - TIDY_STALE_MS } }))).toBe(true)
   })
 
+  test('after a compaction, not again until the context has grown TIDY_AGAIN past what it left: its tools and instructions alone past tidyAt do not tidy again and again', () => {
+    const last = { at: NOW - 60_000, trigger: 'plugin' as const, before: 182_000, after: 60_000 }
+    const dueAt = (tokens: number): boolean => isTidyDue(due({ mode: 'auto', at: 50_000, tokens, tidy: { last } }))
+    expect(dueAt(60_000)).toBe(false)
+    expect(dueAt(60_000 + TIDY_AGAIN - 1)).toBe(false)
+    expect(dueAt(60_000 + TIDY_AGAIN)).toBe(true)
+    // A compaction whose size after is not known: no floor.
+    expect(isTidyDue(due({ mode: 'auto', at: 50_000, tokens: 60_000, tidy: { last: { at: NOW - 60_000, trigger: 'auto' } } }))).toBe(true)
+  })
+
   test('Not now puts it off until the context holds TIDY_AGAIN tokens more', () => {
     const tidy: HudTidyFacts = { dismissedAt: 182_000 }
     expect(isTidyDue(due({ tidy }))).toBe(false)
