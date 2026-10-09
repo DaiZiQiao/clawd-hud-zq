@@ -2,13 +2,12 @@ import type { ClientPointerEvent, JsonValue } from 'claude-code'
 
 import { base64Of, pngOf } from './png'
 import { sceneCanvas } from './scene-canvas'
-import { SCENERY_STEP_MS, smoothFrame, smoothPixels } from './scene-smooth'
+import { smoothFrame, smoothPixels } from './scene-smooth'
 import type { SmoothFrame } from './scene-smooth'
 import type { SceneInputs } from './scene-types'
 import { layoutAt, sceneAt, viewOf } from './scene-view'
 import { clockMs, createWorld, pointer, receive, tick } from './scene-world'
 import type { World } from './scene-world'
-import { LEG_MS } from './scenery'
 import { prefetchScenery, workScenery } from './scenery-pixels'
 import { createSmoother } from './smooth-pose'
 import type { Smoother } from './smooth-pose'
@@ -18,14 +17,17 @@ import type { Smoother } from './smooth-pose'
 // surface (hooks/scene-world.ts), and draw each frame as tiles, each a keyed
 // `Image`: a tile whose pixels changed is a PNG (hooks/png.ts) swapped in by
 // `$.ui.blit`, the rest left as they are, so a frame costs what moved in it
-// (a mascot walking over the scenery, not the whole world behind it). Over
-// the tiles a `Client` with nothing to draw (hooks/scene-hit.tsx) hands them
-// the person's pointer, each event numbered so none is taken twice. Pure:
-// the hooks (hooks/register.tsx) keep the stages, the timer and the blits.
+// (a mascot walking over the scenery, not the whole world behind it). Kept
+// light for the terminal, which decodes and draws every tile it is sent: a
+// few frames a second, the scenery a still picture between its steps, and
+// no more bytes a second than BYTES_A_SECOND. Over the tiles a `Client` with
+// nothing to draw (hooks/scene-hit.tsx) hands them the person's pointer,
+// each event numbered so none is taken twice. Pure: the hooks
+// (hooks/register.tsx) keep the stages, the timer and the blits.
 
-/** A frame every 33 ms while anything moves; every third while all stand still (a breath, a blink: ten a second do). */
-export const IMAGE_FRAME_MS = 33
-export const STILL_EVERY = 3
+/** A frame every 125 ms while anything moves (eight a second); every fourth while all stand still (a blink, a hand on the keys: two a second do). */
+export const IMAGE_FRAME_MS = 125
+export const STILL_EVERY = 4
 
 /** The picture's pixels per cell: the desktop's 8 by 16; twice that for a small region (the band), which costs as little. */
 export const cellPixels = (columns: number, rows: number): { width: number; height: number } =>
@@ -34,9 +36,9 @@ export const cellPixels = (columns: number, rows: number): { width: number; heig
 /** A picture's tile: `columns` by `rows` cells from cell `x`, `y` of the region, its last frame (base64 PNG), and whether that is swapped in yet. */
 export type Tile = { x: number; y: number; columns: number; rows: number; png: string; sent: boolean }
 
-/** How big a tile is, in cells: a mascot walking changes one or two a frame, and a tile costs a millisecond or so to draw again. */
-export const TILE_COLUMNS = 20
-export const TILE_ROWS = 10
+/** How big a tile is, in cells: small, so a mascot moving sends little more than the cells it is in. */
+export const TILE_COLUMNS = 10
+export const TILE_ROWS = 3
 
 /** A region of `columns` by `rows` cells as tiles, row by row, those at its right and bottom edges smaller. */
 export const tilesOf = (columns: number, rows: number): Omit<Tile, 'png' | 'sent'>[] =>
@@ -45,36 +47,32 @@ export const tilesOf = (columns: number, rows: number): Omit<Tile, 'png' | 'sent
   ).flat()
 
 /**
- * A picture's scenery moves on (its boats, its weather, its sky) no sooner
- * than SCENERY_SHARE times what drawing it all again took, and no later than
- * SCENERY_MOST_MS: between, a frame is its mascots over the pixels kept. A
- * picture that takes more than PANS_MOST_MS to draw it all goes on to the
- * next stop at once, not panning (a frame of a pan draws it all): as its
- * PANS_AFTER-th such frame says, once for its size, from the next leg on
- * (its land, as wide as its view, drawn ahead for it).
+ * A picture's scenery is a still picture that moves on (its sky and light,
+ * its boats, its weather) every PICTURE_SCENERY_MS, and goes on to the next
+ * stop at once, never panning (a frame of a pan would send it all): between,
+ * a frame is its mascots, and the stop's name as it arrives, over the pixels
+ * kept.
  */
-const SCENERY_SHARE = 4
-const SCENERY_MOST_MS = 1000
-const PANS_MOST_MS = 30
-export const PANS_AFTER = 8
+export const PICTURE_SCENERY_MS = 15_000
 /**
  * A picture's share of the time, its inverse: after a frame that took t ms
  * its next waits PICTURE_SHARE × t (in the timer's frames, MOST_WAIT at
  * most), so it takes a third or so of the hooks' time at most, and a costly
- * frame (the tour panning on) comes less often instead of late. A frame that
- * moved the scenery on is paced by SCENERY_SHARE instead: the frames after it
- * are its mascots alone, over the pixels kept.
+ * frame comes less often instead of late.
  */
 const PICTURE_SHARE = 3
-const MOST_WAIT = 8
+const MOST_WAIT = 4
+/** What a picture may send the terminal, base64 bytes a second, and at most at once: past it its frames wait, whatever moves. */
+export const BYTES_A_SECOND = 128 * 1024
+const BYTES_AT_ONCE = 2 * BYTES_A_SECOND
 /** What a timer's frame gives to drawing the scenery ahead (the next leg's land, the next hour's light), ms. */
 const AHEAD_MS = 4
 
 /**
  * One scene drawn as a picture: its world, its eased poses, its tiles as last
  * drawn and the frame they were cut from; when its scenery last moved on (the
- * scene's time), how long it waits to again, what drawing it all takes (an
- * average, ms), and whether it pans; the timer's frames it waits to draw.
+ * scene's time); the timer's frames it waits to draw, and the bytes it may
+ * still send.
  */
 export type Stage = {
   world: World
@@ -83,15 +81,10 @@ export type Stage = {
   tiles?: Tile[]
   pixels?: Uint8Array
   held?: number
-  sceneryEvery: number
-  cost?: number
-  /** Whether it pans, the frames that drew it all, which say so at PANS_AFTER, and when it stops panning, once they have said so. */
-  pans: boolean
-  measured: number
-  cutFrom?: number
   /** The land whose next leg's is drawn ahead already. */
   ahead?: string
   wait: number
+  allowance: number
   /** Whether anything in the last frame moved, and frames since. */
   still: boolean
   skipped: number
@@ -104,10 +97,8 @@ export const createStage = (inputs: SceneInputs): Stage => ({
   world: createWorld(inputs),
   smoother: createSmoother(),
   cell: cellPixels(inputs.columns, inputs.rows),
-  sceneryEvery: SCENERY_STEP_MS,
-  pans: true,
-  measured: 0,
   wait: 0,
+  allowance: BYTES_AT_ONCE,
   still: false,
   skipped: 0,
   seq: 0,
@@ -121,9 +112,6 @@ export const restage = (stage: Stage, inputs: SceneInputs): void => {
   if (resized) {
     stage.tiles = undefined
     stage.pixels = undefined
-    stage.pans = true
-    stage.measured = 0
-    stage.cutFrom = undefined
   }
 }
 
@@ -144,16 +132,16 @@ const stageFrame = (stage: Stage, scheme: 'dark' | 'light'): { pixels: Uint8Arra
     const layout = layoutAt(world, plan.tick)
     world.owners = sceneCanvas(scene, layout, plan, view.sprites)?.owners
     const daylight = world.props.scenery
-    frame = smoothFrame(scene, layout, plan, view.sprites, stage.smoother, world.sceneNow, daylight === undefined ? false : { daylight, held: stage.held ?? world.sceneNow, pans: stage.pans })
+    // Not breathing: a body that swells and settles would send its every tile again each frame it stands still.
+    frame = smoothFrame(scene, layout, plan, view.sprites, stage.smoother, world.sceneNow, daylight === undefined ? false : { daylight, held: stage.held ?? world.sceneNow, pans: false }, false)
   }
   stage.still = (frame === undefined || frame.still) && world.carried.size === 0
   const { pixels, width } = smoothPixels(frame ?? { shapes: [], wholes: [], width: 0, height: 0, still: true }, columns, rows, stage.cell, scheme)
-  // Once a leg, the next leg's land queued to be drawn ahead, as the stage will draw it then.
+  // Once a leg, the next leg's land queued to be drawn ahead.
   const scenery = frame?.scenery
-  const pans = stage.cutFrom === undefined && stage.pans
-  if (scenery !== undefined && stage.ahead !== `${scenery.land.key}:${pans}`) {
-    stage.ahead = `${scenery.land.key}:${pans}`
-    prefetchScenery(scenery.upcoming(pans), columns, rows, stage.cell, scheme)
+  if (scenery !== undefined && stage.ahead !== scenery.land.key) {
+    stage.ahead = scenery.land.key
+    prefetchScenery(scenery.upcoming(), columns, rows, stage.cell, scheme)
   }
 
   return { pixels, width }
@@ -208,43 +196,35 @@ export const workAhead = (): void => {
 /**
  * One frame of the timer: the world on by `step` (the time gone since the
  * last, so a late frame is never slow motion), then, when its picture is due
- * (its wait done; every frame while anything moves, every STILL_EVERY while
- * all stand still), the tiles that changed; with them, any refused before:
- * the tiles to swap in now.
+ * (its wait done and bytes to send; every frame while anything moves, every
+ * STILL_EVERY while all stand still), the tiles that changed; with them, any
+ * refused before: the tiles to swap in now.
  */
 export const stageTick = (stage: Stage, step: number, scheme: 'dark' | 'light'): Tile[] => {
   if (stage.world.props.paused === true) return []
   tick(stage.world, step)
   stage.skipped += 1
   stage.wait -= 1
-  if (stage.wait < 0 && !(stage.still && stage.world.carried.size === 0 && stage.skipped < STILL_EVERY)) drawTick(stage, scheme)
+  stage.allowance = Math.min(BYTES_AT_ONCE, stage.allowance + (BYTES_A_SECOND * step) / 1000)
+  if (stage.wait < 0 && stage.allowance > 0 && !(stage.still && stage.world.carried.size === 0 && stage.skipped < STILL_EVERY)) drawTick(stage, scheme)
   const unsent = (stage.tiles ?? []).filter(tile => !tile.sent)
-  for (const tile of unsent) tile.sent = true
+  for (const tile of unsent) {
+    tile.sent = true
+    stage.allowance -= tile.png.length
+  }
 
   return unsent
 }
 
-/** A frame drawn: its scenery on a step when it has waited long enough, and what drawing it took says how long till the next, and till the next frame. */
+/** A frame drawn: its scenery moved on when it has held long enough, and what drawing it took says how long till the next. */
 const drawTick = (stage: Stage, scheme: 'dark' | 'light'): void => {
   stage.skipped = 0
   const now = stage.world.sceneNow
-  if (stage.cutFrom !== undefined && now >= stage.cutFrom) {
-    stage.pans = false
-    stage.cutFrom = undefined
-  }
-  const stepping = stage.held === undefined || now - stage.held >= stage.sceneryEvery || now < stage.held
-  if (stepping) stage.held = now
+  if (stage.held === undefined || now - stage.held >= PICTURE_SCENERY_MS || now < stage.held) stage.held = now
   const at = clockMs()
   const { pixels, width } = stageFrame(stage, scheme)
   changedTiles(stage, pixels, width)
-  if (at === undefined) return
-  const took = (clockMs() ?? at) - at
-  stage.wait = stepping ? 0 : Math.min(MOST_WAIT, Math.ceil((took * PICTURE_SHARE) / IMAGE_FRAME_MS) - 1)
-  if (!stepping) return
-  stage.cost = stage.cost === undefined ? took : 0.7 * stage.cost + 0.3 * took
-  stage.sceneryEvery = Math.max(SCENERY_STEP_MS, Math.min(SCENERY_MOST_MS, stage.cost * SCENERY_SHARE))
-  stage.measured += 1
-  if (stage.measured === PANS_AFTER && stage.pans && stage.cost > PANS_MOST_MS) stage.cutFrom = (Math.floor(now / LEG_MS) + 1) * LEG_MS
+  if (at !== undefined) stage.wait = Math.min(MOST_WAIT, Math.ceil((((clockMs() ?? at) - at) * PICTURE_SHARE) / IMAGE_FRAME_MS) - 1)
 }
 
 /** A pointer event the hit layer passes on, numbered. */

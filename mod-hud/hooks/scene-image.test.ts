@@ -8,10 +8,10 @@ import { base64Of, deflate, pngOf } from './png'
 import { bytesOf, countColour, inflate, pngPixels } from './png.fixtures'
 import { glyphShapes, textWidth } from './raster-font'
 import { arrange, mount } from './scene-client.fixtures'
-import { IMAGE_FRAME_MS, PANS_AFTER, STILL_EVERY, TILE_COLUMNS, TILE_ROWS, cellPixels, createStage, hitsOf, refusedTiles, restage, stageHits, stageTick, stageTiles, tilesOf } from './scene-image'
+import { BYTES_A_SECOND, IMAGE_FRAME_MS, PICTURE_SCENERY_MS, STILL_EVERY, TILE_COLUMNS, TILE_ROWS, cellPixels, createStage, hitsOf, refusedTiles, restage, stageHits, stageTick, stageTiles, tilesOf } from './scene-image'
 import type { HitEvent, Stage, Tile } from './scene-image'
 import type { SceneInputs } from './scene-types'
-import { LEG_MS } from './scenery'
+import { LEG_MS, STAY_MS } from './scenery'
 import { TYPIST, inputs, press } from './scene-world.fixtures'
 import { USAGI } from './usagi-sprites'
 
@@ -124,13 +124,14 @@ describe('the stage', () => {
     expect(cellPixels(72, 12)).toEqual({ width: 8, height: 16 })
     expect(cellPixels(28, 5)).toEqual({ width: 16, height: 32 })
     // Tiles cover the region exactly, row by row, the last of each smaller.
-    expect(tilesOf(45, 12)).toEqual([
+    const [across, down] = [2 * TILE_COLUMNS + 5, TILE_ROWS + 2]
+    expect(tilesOf(across, down)).toEqual([
       { x: 0, y: 0, columns: TILE_COLUMNS, rows: TILE_ROWS },
-      { x: 20, y: 0, columns: TILE_COLUMNS, rows: TILE_ROWS },
-      { x: 40, y: 0, columns: 5, rows: TILE_ROWS },
-      { x: 0, y: 10, columns: TILE_COLUMNS, rows: 2 },
-      { x: 20, y: 10, columns: TILE_COLUMNS, rows: 2 },
-      { x: 40, y: 10, columns: 5, rows: 2 },
+      { x: TILE_COLUMNS, y: 0, columns: TILE_COLUMNS, rows: TILE_ROWS },
+      { x: 2 * TILE_COLUMNS, y: 0, columns: 5, rows: TILE_ROWS },
+      { x: 0, y: TILE_ROWS, columns: TILE_COLUMNS, rows: 2 },
+      { x: TILE_COLUMNS, y: TILE_ROWS, columns: TILE_COLUMNS, rows: 2 },
+      { x: 2 * TILE_COLUMNS, y: TILE_ROWS, columns: 5, rows: 2 },
     ])
     const stage = createStage(inputs([TYPIST], { columns: 60, rows: 10, art: 'vector' }))
     const picture = pictureOf(stage)
@@ -153,7 +154,7 @@ describe('the stage', () => {
     expect(countColour(picture, CLAWD_BODY)).toBeLessThan(40)
   })
 
-  test('the timer\'s frame: the world on by a step, the tiles that changed every frame while anything moves, every third while all stand still; none when unchanged, waiting, or paused', () => {
+  test('the timer\'s frame: the world on by a step, the tiles that changed every frame while anything moves, every few while all stand still; none when unchanged, waiting, or paused', () => {
     const stage = createStage(inputs([TYPIST], { columns: 60, rows: 10, art: 'vector' }))
     stageTiles(stage, 'dark')
     const before = stage.world.ms
@@ -173,43 +174,47 @@ describe('the stage', () => {
     expect(stageTick(stage, IMAGE_FRAME_MS, 'dark')).toEqual([])
   })
 
-  test('its pace: a frame that moved the scenery on never holds the next back; a tile refused is swapped in again at the next frame, due or not; a press draws at once', () => {
+  test('its pace: a tile refused is swapped in again at the next frame, due or not; a press draws at once; past its bytes a second it waits, whatever moves', () => {
     const stage = createStage(inputs([TYPIST], { columns: 60, rows: 10, art: 'vector', scenery: 'fast' }))
     stageTiles(stage, 'dark')
-    // Its first frame (as while a mascot moves) steps the scenery: the next is due at once.
-    stage.still = false
-    stageTick(stage, IMAGE_FRAME_MS, 'dark')
-    expect(stage.wait).toBe(0)
     const [tile] = stage.tiles ?? []
     if (tile === undefined) throw new Error('no tiles')
     refusedTiles([tile])
     stage.wait = 5
     expect(stageTick(stage, IMAGE_FRAME_MS, 'dark')).toEqual([tile])
     expect(stageTick(stage, IMAGE_FRAME_MS, 'dark')).toEqual([])
-    stage.wait = 5
     expect(stageHits(stage, { layer: 'pace', hits: [{ seq: 1, type: 'move', x: 1, y: 1 }] }, () => undefined)).toBe(true)
     expect(stage.wait).toBe(0)
+    // Its bytes spent: nothing drawn, though a mascot was just pressed, until a second's worth comes back (any frame drawn then sends every tile).
+    stage.allowance = -BYTES_A_SECOND
+    stage.pixels = undefined
+    expect(stageTick(stage, IMAGE_FRAME_MS, 'dark')).toEqual([])
+    stage.still = false
+    expect(stageTick(stage, 1000, 'dark')).toHaveLength(tilesOf(60, 10).length)
   })
 
-  test('too costly to pan on, a picture pans on to the end of this leg, then goes on to each next stop at once from the next leg on', () => {
+  test('its scenery a still picture: held PICTURE_SCENERY_MS between its steps, the stop\'s name over it as the tour arrives; on to the next stop at once, never panning', () => {
     const leg = Math.ceil(1_800_000_000_000 / LEG_MS)
     const stage = createStage(inputs([TYPIST], { columns: 60, rows: 10, art: 'vector', scenery: 'fast', now: leg * LEG_MS + 1000 }))
     stageTiles(stage, 'dark')
-    // What its frames that drew it all took, the last of those that say so to come.
-    stage.cost = 1000
-    stage.measured = PANS_AFTER - 1
-    stage.held = undefined
-    stage.still = false
-    stageTick(stage, IMAGE_FRAME_MS, 'dark')
-    expect(stage.pans).toBe(true)
-    expect(stage.cutFrom).toBe((leg + 1) * LEG_MS)
-    // The next leg begun: no pan from then on.
-    restage(stage, { ...stage.world.props, now: (leg + 1) * LEG_MS + 100 })
-    stage.wait = 0
-    stage.still = false
-    stageTick(stage, IMAGE_FRAME_MS, 'dark')
-    expect(stage.pans).toBe(false)
-    expect(stage.cutFrom).toBe(undefined)
+    const at = (now: number): void => {
+      restage(stage, { ...stage.world.props, now })
+      stage.still = false
+      stage.wait = 0
+      stage.allowance = BYTES_A_SECOND
+      stageTick(stage, IMAGE_FRAME_MS, 'dark')
+    }
+    at(leg * LEG_MS + 1000)
+    const first = stage.held
+    at(leg * LEG_MS + 1000 + PICTURE_SCENERY_MS / 2)
+    expect(stage.held).toBe(first)
+    at(leg * LEG_MS + 1000 + PICTURE_SCENERY_MS + 100)
+    expect(stage.held).toBeGreaterThan(first ?? Infinity)
+    // Its land the leg's own as a pan would begin, the next stop's halfway through it.
+    at(leg * LEG_MS + STAY_MS + 1000)
+    expect(stage.ahead).toContain(`:${leg}:`)
+    at(leg * LEG_MS + STAY_MS + (LEG_MS - STAY_MS) / 2 + 100)
+    expect(stage.ahead).toContain(`:${leg + 1}:`)
   })
 
   test('the hit layer\'s posts: read back oldest first, anything else none; each event taken once; a layer mounted afresh counts again', () => {

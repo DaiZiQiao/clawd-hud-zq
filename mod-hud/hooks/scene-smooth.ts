@@ -80,11 +80,12 @@ export type SceneryOptions = { daylight: Daylight; held?: number; pans?: boolean
 
 /**
  * The scene's frame at `now` (the scene's time, ms): each mascot's pose eased
- * by `smoother` (kept by the caller from frame to frame), and with `scenery`
- * the land it stands in, each mascot's shadow on the ground under it;
- * undefined when nothing fits.
+ * by `smoother` (kept by the caller from frame to frame), breathing as it
+ * stands still unless `breathes` says not, and with `scenery` the land it
+ * stands in, each mascot's shadow on the ground under it; undefined when
+ * nothing fits.
  */
-export const smoothFrame = (scene: MascotScene, layout: MascotLayout, plan: MascotPlan | undefined, view: SceneView | undefined, smoother: Smoother, now: number, scenery: SceneryOptions | false = false): SmoothFrame | undefined => {
+export const smoothFrame = (scene: MascotScene, layout: MascotLayout, plan: MascotPlan | undefined, view: SceneView | undefined, smoother: Smoother, now: number, scenery: SceneryOptions | false = false, breathes = true): SmoothFrame | undefined => {
   const placed = placedSprites(scene, layout, plan, view)
   if (placed === undefined || plan === undefined) return undefined
   const room = placed.headroom
@@ -134,7 +135,7 @@ export const smoothFrame = (scene: MascotScene, layout: MascotLayout, plan: Masc
       pose = quirkPose(pose, quirk, context.facing)
       still = false
     }
-    pose = livelyOf(pose, context, !sprite.moving && quirk === undefined)
+    pose = livelyOf(pose, context, breathes && !sprite.moving && quirk === undefined)
     const info = mini ? { ...figure.info, energy: 0 as const, letter: undefined } : figure.info
     // The room's top is the canvas's: its feet's height over it, in the figure's units.
     const from = shapes.length
@@ -285,5 +286,6 @@ export const smoothPixels = (
   if (scenery === undefined) return { pixels: rasterOf(frame.shapes, width, height, view, glyphShapes, scheme), width, height }
   const behind = behindPixels(scenery, width, height, cell, scheme)
 
-  return { pixels: rasterOf([...frame.shapes, ...scenery.front], width, height, view, glyphShapes, scheme, behind.slice()), width, height }
+  // The stop's name over it as it is now, fading in and out while the rest holds.
+  return { pixels: rasterOf([...frame.shapes, ...scenery.land.caption, ...scenery.front], width, height, view, glyphShapes, scheme, behind.slice()), width, height }
 }

@@ -113,7 +113,7 @@
     "mascotArt": {
       "type": "string",
       "title": "Mascot art",
-      "description": "vector (default): in the desktop app, and in Ghostty or kitty (known by their own environment variables, never under tmux), the mascots are drawn shapes that move smoothly at 30 frames a second, every pose eased into the next; blocks: the block characters there too. Other terminals (macOS Terminal, Windows Terminal) and VS Code draw the blocks either way, as does a terminal that refuses a picture. The scene needs motion smooth for it; the TV is drawn smooth with either motion.",
+      "description": "vector (default): in the desktop app, and in Ghostty or kitty (known by their own environment variables, never under tmux), the mascots are drawn shapes that move smoothly, every pose eased into the next (30 frames a second on the desktop; in a terminal a lighter 8, the scenery a still picture between its steps); blocks: the block characters there too. Other terminals (macOS Terminal, Windows Terminal) and VS Code draw the blocks either way, as does a terminal that refuses a picture. The scene needs motion smooth for it; the TV is drawn smooth with either motion.",
       "default": "vector"
     },
     "scenery": {

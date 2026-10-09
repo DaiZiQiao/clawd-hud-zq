@@ -157,7 +157,7 @@ export const prefetchScenery = (next: Scenery, columns: number, rows: number, ce
  * What is behind the mascots in a picture `width` by `height` pixels: the
  * sky painted a row at a time, its sun, moon, stars and clouds, the still
  * land lit for the hour (or, while that is lit, as last lit) from where the
- * pan has got to, then what moves on it, the stop's name and the weather. Each layer kept by
+ * pan has got to, then what moves on it and the weather. Each layer kept by
  * its key and the light the land was lit for: drawn again only as either
  * changes.
  */
@@ -180,7 +180,7 @@ export const behindPixels = (scenery: Scenery, width: number, height: number, ce
     if (lit !== undefined) overlay(pixels, lit.pixels, width, strip.across, Math.min(strip.across - width, Math.max(0, Math.round((scenery.land.shift * cell.width) / 2))))
     picture.still = { key: stillKey, pixels }
   }
-  const pixels = rasterOf([...scenery.land.moving, ...scenery.land.caption, ...scenery.weather], width, height, view, glyphShapes, scheme, picture.still.pixels.slice())
+  const pixels = rasterOf([...scenery.land.moving, ...scenery.weather], width, height, view, glyphShapes, scheme, picture.still.pixels.slice())
   picture.behind = { key: behindKey, pixels }
 
   return pixels

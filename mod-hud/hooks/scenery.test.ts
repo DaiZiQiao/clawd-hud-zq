@@ -252,7 +252,8 @@ describe('drawn only when it changes', () => {
   const held = (now: number): number => now - (now % SCENERY_STEP_MS)
 
   test('what is behind the mascots holds between its steps (its weather, boats and sails), the sky and the light between theirs; the pan alone moves on every frame', () => {
-    const now = held(ROUND + 10_000)
+    // Well into the stay, the stop's name gone.
+    const now = held(ROUND + 20_000)
     const first = sceneryOf(240, 24, 20, now, 'fast', now)
     const later = sceneryOf(240, 24, 20, now + 60, 'fast', now)
     expect(later.behind).toBe(first.behind)
@@ -267,7 +268,8 @@ describe('drawn only when it changes', () => {
   })
 
   test('on the desktop the scenery is a document of its own, the very same string between its steps; the mascots\' document over it every frame', () => {
-    const now = held(ROUND + 10_000)
+    // Well into the stay, the stop's name gone.
+    const now = held(ROUND + 20_000)
     const mascot: Shape = { kind: 'ellipse', x: 100, y: 10, w: 1.3, h: 1.1, fill: '#D77757' }
     const draw = (at: number, x: number) => smoothSvg({ shapes: [{ ...mascot, x }], wholes: [[0, 1]], width: 240, height: 24, still: false, scenery: sceneryOf(240, 24, 20, at, 'fast', now) }, 120, 6, 90_000)
     const first = draw(now, 100)
@@ -284,7 +286,8 @@ describe('drawn only when it changes', () => {
   })
 
   test('on the desktop only the stops in view: staying, not the one the tour will pan on to', () => {
-    const now = held(ROUND + 10_000)
+    // Well into the stay, the stop's name gone.
+    const now = held(ROUND + 20_000)
     const scenery = sceneryOf(240, 24, 20, now, 'fast', now)
     const shown = smoothSvg({ shapes: [], wholes: [], width: 240, height: 24, still: false, scenery }, 120, 6, 90_000).scenery?.[0] ?? ''
     const markup = (view?: readonly [number, number]): string => partMarkup(litStill(scenery.land, true, view), Infinity, () => true, 'l').markup
@@ -294,7 +297,8 @@ describe('drawn only when it changes', () => {
   })
 
   test('in a picture, a frame between the scenery\'s steps is its pixels kept, the mascots over them: only where a mascot moved do two differ', () => {
-    const now = held(ROUND + 10_000)
+    // Well into the stay, the stop's name gone.
+    const now = held(ROUND + 20_000)
     const mascot: Shape = { kind: 'rect', x: 100, y: 10, w: 4, h: 6, fill: '#D77757' }
     const draw = (at: number, x: number) => smoothPixels({ shapes: [{ ...mascot, x }], wholes: [[0, 1]], width: 240, height: 24, still: false, scenery: sceneryOf(240, 24, 20, at, 'fast', now) }, 120, 6, { width: 8, height: 16 })
     const first = draw(now, 100)

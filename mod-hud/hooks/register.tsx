@@ -1267,10 +1267,10 @@ const tileKey = (picture: { key: string }, tile: Tile): string => `${picture.key
  */
 type GiantPicture = { requestId: string; surface: string; key: string; drawn: string; frames: Map<string, string>; shown: string; turns: boolean; ms: number; draw: (eyes: 'open' | 'shut', blade: number) => string }
 
-/** A giant's frame at its clock: its eyes shut a moment every few seconds, its blade a frame every BLADE_MS while it turns. */
+/** A giant's frame at its clock: its eyes shut a moment every few seconds, its blade a frame every BLADE_MS while it turns; neither shorter than the timer's frame, so none is missed. */
 const giantFrameOf = (giant: GiantPicture): { key: string; eyes: 'open' | 'shut'; blade: number } => {
-  const eyes = giant.ms % BLINK_EVERY_MS < BLINK_MS ? 'shut' : 'open'
-  const blade = giant.turns ? Math.floor(giant.ms / BLADE_MS) % 2 : 0
+  const eyes = giant.ms % BLINK_EVERY_MS < Math.max(BLINK_MS, IMAGE_FRAME_MS) ? 'shut' : 'open'
+  const blade = giant.turns ? Math.floor(giant.ms / Math.max(BLADE_MS, IMAGE_FRAME_MS)) % 2 : 0
 
   return { key: `${eyes}:${blade}`, eyes, blade }
 }

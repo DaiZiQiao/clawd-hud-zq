@@ -214,30 +214,38 @@ the stretch, pick up, dangle, throw and tumble.
   under the same hit layer, a frame every 33 ms (`VECTOR_FRAME_MS`, thirty a
   second). Whose mascot is under the pointer still comes from the cells.
 - **A terminal that shows pictures** (`hooks/scene-image.ts`): the pane's
-  scene and the band's yard are each a picture cut in tiles of 20 by 10
-  cells (`TILE_COLUMNS`, `TILE_ROWS`), each tile a keyed `Image` whose frames
+  scene and the band's yard are each a picture cut in tiles of 10 by 3 cells
+  (`TILE_COLUMNS`, `TILE_ROWS`), each tile a keyed `Image` whose frames
   `$.ui.blit` swaps in from the hooks. A frame writes and swaps only the tiles
-  whose pixels changed, so a mascot walking over the scenery costs the one or
-  two it is in. The hooks run the scene's world themselves, as the `Client`
-  runs it on its surface. Each frame is rasterized (`rasterOf`, anti-aliased
-  by each edge's coverage), its text in a small bitmap font
-  (`hooks/raster-font.ts`), the theme keys in the person's theme's dark or
-  light colours, and its changed tiles written as PNGs (`hooks/png.ts`: rows
-  filtered by `Sub`, deflated with the fixed Huffman codes; the hooks have no
-  zlib). A pane's cell is 8 by 16 pixels; a region of 200 cells or fewer (the
-  band) is drawn at 16 by 32. The hooks' timer comes every 33 ms. Each
-  picture's world steps on by the time gone since its last frame (up to
-  `MOST_STEP_MS`), so a late frame is never slow motion. A picture draws again
-  no sooner than three times what its last frame took (`PICTURE_SHARE`, eight
+  whose pixels changed, so a mascot walking over the scenery costs the few it
+  is in. The hooks run the scene's world themselves, as the `Client` runs it
+  on its surface. Each frame is rasterized (`rasterOf`, anti-aliased by each
+  edge's coverage), its text in a small bitmap font (`hooks/raster-font.ts`),
+  the theme keys in the person's theme's dark or light colours, and its
+  changed tiles written as PNGs (`hooks/png.ts`: rows filtered by `Sub`,
+  deflated with the fixed Huffman codes; the hooks have no zlib). A pane's
+  cell is 8 by 16 pixels; a region of 200 cells or fewer is drawn at 16 by
+  32.
+- **Kept light.** The terminal decodes and draws every tile it is sent, so a
+  picture sends few: the hooks' timer comes every 125 ms, a frame each while
+  anything moves (eight a second), every fourth while every mascot stands
+  still (two a second), and a mascot standing still does not breathe in a
+  picture (its body swelling would send all its tiles again), though it
+  blinks and types. The scenery behind is a still picture between its steps
+  (below). A picture sends at most 128 KiB a second (`BYTES_A_SECOND`, twice
+  that at once): past it, its frames wait, whatever moves. It draws again no
+  sooner than three times what its last frame took (`PICTURE_SHARE`, four
   frames at most), so a costly frame comes less often instead of making the
-  rest late; a frame that moved the scenery on holds none back (the frames
-  after it are the mascots alone), and a press on the picture draws at once.
-  While every mascot stands still it draws every third frame (about ten a
-  second), so a breath or a blink costs little. A tile whose swap is refused
-  is swapped in again at the next frame. Over the picture is a
-  `Client` drawing nothing (`hooks/scene-hit.tsx`). It numbers each pointer
-  event and posts its recent ones, so a press, a drag and a throw reach the
-  world whole, and a click still asks to inspect.
+  rest late, and a press on it draws at once. Each picture's world steps on
+  by the time gone since its last frame (up to `MOST_STEP_MS`), so a late
+  frame is never slow motion. A band 120 cells across sends about 150 KiB a
+  second while its mascot walks and 30 while it works at its laptop, where
+  every frame drawn whole sent ten times that; the hooks spend a few percent
+  of a core on it. A tile whose swap is refused is swapped in again at the
+  next frame. Over the picture is a `Client` drawing nothing
+  (`hooks/scene-hit.tsx`). It numbers each pointer event and posts its recent
+  ones, so a press, a drag and a throw reach the world whole, and a click
+  still asks to inspect.
 - **Which terminals**: kitty and Ghostty, the terminals the engine draws an
   `Image` in, known by their own environment variables (`TERM`,
   `TERM_PROGRAM`, `KITTY_WINDOW_ID`, `GHOSTTY_RESOURCES_DIR`), read once a
@@ -329,26 +337,22 @@ now by its sun). From the hour comes the sun's height, and from that:
 - **The ground.** Its field begins a little behind the back row's feet, each
   stop's ground blending into the next's; nearer it is darker, and it has
   its texture (tufts, ripples of sand, drifts of snow, paving stones).
-- **In a terminal's picture** (`smoothPixels`) what is behind the mascots
-  is drawn only when it changes, and kept. The scenery holds still between
-  its steps (`SCENERY_STEP_MS`, ten a second at most; a picture whose
-  scenery costs more to draw steps less often, at four times what it took,
-  down to once a second). It has two layers. The sky and the still land are
-  one (`Scenery.still`), the sky's hour moving on every half second
-  (`SKY_MS`). What moves on the land and the weather over it are the other
-  (`Scenery.behind`). A frame between steps is the mascots over those
-  pixels (`hooks/scenery-pixels.ts`). The still land is rasterized once a
-  leg in daylight colours, graded for the hour column by column with its
-  lights laid over, and kept until its light changes (`Land.litKey`, a
-  two-hundredth of the sun's height: at a stop's dawn and dusk every second
-  or so in a fast day, never in the middle of the day or the night). That
-  work is done sixteen rows at a time, 4 ms of each timer's frame
-  (`workScenery`): the next leg's land and its light drawn ahead
-  (`prefetchScenery`), a new light drawn while the last is shown, one at a
-  time. Each picture keeps its leg's land and the next one's, no other. A
-  picture that takes more than 30 ms to draw whole doesn't pan: from the next
-  leg on, halfway through each pan's time it is at the next stop, its land
-  drawn ahead as wide as its view.
+- **In a terminal's picture** (`smoothPixels`) the scenery is a still
+  picture: it moves on (its sky and light, its boats, its weather) every 15
+  seconds (`PICTURE_SCENERY_MS`), and goes on to the next stop at once,
+  halfway through what would be the pan's time, never panning; the stop's
+  name is drawn as it is now, over it. A frame between is the mascots over
+  the pixels kept. The sky and the still land are kept as one layer
+  (`Scenery.still`), what moves on the land and the weather as another
+  (`Scenery.behind`), each by the light the land is lit for
+  (`hooks/scenery-pixels.ts`). The still land is rasterized once a leg in
+  daylight colours, graded for the hour column by column with its lights
+  laid over, and kept until its light changes (`Land.litKey`, a
+  two-hundredth of the sun's height). That work is done sixteen rows at a
+  time, 4 ms of each timer's frame (`workScenery`): the next leg's land and
+  its light drawn ahead (`prefetchScenery`), a new light drawn while the last
+  is shown, one at a time. Each picture keeps its leg's land and the next
+  one's, no other.
 - **On the desktop** (`smoothSvg`) the scenery is two `Svg`s under the
   mascots' (`pixelsOf`): the sky and the still land of the stops in view
   (`Land.parts`) with their lights, a document that changes only as the sky

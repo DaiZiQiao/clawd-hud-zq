@@ -41,7 +41,7 @@ export type Lit = { grade?: Grade; glow: number }
  * that changes as that light does, in steps too fine to see, for a drawing
  * that lights the shapes themselves; and what moves on it, drawn over it
  * each frame in the view's own units, lit already, and the stop's name as
- * the tour arrives.
+ * the tour arrives (as it is at `now`, never held).
  */
 export type Land = { key: string; still: Shape[]; lights: Shape[]; parts: readonly LandPart[]; span: number; shift: number; edges: readonly number[]; litAt: (x: number) => Lit; litKey: string; moving: Shape[]; caption: Shape[] }
 
@@ -56,10 +56,9 @@ export type LandPart = { from: number; to: number; art: readonly [number, number
  * whether the tour is panning on; keys that change when the sky and the land
  * (`still`), or all of it behind the mascots (`behind`), would be drawn
  * otherwise: a drawing keeps what it drew under them till then; and the
- * scenery as the next leg begins, for a drawing to draw its land ahead (as
- * it will draw it: panning, or not, from then on).
+ * scenery as the next leg begins, for a drawing to draw its land ahead.
  */
-export type Scenery = { sky: { fill: Shape[]; top: number; moving: Shape[] }; land: Land; weather: Shape[]; front: Shape[]; panning: boolean; still: string; behind: string; upcoming: (pans?: boolean) => Scenery }
+export type Scenery = { sky: { fill: Shape[]; top: number; moving: Shape[] }; land: Land; weather: Shape[]; front: Shape[]; panning: boolean; still: string; behind: string; upcoming: () => Scenery }
 
 /** How often the sky and the light move on (its sun, moon, stars and clouds), ms: a step too small to see. */
 export const SKY_MS = 500
@@ -545,12 +544,12 @@ export const sceneryOf = (width: number, height: number, horizon: number, now: n
       litAt,
       litKey,
       moving,
-      caption: pan === 0 ? caption(stopAt(leg), lightOf(leg).light.hour, into - (now - held), horizon) : [],
+      caption: pan === 0 ? caption(stopAt(leg), lightOf(leg).light.hour, into, horizon) : [],
     },
     weather: weather(width, height, horizon, held, false, weatherAt),
     front: weather(width, height, horizon, held, true, weatherAt),
     panning: pan > 0,
-    upcoming: (next = pans) => sceneryOf(width, height, horizon, (leg + 1) * LEG_MS, daylight, (leg + 1) * LEG_MS, next),
+    upcoming: () => sceneryOf(width, height, horizon, (leg + 1) * LEG_MS, daylight, (leg + 1) * LEG_MS, pans),
     still: `${key}:${daylight}:${pan * stretch}:${sky}`,
     behind: `${key}:${daylight}:${pan * stretch}:${sky}:${held}`,
   }
