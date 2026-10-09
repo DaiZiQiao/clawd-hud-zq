@@ -179,9 +179,10 @@ the stretch, pick up, dangle, throw and tumble.
   sticking out of its sides (their line the silhouette's at rest, over it
   raised); its dot eyes with a small glint in their top right under brows
   high over them (a quarter of an ellipse each, level by the face's middle,
-  curving down to the side), its cheeks pink with three short dark strokes,
-  its rabbit's mouth (a short line down from its nose into two small round
-  lobes); wide open and tall, its tongue at the bottom, on a shout; a small
+  curving down to the side), never squeezed shut, its cheeks pink with three
+  short dark strokes, its mouth a flat `3` (two wide shallow lobes from a
+  point in its middle) with a small curve under it, its chin; wide open and
+  tall, its tongue at the bottom, on a shout; a small
   `o`, a smug hooked smile, a grin of two peaks; going, its tail, a white
   puff tufted in short strokes, out of its back; its hat, side crown and
   energy. Its laptop stands nearer it than Clawd's, its body being narrower.
@@ -560,12 +561,13 @@ shifted each frame (`RUN_FEET`). The vector art draws a cartoon's run
 round its rim, four legs five turns a second), leaning hard into its way,
 arms pumping, ears streaming back, dust kicked up and speed lines behind.
 
-**The face** (vector art). Dot eyes with a small glint under brows high over
+**The face** (vector art). Small dot eyes with a glint under brows high over
 them, level by the middle and curving down to the side (higher when it is
-startled), squeezed shut `> <` in a burst, half lidded when smug, wide when
-startled; its cheeks pink with three short dark strokes; its rabbit's mouth,
-open wide and tall when it screams, a round `o`, a smug hooked smile, a grin
-of two peaks with its eyes happy. Its ears twitch,
+startled); its dots kept through a burst (never `> <`), half lidded when
+smug, wide when startled; its cheeks pink with three short dark strokes; its
+mouth a flat `3` with its chin's small curve under it, open wide and tall
+when it screams, a round `o`, a smug hooked smile, a grin of two peaks with
+its eyes happy. Its ears twitch,
 one at a time, every three to six seconds. Asleep, a bubble swells and
 shrinks from its nose. Its shouts (the cigarette's puffs, `HUHHH?` dazed,
 `HUHHH?!` startled, its quirks) burst out in the same spiky balloon.

@@ -339,18 +339,19 @@ export const usagiMouthOf = (pose: FigurePose): { kind: UsagiMouth; open: number
 export const usagiMouthShapes = (m: Matrix, kind: UsagiMouth, open = 1): Shape[] => {
   switch (kind) {
     case 'cat': {
-      // A rabbit's: a short line down from its nose, then either side a small round lobe, its end turned up.
-      const lobe = (side: number): (readonly [number, number])[] => Array.from({ length: 13 }, (_, index) => {
-        const a = (index / 12) * Math.PI * 1.15
+      // A flat 3: from its middle's point either side a wide shallow lobe, its end turned up; a small curve under it, its chin.
+      const lobe = (side: number): (readonly [number, number])[] => Array.from({ length: 15 }, (_, index) => {
+        const a = (index / 14) * Math.PI * 1.12
 
-        return [side * (0.3 - 0.3 * Math.cos(a)), 0.3 * Math.sin(a)] as const
+        return [side * (0.48 - 0.48 * Math.cos(a)), -0.04 + 0.34 * Math.sin(a)] as const
+      })
+      const chin = Array.from({ length: 11 }, (_, index) => {
+        const a = Math.PI * (0.15 + (0.7 * index) / 10)
+
+        return [0.42 * Math.cos(a), 0.52 + 0.17 * Math.sin(a)] as const
       })
 
-      return [
-        ...strokeShapes(m, [[0, -0.42], [0, 0.02]], 0.24, USAGI.line),
-        ...strokeShapes(m, lobe(-1), 0.24, USAGI.line),
-        ...strokeShapes(m, lobe(1), 0.24, USAGI.line),
-      ]
+      return [...strokeShapes(m, lobe(-1), 0.24, USAGI.line), ...strokeShapes(m, lobe(1), 0.24, USAGI.line), ...strokeShapes(m, chin, 0.2, USAGI.line)]
     }
     case 'scream': {
       const size = Math.max(0.6, open)
@@ -522,7 +523,8 @@ const usagiShapes = (pose: FigurePose, info: FigureInfo, t: number): Shape[] => 
   shapes.push(
     ...blushShapes(body, -3.7, -6.85),
     ...blushShapes(body, 3.7, -6.85),
-    ...eyeShapes(body, pose, [-2.25, 2.25], -8.1, 1.2, 1.5, USAGI.eye, true),
+    // Usagi never squeezes its eyes shut `> <`: through a burst its dots stay.
+    ...eyeShapes(body, pose.eyes === 'squeeze' ? { ...pose, eyes: 'normal' } : pose, [-2.25, 2.25], -8.15, 0.95, 1.2, USAGI.eye, true),
     ...[-1, 1].flatMap(side => strokeShapes(body, browLine(side * 1.05 + pose.eyeX, side * 3.55 + pose.eyeX, browTop, 1.75), 0.4, USAGI.line)),
   )
   // Its mouth, turned with its eyes: small and open, wide open screaming, a round `o`, a smirk.

@@ -143,7 +143,7 @@ const turned = (a: number, x: number, y: number) => [Math.cos(a), Math.sin(a), -
  */
 const usagiFace = (x: number, w: number, y: number, eyes: Eyes): Shape[] => {
   const size = usagiEyesOf(eyes)
-  const ew = size.w * (CW / 2) * 1.25
+  const ew = size.w * (CW / 2) * 1.0
   const eh = Math.max(ew * 1.22, size.h * (CH / 2))
   const shapes: Shape[] = []
   for (const at of [0.2, 0.8]) {
