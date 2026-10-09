@@ -96,9 +96,9 @@ import type { AgentBody, InspectAction, InspectHeader, InspectRow, Trails } from
 import { inspectedOf, overviewOf } from './inspect-model'
 import { STARTLED_MS } from './mascot-poses'
 import { GRID_ROWS, SLOT } from './mascot-sprites'
-import { IMAGE_FRAME_MS, createStage, hitsOf, redrawTiles, restage, stageHits, stageTick, stageTiles } from './scene-image'
+import { IMAGE_FRAME_MS, createStage, hitsOf, refusedTiles, restage, stageHits, stageTick, stageTiles, workAhead } from './scene-image'
 import type { HitPost, Stage, Tile } from './scene-image'
-import { MOST_STEP_MS, clockMs } from './scene-world'
+import { MOST_STEP_MS } from './scene-world'
 import { sceneInputsOf, sceneOf } from './scene-model'
 import { MESSAGE_TICKS, SCENE_FRAME_MS } from './scene-phases'
 import { mascotPlan } from './scene-plan'
@@ -1244,25 +1244,18 @@ const factsText = async ($: EngineInterface, settings: Settings): Promise<string
 const HIT_MODULE = 'hooks/scene-hit.tsx'
 /**
  * Each picture by its site (`<requestId>:<surface>`): its stage, its tiles'
- * Images' key, frames left in which a swap may find it not yet mounted, swaps
- * refused in a row, when its world last stepped (the hooks' clock), and the
- * timer's frames to wait before it draws again.
+ * Images' key, frames left in which a swap may find it not yet mounted, since
+ * when its swaps have all been refused, and when its world last stepped (the
+ * hooks' clock).
  */
-type Picture = { stage: Stage; requestId: string; surface: string; key: string; fresh: number; refused: number; stepped?: number; wait: number }
+type Picture = { stage: Stage; requestId: string; surface: string; key: string; fresh: number; refusedSince?: number; stepped?: number }
 const pictures = new Map<string, Picture>()
 /** Surfaces whose terminal shows no pictures, or whose hit layer failed: the scene's `Client` there. */
 const pictureless = new Set<string>()
 /** A drawing just handed over may not be mounted for a few frames. */
 const PICTURE_FRESH = 10
-/** Refusals in a row, the alt's aside, that give up on pictures there: three seconds' worth. */
-const PICTURE_GIVE_UP = Math.ceil(3000 / IMAGE_FRAME_MS)
-/**
- * A picture's share of the time, its inverse: after a frame that took t ms
- * its next waits PICTURE_SHARE × t (in the timer's frames), so it takes at
- * most a third or so of the hooks' time, and a costly frame (the tour panning
- * on) comes less often instead of late.
- */
-const PICTURE_SHARE = 3
+/** How long swaps refused, the alt's aside, give up on pictures there, ms. */
+const PICTURE_GIVE_UP_MS = 3000
 
 /** A tile's Image's key within its picture. */
 const tileKey = (picture: { key: string }, tile: Tile): string => `${picture.key}:${tile.x}:${tile.y}`
@@ -1329,6 +1322,8 @@ const dropPanePictures = (): void => {
 // The TV's giant blinks as the module's would: its eyes shut a moment every few seconds.
 const startPictures = ($: EngineInterface): void => {
   if (pictureTimer !== undefined) return
+  // Its worlds on from now, not by the time the timer was stopped.
+  for (const picture of pictures.values()) picture.stepped = undefined
   const mine = $.clock.every(IMAGE_FRAME_MS, () => {
     if (pictureBusy || pictureTimer !== mine) return
     pictureBusy = true
@@ -1336,18 +1331,14 @@ const startPictures = ($: EngineInterface): void => {
       try {
         const scheme = pictureScheme?.scheme ?? 'dark'
         const now = await $.clock.now()
-        // Each picture's world on by the time gone, its changed tiles drawn when its frame is due; then all the swaps at once.
+        // Each picture's world on by the time gone, its changed tiles drawn when its frame is due; the scenery's work ahead; then all the swaps at once.
         const swaps: Promise<void>[] = []
         for (const [site, picture] of pictures) {
           if (picture.fresh > 0) picture.fresh -= 1
-          // On by a frame, or by the time gone since the last when the timer came late (a costly frame before it).
-          const step = picture.stepped === undefined ? IMAGE_FRAME_MS : Math.max(IMAGE_FRAME_MS, Math.min(MOST_STEP_MS, now - picture.stepped))
+          // On by the time gone since the last (a late timer, a costly frame before it), so its world keeps the clock's time.
+          const step = picture.stepped === undefined ? IMAGE_FRAME_MS : Math.max(0, Math.min(MOST_STEP_MS, now - picture.stepped))
           picture.stepped = now
-          const due = picture.wait <= 0
-          picture.wait -= 1
-          const at = clockMs()
-          const tiles = stageTick(picture.stage, step, scheme, due)
-          if (at !== undefined && tiles.length > 0) picture.wait = Math.ceil((((clockMs() ?? at) - at) * PICTURE_SHARE) / IMAGE_FRAME_MS) - 1
+          const tiles = stageTick(picture.stage, step, scheme)
           if (tiles.length === 0) continue
           swaps.push(
             (async () => {
@@ -1363,17 +1354,19 @@ const startPictures = ($: EngineInterface): void => {
               )
               const deny = denies.find(one => one !== undefined)
               if (deny === undefined) {
-                picture.refused = 0
+                picture.refusedSince = undefined
                 return
               }
-              // A tile refused may show an old frame: all of them again next time.
-              redrawTiles(picture.stage)
+              // A tile refused may show an old frame: it again next time.
+              refusedTiles(tiles.filter((_, index) => denies[index] !== undefined))
+              picture.refusedSince ??= now
               if (drawsAlt(deny)) noPictures($, picture.surface, deny)
               else if (/mount/i.test(deny) && picture.fresh === 0) pictures.delete(site)
-              else if (++picture.refused >= PICTURE_GIVE_UP) noPictures($, picture.surface, deny)
+              else if (now - picture.refusedSince >= PICTURE_GIVE_UP_MS) noPictures($, picture.surface, deny)
             })(),
           )
         }
+        workAhead()
         for (const [site, giant] of giantPictures) {
           giant.ms += IMAGE_FRAME_MS
           const frame = giantFrameOf(giant)
@@ -1472,7 +1465,7 @@ const pictureOf = async (
   const site = `${requestId}:${surface}`
   let picture = pictures.get(site)
   if (picture === undefined) {
-    picture = { stage: createStage(inputs), requestId, surface, key: `${key}:picture`, fresh: PICTURE_FRESH, refused: 0, wait: 0 }
+    picture = { stage: createStage(inputs), requestId, surface, key: `${key}:picture`, fresh: PICTURE_FRESH }
     pictures.set(site, picture)
   } else {
     restage(picture.stage, inputs)

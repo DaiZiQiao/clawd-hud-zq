@@ -364,7 +364,7 @@ const distanceTo = (shape: Shape): ((x: number, y: number) => number) => {
           const ey = py - t * dy
           const d = ex * ex + ey * ey
           if (d < nearest) nearest = d
-          if (ay > y !== ay + dy > y && x < ax + (py * dx) / dy) inside = !inside
+          if (ay > y !== (edges[((i + 5) % edges.length) + 1] ?? 0) > y && x < ax + (py * dx) / dy) inside = !inside
         }
         const distance = Math.sqrt(nearest)
 
@@ -425,6 +425,16 @@ const boundsOf = (shape: Shape): [number, number, number, number] => {
   return [shape.x - pad, shape.y - pad, shape.x + shape.w + pad, shape.y + shape.h + pad]
 }
 
+/** The rows of pixels a shape may reach through `view`, its first and its last: its bounds, and a pixel more each side; all of them for text. */
+export const rowsOf = (shape: Shape, view: Matrix): [number, number] => {
+  if (shape.kind === 'text') return [-Infinity, Infinity]
+  const m = multiply(view, shape.m ?? IDENTITY)
+  const [lx0, ly0, lx1, ly1] = boundsOf(shape)
+  const ys = [applyTo(m, lx0, ly0), applyTo(m, lx1, ly0), applyTo(m, lx0, ly1), applyTo(m, lx1, ly1)].map(([, y]) => y)
+
+  return [Math.floor(Math.min(...ys)) - 1, Math.ceil(Math.max(...ys)) + 1]
+}
+
 /** A colour laid over pixel `at` of `pixels` at `a` (straight alpha). */
 const layPixel = (pixels: Uint8Array, at: number, r: number, g: number, b: number, a: number): void => {
   const below = (pixels[at + 3] ?? 0) / 255
@@ -444,39 +454,59 @@ const layPixel = (pixels: Uint8Array, at: number, r: number, g: number, b: numbe
   pixels[at + 3] = Math.round(out * 255)
 }
 
+/** Each column's grade as numbers, thirteen a column: its matrix by rows, its add, and its alpha over 255 (less than 0 for a column not graded). */
+export type GradeTable = Float64Array
+
+export const gradeTable = (grades: readonly (Grade | undefined)[]): GradeTable => {
+  const table = new Float64Array(grades.length * 13)
+  grades.forEach((grade, x) => {
+    if (grade === undefined) {
+      table[x * 13 + 12] = -1
+      return
+    }
+    table.set([...grade.m[0], ...grade.m[1], ...grade.m[2], ...grade.add, (grade.alpha ?? 1) / 255], x * 13)
+  })
+
+  return table
+}
+
 /**
  * `above` laid over `below` in place (straight alpha): `below` `width`
  * pixels a row, `above` `stride` a row, read from its column `from` on; each
- * of `below`'s columns graded by its `grades`' grade, when it has one.
+ * of `below`'s columns graded by its grade in `grades` (`gradeTable`), when
+ * it has one. Row by row, as the pixels lie.
  */
-export const overlay = (below: Uint8Array, above: Uint8Array, width: number, stride = width, from = 0, grades?: readonly (Grade | undefined)[]): void => {
+export const overlay = (below: Uint8Array, above: Uint8Array, width: number, stride = width, from = 0, grades?: GradeTable): void => {
   const rows = below.length / (4 * width)
   // Ungraded, an opaque pixel is copied whole, four bytes at once, where both sit on four-byte bounds.
   const words = below.byteOffset % 4 === 0 && above.byteOffset % 4 === 0 ? { below: new Uint32Array(below.buffer, below.byteOffset, below.length / 4), above: new Uint32Array(above.buffer, above.byteOffset, above.length / 4) } : undefined
-  // A column at a time, its grade's numbers at hand.
-  for (let x = 0; x < width; x += 1) {
-    const grade = grades?.[x]
-    const [[rr, rg, rb], [gr, gg, gb], [br, bg, bb]] = grade?.m ?? [[1, 0, 0], [0, 1, 0], [0, 0, 1]]
-    const [ar, ag, ab] = grade?.add ?? [0, 0, 0]
-    const scale = (grade?.alpha ?? 1) / 255
-    for (let y = 0, at = (from + x) * 4, to = x * 4; y < rows; y += 1, at += stride * 4, to += width * 4) {
+  for (let y = 0; y < rows; y += 1) {
+    for (let x = 0, at = (y * stride + from) * 4, to = y * width * 4; x < width; x += 1, at += 4, to += 4) {
       const a = above[at + 3] ?? 0
       if (a === 0) continue
-      if (grade === undefined && a === 255 && words !== undefined) {
+      const c = x * 13
+      const scale = grades === undefined ? -1 : (grades[c + 12] ?? -1)
+      if (scale < 0 && a === 255 && words !== undefined) {
         words.below[to / 4] = words.above[at / 4] ?? 0
         continue
       }
       const r = above[at] ?? 0
       const g = above[at + 1] ?? 0
       const b = above[at + 2] ?? 0
-      if (grade === undefined) layPixel(below, to, r, g, b, a / 255)
-      else if (a === 255 && scale === 1 / 255) {
+      if (scale < 0 || grades === undefined) {
+        layPixel(below, to, r, g, b, a / 255)
+        continue
+      }
+      const red = channel((grades[c] ?? 0) * r + (grades[c + 1] ?? 0) * g + (grades[c + 2] ?? 0) * b + (grades[c + 9] ?? 0))
+      const green = channel((grades[c + 3] ?? 0) * r + (grades[c + 4] ?? 0) * g + (grades[c + 5] ?? 0) * b + (grades[c + 10] ?? 0))
+      const blue = channel((grades[c + 6] ?? 0) * r + (grades[c + 7] ?? 0) * g + (grades[c + 8] ?? 0) * b + (grades[c + 11] ?? 0))
+      if (a === 255 && scale === 1 / 255) {
         // Opaque and graded: the graded colour itself.
-        below[to] = channel(rr * r + rg * g + rb * b + ar)
-        below[to + 1] = channel(gr * r + gg * g + gb * b + ag)
-        below[to + 2] = channel(br * r + bg * g + bb * b + ab)
+        below[to] = red
+        below[to + 1] = green
+        below[to + 2] = blue
         below[to + 3] = 255
-      } else layPixel(below, to, channel(rr * r + rg * g + rb * b + ar), channel(gr * r + gg * g + gb * b + ag), channel(br * r + bg * g + bb * b + ab), a * scale)
+      } else layPixel(below, to, red, green, blue, a * scale)
     }
   }
 }
@@ -504,7 +534,8 @@ export const paintRects = (pixels: Uint8Array, width: number, height: number, vi
     for (let py = Math.max(0, Math.round(shape.y * view[3])), bottom = Math.min(height, Math.round((shape.y + shape.h) * view[3])); py < bottom && right > left; py += 1) {
       const y = (py + 0.5) / view[3]
       const after = stops.findIndex(([at]) => at >= y)
-      const [y0, r0, g0, b0, a0] = stops[after <= 0 ? Math.max(0, after) : after - 1] ?? stops[stops.length - 1] ?? [0, 0, 0, 0, 0]
+      // Above its first stop its first colour, past its last its last.
+      const [y0, r0, g0, b0, a0] = stops[after < 0 ? stops.length - 1 : Math.max(0, after - 1)] ?? [0, 0, 0, 0, 0]
       const [y1, r1, g1, b1, a1] = after < 0 ? [y0, r0, g0, b0, a0] : stops[after] ?? [y0, r0, g0, b0, a0]
       const k = y1 > y0 ? (y - y0) / (y1 - y0) : 0
       one[0] = r0 + (r1 - r0) * k
@@ -695,7 +726,8 @@ const layShape = (pixels: Uint8Array, width: number, height: number, shape: Shap
         const ay = scan[i + 1] ?? 0
         const dx = scan[i + 2] ?? 0
         const dy = scan[i + 3] ?? 0
-        if (ay > middle !== ay + dy > middle) crossings.push(ax + ((middle - ay) * dx) / dy)
+        // Crossed by the row's middle: its ends on either side, the end the next edge's start itself (not `ay + dy`, which may round to the other side of a vertex on the middle).
+        if (ay > middle !== (scan[((i + 5) % scan.length) + 1] ?? 0) > middle) crossings.push(ax + ((middle - ay) * dx) / dy)
         // The pixels within one of it, a pixel above or below the row's middle: near.
         const top = Math.max(Math.min(ay, ay + dy), middle - 1)
         const bottom = Math.min(Math.max(ay, ay + dy), middle + 1)

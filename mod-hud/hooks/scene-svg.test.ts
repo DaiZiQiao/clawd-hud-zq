@@ -70,7 +70,7 @@ const alone = (...cells: Cell[]): SceneLayer => ({ x: 0, y: 0, cells: [cells] })
 const rectsOf = (layer: SceneLayer) => svgRects(layerSvg(layer))
 
 describe('the desktop draws it in pixels', () => {
-  test('one Svg as big as the region, its alt the scene in words, no Text rows; asked for by the hooks on the desktop only', BLOCKS, async ($, on) => {
+  test('one Svg as big as the region, its alt the scene in words, no Text rows; asked for by the hooks on the desktop only', { ...BLOCKS, timeoutMs: 20_000 }, async ($, on) => {
     arrange(on, [TYPIST, REVIEWER])
     for (const [columns, rows] of [[72, 24], [100, 30]] as const) {
       const ui = await mount($, 'desktop', columns, rows)

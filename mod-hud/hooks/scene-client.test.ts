@@ -332,7 +332,7 @@ describe('its own clock', () => {
 const mascotsSvg = async (ui: Reads): Promise<Found | undefined> => (await ui.findAll({ type: 'Svg', in: 'mascots' })).find(one => one.props.alt !== ' ')
 
 describe('the vector art', () => {
-  test('on the desktop the mascots are drawn shapes, one Svg the region\'s size, a frame every 33 ms (each pose eased into the next); the terminal keeps its rows', { timeoutMs: 20_000 }, async ($, on) => {
+  test('on the desktop the mascots are drawn shapes, one Svg the region\'s size over the scenery\'s, a frame every 33 ms (each pose eased into the next); the terminal keeps its rows', { timeoutMs: 20_000 }, async ($, on) => {
     arrange(on, [TYPIST])
     const ui = await mount($, 'desktop')
     const props = (await ui.find({ type: 'Client' }))?.props.props as SceneInputs
@@ -348,6 +348,12 @@ describe('the vector art', () => {
     expect(source).toContain('#D77757')
     // What it shows, in words, as the cells would say it.
     expect(String(svg?.props.alt)).toMatch(/^2 mascots: session /)
+    // Under it the scenery's layers, saying nothing; all of them within the cap together.
+    const layers = await ui.findAll({ type: 'Svg', in: 'mascots' })
+    expect(layers.length).toBeGreaterThan(1)
+    expect(layers.slice(0, -1).every(one => one.props.alt === ' ')).toBe(true)
+    expect(layers[layers.length - 1]?.props.alt).toBe(svg?.props.alt)
+    expect(layers.reduce((sum, one) => sum + String(one.props.source).length, 0)).toBeLessThanOrEqual(SVG_MAX)
     // Alive between the scene's frames: the next one differs (a breath, the keys under its hand).
     await ui.advance(VECTOR_FRAME_MS)
     expect(String((await mascotsSvg(ui))?.props.source)).not.toBe(source)

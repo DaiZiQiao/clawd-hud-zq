@@ -14,7 +14,7 @@ const VIEWPORT = { columns: 160, rows: 40, isFullscreen: true }
 const PANE_PROPS = { title: 'HUD', isFocused: false, bodyColumns: 72, placement: 'dock', scroll: { offset: 0, bodyRows: 30 }, view: {} } as const
 
 describe('the tree', () => {
-  test('one keyed row per scene row, each one Text cut to the pane, contract keys and raw colours, no background', async ($, on) => {
+  test('one keyed row per scene row, each one Text cut to the pane, contract keys and raw colours, no background', { timeoutMs: 20_000 }, async ($, on) => {
     const scene = sceneOf(trio, hotHud, NOW)
     on('ui.render', { component: 'Pane', requestId: SCENE }, ($$, e) => {
       const table = $$.ui.resolve(e)

@@ -1,10 +1,11 @@
 import { describe, expect, test } from 'claude-code/testing'
 
-import { graded, overlay, paintRects, partMarkup, rgbOf, scale } from './clawd-vector'
+import { gradeTable, graded, overlay, paintRects, partMarkup, rgbOf, scale } from './clawd-vector'
 import type { Shape } from './clawd-vector'
 import { SCENERY_STEP_MS, smoothPixels, smoothSvg } from './scene-smooth'
-import { SKY_MS, STAY_MS, litLights, sceneryOf } from './scenery'
+import { SKY_MS, STAY_MS, litLights, litStill, sceneryOf } from './scenery'
 import type { Scenery } from './scenery'
+import { workScenery } from './scenery-pixels'
 import { STOPS } from './scenery-stops'
 
 // The world tour behind the smooth scene (hooks/scenery.ts): where it is at
@@ -16,7 +17,7 @@ const LEG_MS = STAY_MS + 7000
 const ROUND = Math.ceil(1_700_000_000_000 / LEG_MS / STOPS.length) * STOPS.length * LEG_MS
 
 const sceneryAt = (now: number, daylight: 'fast' | 'real' = 'fast', width = 240): Scenery => sceneryOf(width, 24, 20, now, daylight)
-const captionOf = (now: number, width = 240, daylight: 'fast' | 'real' = 'fast'): string | undefined => sceneryAt(now, daylight, width).land.moving.find(shape => shape.kind === 'text')?.text
+const captionOf = (now: number, width = 240, daylight: 'fast' | 'real' = 'fast'): string | undefined => sceneryAt(now, daylight, width).land.caption.find(shape => shape.kind === 'text')?.text
 
 /** A time the tour stays at the stop named, `into` its stay, the hour there within a quarter of `hour`: by its sun (`real`), or the world day of 24 minutes. */
 const visit = (name: string, hour: number, into = 20_000, daylight: 'fast' | 'real' = 'real'): number => {
@@ -125,7 +126,7 @@ describe('its days', () => {
     expect(seams.length).toBeGreaterThan(0)
     for (const seam of seams) expect(seam.fade).toEqual([seam.x, seam.x + seam.w])
     expect(scenery.sky.top).toBeGreaterThan(0)
-    const svg = smoothSvg({ shapes: [], wholes: [], width: 240, height: 24, still: false, scenery }, 120, 6, 90_000).scenery ?? ''
+    const svg = smoothSvg({ shapes: [], wholes: [], width: 240, height: 24, still: false, scenery }, 120, 6, 90_000).scenery?.[0] ?? ''
     expect(svg).toContain(`<g mask='url(#sky)'>`)
     expect((svg.match(/<mask /g) ?? []).length).toBe(seams.length + 1)
   })
@@ -157,7 +158,7 @@ describe('drawn', () => {
     const dim = { m: [[0.5, 0, 0], [0, 0.5, 0], [0, 0, 1]], add: [0, 0, 20] } as const
     expect(graded('#80a0ff', dim)).toBe('#4050ff')
     const below = new Uint8Array(2 * 4)
-    overlay(below, new Uint8Array([128, 160, 200, 255, 128, 160, 200, 255]), 2, 2, 0, [dim, { ...dim, alpha: 0.5 }])
+    overlay(below, new Uint8Array([128, 160, 200, 255, 128, 160, 200, 255]), 2, 2, 0, gradeTable([dim, { ...dim, alpha: 0.5 }]))
     expect([...below]).toEqual([64, 80, 220, 255, 64, 80, 220, 128])
   })
 
@@ -196,7 +197,7 @@ describe('on the desktop', () => {
     const svg = (shapes: Shape[]) => {
       const drawn = smoothSvg({ shapes, wholes: [[0, shapes.length]], width: 240, height: 24, still: false, scenery }, 120, 6, 90_000)
 
-      return drawn.source + (drawn.scenery ?? '')
+      return drawn.source + (drawn.scenery ?? []).join('')
     }
     const roomy = svg(mascot(10))
     expect(roomy).toContain('linearGradient')
@@ -222,6 +223,28 @@ describe('on the desktop', () => {
     expect(keyAt(dusk + 33)).toBe(keyAt(dusk))
     expect(keyAt(dusk + 30_000)).not.toBe(keyAt(dusk))
     for (const hour of [11.5, 23.5]) expect(keyAt(visit('ROME · ITALY', hour, 2000, 'fast') + 40_000)).toBe(keyAt(visit('ROME · ITALY', hour, 2000, 'fast')))
+  })
+
+  test('drawn again as the light changes: in a picture the last light standing in till the next is lit, on the desktop at once', () => {
+    const dusk = visit('ROME · ITALY', 18, 2000, 'fast')
+    const ground = (now: number): number => {
+      const { pixels, width } = smoothPixels({ shapes: [], wholes: [], width: 240, height: 24, still: false, scenery: sceneryAt(now) }, 120, 6, { width: 8, height: 16 })
+      const p = ((96 - 8) * width + 480) * 4
+
+      return (pixels[p] ?? 0) + (pixels[p + 1] ?? 0) + (pixels[p + 2] ?? 0)
+    }
+    // Lit for the hour (whatever this land was lit for before).
+    ground(dusk)
+    workScenery(Infinity)
+    const first = ground(dusk)
+    // Half an hour on at the stop: the light of the hour lit while the last stands in, then shown.
+    expect(ground(dusk + 30_000)).toBe(first)
+    workScenery(Infinity)
+    expect(ground(dusk + 30_000)).toBeLessThan(first - 30)
+    // On the desktop, the ground's colours.
+    const land = (now: number): string => /<linearGradient id='l1'.*?<\/linearGradient>/.exec(smoothSvg({ shapes: [], wholes: [], width: 240, height: 24, still: false, scenery: sceneryAt(now) }, 120, 6, 90_000).scenery?.[0] ?? '')?.[0] ?? ''
+    expect(land(dusk)).toContain('stop-color')
+    expect(land(dusk + 30_000)).not.toBe(land(dusk))
   })
 })
 
@@ -250,10 +273,24 @@ describe('drawn only when it changes', () => {
     const first = draw(now, 100)
     const later = draw(now + 40, 101)
     expect(first.scenery).toBeDefined()
-    expect(later.scenery).toBe(first.scenery)
+    expect(later.scenery).toEqual(first.scenery)
     expect(later.source).not.toBe(first.source)
     expect(first.source).toContain(`fill='#D77757'`)
-    expect(first.scenery).not.toContain(`fill='#D77757'`)
+    expect(first.scenery?.join('')).not.toContain(`fill='#D77757'`)
+    // A step on: what moves over the land has moved, the sky and the still land under it the same while the sky holds.
+    const step = smoothSvg({ shapes: [mascot], wholes: [[0, 1]], width: 240, height: 24, still: false, scenery: sceneryOf(240, 24, 20, now + SCENERY_STEP_MS, 'fast', now + SCENERY_STEP_MS) }, 120, 6, 90_000)
+    expect(step.scenery?.[1]).not.toBe(first.scenery?.[1])
+    if (Math.floor(now / SKY_MS) === Math.floor((now + SCENERY_STEP_MS) / SKY_MS)) expect(step.scenery?.[0]).toBe(first.scenery?.[0])
+  })
+
+  test('on the desktop only the stops in view: staying, not the one the tour will pan on to', () => {
+    const now = held(ROUND + 10_000)
+    const scenery = sceneryOf(240, 24, 20, now, 'fast', now)
+    const shown = smoothSvg({ shapes: [], wholes: [], width: 240, height: 24, still: false, scenery }, 120, 6, 90_000).scenery?.[0] ?? ''
+    const markup = (view?: readonly [number, number]): string => partMarkup(litStill(scenery.land, true, view), Infinity, () => true, 'l').markup
+    expect(litStill(scenery.land, true, [0, 240]).length).toBeLessThan(litStill(scenery.land).length)
+    expect(shown).toContain(markup([0, 240]))
+    expect(shown).not.toContain(markup())
   })
 
   test('in a picture, a frame between the scenery\'s steps is its pixels kept, the mascots over them: only where a mascot moved do two differ', () => {

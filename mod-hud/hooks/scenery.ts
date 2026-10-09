@@ -20,7 +20,8 @@ import type { At, Light, Point, Stop, Weather } from './scenery-stops'
 /** How long the tour stays at a stop, and takes to pan on to the next, ms. */
 export const STAY_MS = 45_000
 const PAN_MS = 7000
-const LEG_MS = STAY_MS + PAN_MS
+/** A leg of the tour: its stay and its pan on. */
+export const LEG_MS = STAY_MS + PAN_MS
 /** A stop's stretch of the world's strip at scale 1, in units: its art's -55 to 55. */
 const STOP = 110
 
@@ -32,14 +33,20 @@ export type Lit = { grade?: Grade; glow: number }
 
 /**
  * The land: what stands still, drawn once per `key` in daylight colours and
- * kept, `span` units across, seen from `shift` units into it, its last
- * `detail` shapes a texture a drawing short of room may leave out; its night
- * lights, still too; how both are lit `x` units into it (`litAt`), and a key
+ * kept, `span` units across, seen from `shift` units into it; its night
+ * lights, still too; which of both are each stop's (`parts`), so a drawing
+ * may leave out the stops out of its view, and the ground's texture when
+ * short of room; where one stop's stretch meets the next's (`edges`);
+ * how both are lit `x` units into it (`litAt`), and a key
  * that changes as that light does, in steps too fine to see, for a drawing
  * that lights the shapes themselves; and what moves on it, drawn over it
- * each frame in the view's own units, lit already.
+ * each frame in the view's own units, lit already, and the stop's name as
+ * the tour arrives.
  */
-export type Land = { key: string; still: Shape[]; detail: number; lights: Shape[]; span: number; shift: number; litAt: (x: number) => Lit; litKey: string; moving: Shape[] }
+export type Land = { key: string; still: Shape[]; lights: Shape[]; parts: readonly LandPart[]; span: number; shift: number; edges: readonly number[]; litAt: (x: number) => Lit; litKey: string; moving: Shape[]; caption: Shape[] }
+
+/** A stop's part of the land: from where to where (units into the strip) its art reaches, and its shapes among the land's: its landmark's and its ground's texture in `still`, its own in `lights` (from, to). */
+export type LandPart = { from: number; to: number; art: readonly [number, number]; texture: readonly [number, number]; lights: readonly [number, number] }
 
 /**
  * The scenery of a frame, back to front: the sky (its colours, a rect to a
@@ -49,9 +56,10 @@ export type Land = { key: string; still: Shape[]; detail: number; lights: Shape[
  * whether the tour is panning on; keys that change when the sky and the land
  * (`still`), or all of it behind the mascots (`behind`), would be drawn
  * otherwise: a drawing keeps what it drew under them till then; and the
- * scenery as the next leg begins, for a drawing to draw its land ahead.
+ * scenery as the next leg begins, for a drawing to draw its land ahead (as
+ * it will draw it: panning, or not, from then on).
  */
-export type Scenery = { sky: { fill: Shape[]; top: number; moving: Shape[] }; land: Land; weather: Shape[]; front: Shape[]; panning: boolean; still: string; behind: string; upcoming: () => Scenery }
+export type Scenery = { sky: { fill: Shape[]; top: number; moving: Shape[] }; land: Land; weather: Shape[]; front: Shape[]; panning: boolean; still: string; behind: string; upcoming: (pans?: boolean) => Scenery }
 
 /** How often the sky and the light move on (its sun, moon, stars and clouds), ms: a step too small to see. */
 export const SKY_MS = 500
@@ -195,8 +203,9 @@ const floorShapes = (stop: Stop, at: At, j: number, from: number, to: number): S
   const deep = mix(stop.ground, '#000000', 0.22)
   for (let y = at.y + 1.2, row = 0; y < at.bottom - 0.3; row += 1) {
     const near = Math.min(1.6, 0.6 + (y - at.y) / 16)
-    for (let x = at.x - (STOP / 2) * at.s + 3 * rnd('floor', j, row); x < at.x + (STOP / 2) * at.s; x += (4 + 5 * rnd('floor-gap', j, row, Math.floor(x))) * near) {
-      const k = rnd('floor-kind', j, row, Math.floor(x))
+    // Each mark by its number along the row: the same wherever the strip it is drawn in begins.
+    for (let x = at.x - (STOP / 2) * at.s + 3 * rnd('floor', j, row), i = 0; x < at.x + (STOP / 2) * at.s; x += (4 + 5 * rnd('floor-gap', j, row, i)) * near, i += 1) {
+      const k = rnd('floor-kind', j, row, i)
       if (x < from || x > to) continue
       switch (stop.floor) {
         case 'grass':
@@ -229,12 +238,17 @@ const groundOf = (left: number, span: number, stretch: number): Gradient => {
     for (const [x, colour] of [[edge - stretch * 0.13, stopAt(j).ground], [edge + stretch * 0.13, stopAt(j + 1).ground]] as const) stops.push([Math.max(0, Math.min(1, (x - left) / span)), colour, 1])
   }
 
-  return { x1: 0, y1: 0, x2: span, y2: 0, stops }
+  // Of those before the strip's left, only the last: its colour where the strip begins.
+  return { x1: 0, y1: 0, x2: span, y2: 0, stops: stops.slice(Math.max(0, stops.findLastIndex(([at]) => at === 0))) }
 }
 
-/** The land's still shapes in daylight, how many of the last are its texture (`Land.detail`), and its night lights: of the stops whose art reaches the strip. */
-const landStill = (left: number, span: number, height: number, horizon: number): { shapes: Shape[]; detail: number; lights: Shape[] } => {
-  const seen = stopsIn(left, span, horizon, height, REACH * scaleOf(horizon))
+/** The first of the land's still shapes that run the strip's whole width: the ground, its shading and its edge. */
+const WHOLE = 3
+
+/** The land's still shapes in daylight, then its night lights, of the stops whose art reaches the strip; and each stop's part of them. */
+const landStill = (left: number, span: number, height: number, horizon: number): { shapes: Shape[]; lights: Shape[]; parts: LandPart[] } => {
+  const reach = REACH * scaleOf(horizon)
+  const seen = stopsIn(left, span, horizon, height, reach)
   // The ground first (`litStill` lights it stop by stop), nearer darker, its edge catching the light; on it each stop's
   // landmark, then the ground's texture.
   const shapes: Shape[] = [
@@ -242,10 +256,24 @@ const landStill = (left: number, span: number, height: number, horizon: number):
     { ...rect(0, horizon, span, height - horizon, '#000000'), grad: { x1: 0, y1: horizon, x2: 0, y2: Math.max(height, horizon + 1), stops: [[0, '#000000', 0], [1, '#000000', 0.32]] } },
     rect(0, horizon - 0.1, span, 0.3, '#ffffff', 0.1),
   ]
-  for (const { stop, at } of seen) shapes.push(...stop.draw(at))
-  const texture = seen.flatMap(({ stop, at, j }) => floorShapes(stop, at, j, -2, span + 2))
+  const lights: Shape[] = []
+  // Each run of shapes added to `into`, from and to.
+  const added = (into: Shape[], more: readonly Shape[]): readonly [number, number] => {
+    into.push(...more)
 
-  return { shapes: [...shapes, ...texture], detail: texture.length, lights: seen.flatMap(({ stop, at }) => stop.lights?.(at) ?? []) }
+    return [into.length - more.length, into.length]
+  }
+  const arts = seen.map(({ stop, at }) => added(shapes, stop.draw(at)))
+  const textures = seen.map(({ stop, at, j }) => added(shapes, floorShapes(stop, at, j, -2, span + 2)))
+  const parts = seen.map(({ stop, at }, i): LandPart => ({
+    from: at.x - (STOP / 2) * at.s - reach,
+    to: at.x + (STOP / 2) * at.s + reach,
+    art: arts[i] ?? [0, 0],
+    texture: textures[i] ?? [0, 0],
+    lights: added(lights, stop.lights?.(at) ?? []),
+  }))
+
+  return { shapes, lights, parts }
 }
 
 /** How far into a stop's stretch `x` is (0 its left edge, 1 its right), and how much it fades there: none over its middle, out to its edges. */
@@ -266,10 +294,10 @@ const skyGradient = ([top = '#000000', high = top, low = high, horizonward = low
 
 /** Between two stops, their skies and lights blend over this many units (at scale 1) either side of the seam. */
 const SEAM = 12
-/** How far past its stretch a stop's art may reach, at scale 1: a bus driving off, the northern lights. */
+/** How far past its stretch a stop's art may reach, at scale 1: the northern lights, birds. */
 const REACH = 6
 
-/** The sky's colours over the view: each stop's own over its stretch (on to the end of the seam after it), and the next's faded in over that seam. */
+/** The sky's colours over the view: each stop's own over its stretch (on to the end of the seam after it, and from a little under the last's, so no hairline shows between them), and the next's faded in over that seam. */
 const skyFill = (seen: readonly Seen[], width: number, horizon: number, skyAt: (j: number) => readonly string[]): Shape[] => {
   const own = (x: number, to: number, j: number): Shape => ({ ...rect(Math.max(0, x), 0, Math.min(width, to) - Math.max(0, x), horizon + 1, '#000000'), grad: skyGradient(skyAt(j), horizon) })
   // Each stop's seam with the next: from its end less SEAM to its end and SEAM more.
@@ -277,7 +305,7 @@ const skyFill = (seen: readonly Seen[], width: number, horizon: number, skyAt: (
   const shown = seen.filter(one => seamOf(one)[1] > 0 && seamOf(one)[1] - STOP * one.at.s < width)
 
   return [
-    ...shown.map(one => own(seamOf(one)[1] - STOP * one.at.s, seamOf(one)[1], one.j)),
+    ...shown.map(one => own(seamOf(one)[1] - STOP * one.at.s - 0.5, seamOf(one)[1], one.j)),
     ...shown.filter(one => seamOf(one)[0] < width).map(one => ({ ...own(...seamOf(one), one.j + 1), fade: seamOf(one) })),
   ]
 }
@@ -484,8 +512,9 @@ export const sceneryOf = (width: number, height: number, horizon: number, now: n
 
     return lightOf(j).lit
   }
-  // The light changes the still land only from late in the night to well into the morning, and back: in steps of a two-hundredth of the sun's height.
-  const litKey = stopsIn(left, span, horizon, height, stretch).map(({ j }) => Math.round(200 * Math.max(-0.23, Math.min(0.29, lightOf(j).light.sun)))).join(',')
+  // The light changes the still land only from late in the night to well into the morning, and back: in steps of a
+  // two-hundredth of the sun's height, of the stops whose light `litAt` reads (their art reaching past the strip, their seams).
+  const litKey = stopsIn(left, span, horizon, height, seam + REACH * scaleOf(horizon)).map(({ j }) => Math.round(200 * Math.max(-0.23, Math.min(0.29, lightOf(j).light.sun)))).join(',')
 
   // The stops whose art reaches the view, and those whose sky does.
   const seen = stopsIn(view, width, horizon, height, REACH * scaleOf(horizon))
@@ -508,18 +537,20 @@ export const sceneryOf = (width: number, height: number, horizon: number, now: n
     land: {
       key,
       still: land.shapes,
-      detail: land.detail,
       lights: land.lights,
+      parts: land.parts,
       span,
       shift: pan * stretch,
+      edges: stopsIn(left, span, horizon, height).slice(1).map(({ j }) => j * stretch - left),
       litAt,
       litKey,
-      moving: [...moving, ...(pan === 0 ? caption(stopAt(leg), lightOf(leg).light.hour, into - (now - held), horizon) : [])],
+      moving,
+      caption: pan === 0 ? caption(stopAt(leg), lightOf(leg).light.hour, into - (now - held), horizon) : [],
     },
     weather: weather(width, height, horizon, held, false, weatherAt),
     front: weather(width, height, horizon, held, true, weatherAt),
     panning: pan > 0,
-    upcoming: () => sceneryOf(width, height, horizon, (leg + 1) * LEG_MS, daylight, (leg + 1) * LEG_MS, pans),
+    upcoming: (next = pans) => sceneryOf(width, height, horizon, (leg + 1) * LEG_MS, daylight, (leg + 1) * LEG_MS, next),
     still: `${key}:${daylight}:${pan * stretch}:${sky}`,
     behind: `${key}:${daylight}:${pan * stretch}:${sky}:${held}`,
   }
@@ -533,33 +564,65 @@ const middleOf = (shape: Shape): number => {
   return points.reduce((sum, [x]) => sum + x, 0) / points.length
 }
 
+/** The parts of the stops whose art reaches `from` to `to` units into the land's strip. */
+const partsIn = (land: Land, [from, to]: readonly [number, number]): readonly LandPart[] => land.parts.filter(part => part.to > from && part.from < to)
+
 /**
- * The land's still shapes (with its texture, or without) lit for the hour,
- * each by the light at its middle, the ground (the first) stop by stop of its
- * gradient: for a drawing that cannot grade its pixels as `litAt` says.
+ * The land's still shapes lit for the hour, of the stops whose art reaches
+ * `view` (units into the strip; by default all of them), with the ground's
+ * texture or without: each by the light at its middle, those the strip's
+ * whole width stop by stop (`litWhole`): for a drawing that cannot grade its
+ * pixels as `litAt` says.
  */
-export const litStill = (land: Land, texture = true): Shape[] =>
-  (texture ? land.still : land.still.slice(0, land.still.length - land.detail)).map((shape, index) => {
-    if (index > 0 || shape.grad === undefined) return relit([shape], land.litAt(middleOf(shape)).grade)[0] ?? shape
-    const stops = shape.grad.stops.map(([at, colour, alpha]) => {
+export const litStill = (land: Land, texture = true, view: readonly [number, number] = [-Infinity, Infinity]): Shape[] => {
+  const parts = partsIn(land, view)
+  const shapes = [...land.still.slice(0, WHOLE), ...parts.flatMap(part => land.still.slice(...part.art)), ...(texture ? parts.flatMap(part => land.still.slice(...part.texture)) : [])]
+
+  return shapes.flatMap((shape, index) => (index < WHOLE ? litWhole(land, shape) : relit([shape], land.litAt(middleOf(shape)).grade)))
+}
+
+/**
+ * A shape the strip's whole width lit stop by stop: the ground's gradient
+ * across it each of its colours by the light there, more of them over each
+ * seam, where the light turns from one stop's to the next's; else a piece of
+ * it over each stop's stretch, by the light at that piece's middle.
+ */
+const litWhole = (land: Land, shape: Shape): Shape[] => {
+  const grad = shape.grad
+  if (grad !== undefined && grad.y1 === grad.y2) {
+    const edges = land.edges.map(x => x / land.span)
+    const stops = grad.stops.flatMap((stop, i): (readonly [number, string, number])[] => {
+      const next = grad.stops[i + 1]
+      if (next === undefined || !edges.some(edge => edge > stop[0] && edge < next[0])) return [stop]
+
+      return [stop, ...[0.25, 0.5, 0.75].map(k => [stop[0] + (next[0] - stop[0]) * k, mix(stop[1], next[1], k), stop[2]] as const)]
+    })
+
+    return [{ ...shape, grad: { ...grad, stops: stops.map(([at, colour, alpha]) => {
       const grade = land.litAt(at * land.span).grade
 
       return [at, grade === undefined ? colour : graded(colour, grade), alpha] as const
-    })
+    }) } }]
+  }
+  const cuts = [shape.x, ...land.edges.filter(x => x > shape.x && x < shape.x + shape.w), shape.x + shape.w]
 
-    return { ...shape, grad: { ...shape.grad, stops } }
+  return cuts.slice(1).flatMap((to, i) => {
+    const from = cuts[i] ?? shape.x
+
+    return relit([{ ...shape, x: from, w: to - from }], land.litAt((from + to) / 2).grade)
   })
+}
 
-/** The land's night lights as bright as each is now: none by day. */
-export const litLights = (land: Land): Shape[] =>
-  land.lights.flatMap(shape => {
+/** The land's night lights as bright as each is now, of the stops whose art reaches `view` (by default all of them): none by day. */
+export const litLights = (land: Land, view: readonly [number, number] = [-Infinity, Infinity]): Shape[] =>
+  partsIn(land, view).flatMap(part => land.lights.slice(...part.lights)).flatMap(shape => {
     const glow = land.litAt(middleOf(shape)).glow
 
     return glow > 0.01 ? [{ ...shape, alpha: (shape.alpha ?? 1) * glow }] : []
   })
 
 /** The still land as last made, by key: made once, not every frame. */
-const made = new Map<string, { shapes: Shape[]; detail: number; lights: Shape[] }>()
+const made = new Map<string, { shapes: Shape[]; lights: Shape[]; parts: LandPart[] }>()
 
 /** `map`'s value at `key`, else made (and kept); the `most` used last kept, the rest let go. */
 export const keptIn = <T>(map: Map<string, T>, key: string, make: () => T, most = 8): T => {

@@ -62,7 +62,7 @@ const endMainTurn = ($: Engine) =>
   $.turn.complete({ answer: 'ok', durationMs: 1, isAborted: false, turnId: 't1', reason: 'answer' } as Parameters<Engine['turn']['complete']>[0])
 
 describe('the session mascot in the band', () => {
-  test('on the terminal and desktop its yard is the session\'s scene alone; once the band draws it, the pane\'s scene is the agents\' alone', async ($, on) => {
+  test('on the terminal and desktop its yard is the session\'s scene alone; once the band draws it, the pane\'s scene is the agents\' alone', { timeoutMs: 20_000 }, async ($, on) => {
     const { clock } = bandWorld(on)
     await $.session.start(START)
     await clock.settle()

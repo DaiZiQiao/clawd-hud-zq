@@ -1,4 +1,4 @@
-import { chain, documentOf, overlay, paintRects, partMarkup, rasterOf, scale, translate, viewed } from './clawd-vector'
+import { chain, documentOf, partMarkup, rasterOf, scale, translate, viewed } from './clawd-vector'
 import type { Markup, Shape } from './clawd-vector'
 import { BODY_WIDTH, BODY_X, BOX_ROWS, MINI, MINI_SCALE, SKY } from './mascot-sprites'
 import { ACCENT } from './scene-model'
@@ -7,8 +7,8 @@ import { placedSprites } from './scene-placement'
 import type { Cell, MascotLayout, MascotPlan, MascotScene, PlacedSprite, SceneView } from './scene-types'
 import { glyphShapes } from './raster-font'
 import { keptIn, litLights, litStill, sceneryOf } from './scenery'
-import type { Daylight, Land, Scenery } from './scenery'
-import { clockMs } from './scene-world'
+import type { Daylight, Scenery } from './scenery'
+import { behindPixels } from './scenery-pixels'
 import { crossShapes, figureShapes, markShapes, pipeShapes, tickShapes } from './smooth-art'
 import { livelyOf, targetOf } from './smooth-pose'
 import { TODDLE_MS, quirkPose } from './usagi-moves'
@@ -178,8 +178,8 @@ const stillMarkup = (key: string, shapes: () => readonly Shape[], shift: number,
 /** The units a desktop CSS pixel is: a cell is 8 by 16 pixels, 2 by 4 units. */
 const PIXELS_PER_UNIT = CELL_WIDTH / 2
 
-/** The scenery's documents as last made, by what they show and the room they had: the same string while nothing behind the mascots moves on. */
-const sceneryDocuments = new Map<string, string>()
+/** The scenery's documents as last made, by what they show and the room they had: the same strings while nothing behind the mascots moves on. */
+const sceneryDocuments = new Map<string, readonly string[]>()
 
 /** The room the scenery is given, kept in steps this big so that a mascot's markup growing a little does not make it again. */
 const ROOM_STEP = 4096
@@ -187,16 +187,17 @@ const ROOM_STEP = 4096
 /**
  * The frame as the desktop's `Svg` sources, `columns` by `rows` cells of
  * CELL_WIDTH by CELL_HEIGHT pixels, under `limit` characters together: the
- * mascots (`source`) and, laid under them, the scenery (`scenery`), its
- * document made again only when what is behind the mascots moves on.
+ * mascots (`source`) and, laid under them, the scenery's layers (`scenery`,
+ * back to front, as `sceneryLayers` makes them).
  */
-export const smoothSvg = (frame: SmoothFrame, columns: number, rows: number, limit: number): { source: string; scenery?: string; width: number; height: number } => {
+export const smoothSvg = (frame: SmoothFrame, columns: number, rows: number, limit: number): { source: string; scenery?: readonly string[]; width: number; height: number } => {
   const width = Math.max(1, Math.floor(columns)) * CELL_WIDTH
   const height = Math.max(1, Math.floor(rows)) * CELL_HEIGHT
   const view = scale(PIXELS_PER_UNIT)
   const extra = ` font-family='ui-monospace,Menlo,Consolas,monospace' text-anchor='middle'`
   const scenery = frame.scenery
-  const budget = limit - (scenery === undefined ? 400 : 800)
+  // Each document's own markup round its shapes, three of them with the scenery.
+  const budget = limit - (scenery === undefined ? 400 : 1200)
   let mascots = partMarkup(frame.shapes)
   // Past the limit, whole mascots are left out, the last drawn first: never one drawn in part.
   if (mascots.markup.length > budget) {
@@ -216,19 +217,22 @@ export const smoothSvg = (frame: SmoothFrame, columns: number, rows: number, lim
   const front = partMarkup(scenery.front, Infinity, () => true, 'f')
   const near = mascots.markup.length + front.markup.length <= budget - ROOM_STEP ? [mascots, front] : [mascots]
   const room = Math.floor((budget - near.reduce((sum, part) => sum + part.markup.length, 0)) / ROOM_STEP) * ROOM_STEP
-  const behind = keptIn(sceneryDocuments, `${scenery.behind}:${columns}x${rows}:${room}`, () => sceneryDocument(scenery, frame.width, frame.height, room, document), 4)
+  const behind = keptIn(sceneryDocuments, `${scenery.behind}:${columns}x${rows}:${room}`, () => sceneryLayers(scenery, frame.width, frame.height, room, document), 4)
 
-  return { source: document(near), ...(behind === '' ? {} : { scenery: behind }), width, height }
+  return { source: document(near), ...(behind.length === 0 ? {} : { scenery: behind }), width, height }
 }
 
 /**
- * The scenery behind the mascots as a document under `room` characters, its
- * alike shapes merged into paths, the still land lit for the hour: all of it,
- * else without (one by one) the ground's texture, the weather, and the sky's
- * sun, moon, stars and clouds, then what moves on the land (the stop's name
- * with it); else none ('').
+ * The scenery behind the mascots as documents under `room` characters
+ * together, alike shapes merged into paths: the sky and the still land of
+ * the stops in view lit for the hour, with its lights, made again only as the
+ * sky or the light moves on (or a pan does); over them what moves on the
+ * land, the stop's name and the weather, at each of the scenery's steps. All
+ * of it, else without (one by one) the ground's texture, the weather, the
+ * sky's sun, moon, stars and clouds, what moves on the land, then the
+ * lights; else none.
  */
-const sceneryDocument = (scenery: Scenery, width: number, height: number, room: number, document: (parts: readonly Markup[]) => string): string => {
+const sceneryLayers = (scenery: Scenery, width: number, height: number, room: number, document: (parts: readonly Markup[]) => string): readonly string[] => {
   const { land } = scenery
   const moving = (shapes: readonly Shape[], prefix: string): Markup => partMarkup(shapes, Infinity, () => true, prefix)
   // The sky's colours, fading in from the page at the top: masked by a ramp down, from 0.3 to whole.
@@ -236,20 +240,26 @@ const sceneryDocument = (scenery: Scenery, width: number, height: number, room: 
   const fill = moving(scenery.sky.fill, 's')
   const sky = { markup: `<linearGradient id='sky-top' gradientUnits='userSpaceOnUse' x1='0' y1='0' x2='0' y2='${top}'><stop offset='0' stop-color='#ffffff' stop-opacity='0.3'/><stop offset='1' stop-color='#ffffff'/></linearGradient><mask id='sky'><rect width='${num(width)}' height='${num(height)}' fill='url(#sky-top)'/></mask><g mask='url(#sky)'>${fill.markup}</g>`, used: fill.used }
   const skyMoving = moving(scenery.sky.moving, 'm')
-  const still = (texture: boolean): Markup => stillMarkup(`${land.key}:${land.litKey}:${texture}`, () => litStill(land, texture), land.shift, 'l')
-  const lights = stillMarkup(`${land.key}:${land.litKey}:lights`, () => litLights(land), land.shift, 'o')
+  // The stops whose art is in view: the rest of the leg's strip (the stop the tour will pan on to) left out.
+  const view = [land.shift, land.shift + width] as const
+  const seen = land.parts.flatMap((part, index) => (part.to > view[0] && part.from < view[1] ? [index] : []))
+  const which = `${seen[0]}-${seen[seen.length - 1]}`
+  const still = (texture: boolean): Markup => stillMarkup(`${land.key}:${land.litKey}:${texture}:${which}`, () => litStill(land, texture, view), land.shift, 'l')
+  const lights = stillMarkup(`${land.key}:${land.litKey}:lights:${which}`, () => litLights(land, view), land.shift, 'o')
   const landMoving = moving(land.moving, 'n')
+  const caption = moving(land.caption, 'c')
   const weather = moving(scenery.weather, 'w')
-  const choices = [
-    [sky, skyMoving, still(true), lights, landMoving, weather],
-    [sky, skyMoving, still(false), lights, landMoving, weather],
-    [sky, skyMoving, still(false), lights, landMoving],
-    [sky, still(false), lights, landMoving],
-    [sky, still(false), lights],
+  const choices: (readonly Markup[])[][] = [
+    [[sky, skyMoving, still(true), lights], [landMoving, caption, weather]],
+    [[sky, skyMoving, still(false), lights], [landMoving, caption, weather]],
+    [[sky, skyMoving, still(false), lights], [landMoving, caption]],
+    [[sky, still(false), lights], [landMoving, caption]],
+    [[sky, still(false), lights], [caption]],
+    [[sky, still(false)], [caption]],
   ]
-  const chosen = choices.find(parts => parts.reduce((sum, part) => sum + part.markup.length, 0) <= room)
+  const chosen = choices.find(layers => layers.flat().reduce((sum, part) => sum + part.markup.length, 0) <= room) ?? []
 
-  return chosen === undefined ? '' : document(chosen)
+  return chosen.filter(parts => parts.some(part => part.markup !== '')).map(document)
 }
 
 /**
@@ -273,164 +283,7 @@ export const smoothPixels = (
   const view = scale(cell.width / 2, cell.height / 4)
   const scenery = frame.scenery
   if (scenery === undefined) return { pixels: rasterOf(frame.shapes, width, height, view, glyphShapes, scheme), width, height }
-  const size = `${width}x${height}:${scheme}`
-  const behind = keptIn(
-    composites,
-    `${scenery.behind}:${size}`,
-    () => rasterOf([...scenery.land.moving, ...scenery.weather], width, height, view, glyphShapes, scheme, keptIn(composites, `${scenery.still}:${size}`, () => stillPixels(scenery, width, height, cell, scheme), 6).slice()),
-    6,
-  )
+  const behind = behindPixels(scenery, width, height, cell, scheme)
 
   return { pixels: rasterOf([...frame.shapes, ...scenery.front], width, height, view, glyphShapes, scheme, behind.slice()), width, height }
 }
-
-/**
- * The sky and the still land in pixels: the sky painted a row at a time, its
- * sun, moon, stars and clouds; over it the still land from the cache, drawn
- * in daylight, then lit for the hour column by column with its lights laid
- * over (again each time the light has changed).
- */
-const stillPixels = (scenery: Scenery, width: number, height: number, cell: { width: number; height: number }, scheme: 'dark' | 'light'): Uint8Array => {
-  const view = scale(cell.width / 2, cell.height / 4)
-  const { land } = scenery
-  const pixels = new Uint8Array(width * height * 4)
-  paintRects(pixels, width, height, view, scenery.sky.fill, scheme)
-  // The sky fading in from the terminal's background at the top, from 0.3 to whole.
-  for (let row = 0, rows = Math.min(height, Math.round(scenery.sky.top * view[3])); row < rows; row += 1) for (let at = row * width * 4 + 3; at < (row + 1) * width * 4; at += 4) pixels[at] = Math.round((pixels[at] ?? 0) * (0.3 + (0.7 * (row + 0.5)) / rows))
-  rasterOf(scenery.sky.moving, width, height, view, glyphShapes, scheme, pixels)
-  const across = Math.max(width, Math.round((land.span * cell.width) / 2))
-  overlay(pixels, litStrip(land, across, height, cell, scheme), width, across, Math.min(across - width, Math.max(0, Math.round((land.shift * cell.width) / 2))))
-
-  return pixels
-}
-
-/**
- * Work on the still land's pixels kept between frames and done a few ms at a
- * time (`workScenery`): a land strip drawn ahead of the leg it is for
- * (`prefetchScenery`), or one lit again for a new hour while the last stands
- * in for it. A frame that needs a piece of work before it is done finishes it.
- */
-type Job = (until: number) => boolean
-const jobs = new Map<string, Job>()
-
-/** The jobs on, oldest first, until the clock says `until` (ms, `clockMs`). */
-export const workScenery = (until: number): void => {
-  for (const [key, job] of jobs) {
-    if ((clockMs() ?? Infinity) >= until) return
-    if (job(until)) jobs.delete(key)
-  }
-}
-
-/** A job finished now, if there is one. */
-const finish = (key: string): void => {
-  const job = jobs.get(key)
-  if (job === undefined) return
-  jobs.delete(key)
-  job(Infinity)
-}
-
-/** Shapes drawn into `pixels` a few at a time: done when the last is. */
-const rasterJob = (shapes: readonly Shape[], pixels: Uint8Array, across: number, height: number, view: ReturnType<typeof scale>, scheme: 'dark' | 'light', done: () => void): Job => {
-  let next = 0
-
-  return until => {
-    while (next < shapes.length) {
-      rasterOf(shapes.slice(next, next + 1), across, height, view, glyphShapes, scheme, pixels)
-      next += 1
-      if ((clockMs() ?? -Infinity) >= until && next < shapes.length) return false
-    }
-    done()
-
-    return true
-  }
-}
-
-/** A land strip's still shapes (or its lights) in pixels, drawn once (or ahead), kept by what they show, their size and scheme. */
-const rastered = (key: string, shapes: readonly Shape[], across: number, height: number, view: ReturnType<typeof scale>, scheme: 'dark' | 'light'): Uint8Array => {
-  finish(key)
-
-  return keptIn(rasters, key, () => rasterOf(shapes, across, height, view, glyphShapes, scheme), 8)
-}
-
-/** The scenery of the leg after this one, drawn ahead a few ms at a time: its land and its lights, then lit for the hour as it is now (to stand in till lit for its own). */
-export const prefetchScenery = (next: Scenery, columns: number, rows: number, cell: { width: number; height: number }, scheme: 'dark' | 'light'): void => {
-  const width = Math.max(1, Math.floor(columns)) * cell.width
-  const height = Math.max(1, Math.floor(rows)) * cell.height
-  const view = scale(cell.width / 2, cell.height / 4)
-  const across = Math.max(width, Math.round((next.land.span * cell.width) / 2))
-  const size = `${across}x${height}:${scheme}`
-  for (const [key, shapes] of [[`${next.land.key}:${size}`, next.land.still], [`${next.land.key}:lights:${size}`, next.land.lights]] as const) {
-    if (rasters.has(key) || jobs.has(key)) continue
-    const pixels = new Uint8Array(across * height * 4)
-    jobs.set(key, rasterJob(shapes, pixels, across, height, view, scheme, () => keptIn(rasters, key, () => pixels, 8)))
-  }
-  const key = litKeyOf(next.land, size)
-  if (!lits.has(key) && !jobs.has(key)) jobs.set(key, litJob(next.land, across, height, cell, scheme))
-}
-
-/**
- * The still land lit for the hour, its lights laid over: kept by what it
- * shows, its light, size and scheme. A new hour's is lit a band of rows at a
- * time while the last of the same land stands in for it; the first, at once.
- */
-const litStrip = (land: Land, across: number, height: number, cell: { width: number; height: number }, scheme: 'dark' | 'light'): Uint8Array => {
-  const size = `${across}x${height}:${scheme}`
-  const key = litKeyOf(land, size)
-  const kept = lits.get(key)
-  if (kept !== undefined) return keptIn(lits, key, () => kept, 6)
-  const stale = latest.get(`${land.key}:${size}`)
-  if (stale !== undefined) {
-    if (!jobs.has(key)) jobs.set(key, litJob(land, across, height, cell, scheme))
-    return stale
-  }
-  finish(key)
-  if (!lits.has(key)) litJob(land, across, height, cell, scheme)(Infinity)
-
-  return lits.get(key) ?? new Uint8Array(across * height * 4)
-}
-
-/** What a lit strip is kept by: its land, its light, its size and scheme. */
-const litKeyOf = (land: Land, size: string): string => `${land.key}:${land.litKey}:${size}`
-
-/** The job lighting a land strip for the hour, a band of rows at a time: kept, and the last lit of that land, when done. */
-const litJob = (land: Land, across: number, height: number, cell: { width: number; height: number }, scheme: 'dark' | 'light'): Job => {
-  const size = `${across}x${height}:${scheme}`
-  const key = litKeyOf(land, size)
-  const view = scale(cell.width / 2, cell.height / 4)
-  const columns = Array.from({ length: across }, (_, x) => land.litAt(((x + 0.5) * 2) / cell.width))
-  const grades = columns.map(one => one.grade)
-  const glows = land.lights.length > 0 && columns.some(one => one.glow > 0.01) ? columns.map(one => ({ m: [[1, 0, 0], [0, 1, 0], [0, 0, 1]], add: [0, 0, 0], alpha: one.glow }) as const) : undefined
-  const strip = new Uint8Array(across * height * 4)
-  const band = across * 4
-  let row = 0
-  const job: Job = until => {
-    const still = rastered(`${land.key}:${size}`, land.still, across, height, view, scheme)
-    const lights = glows === undefined ? undefined : rastered(`${land.key}:lights:${size}`, land.lights, across, height, view, scheme)
-    for (; row < height; row += 8) {
-      const [from, to] = [row * band, Math.min(height, row + 8) * band]
-      overlay(strip.subarray(from, to), still.subarray(from, to), across, across, 0, grades)
-      if (lights !== undefined && glows !== undefined) overlay(strip.subarray(from, to), lights.subarray(from, to), across, across, 0, glows)
-      if ((clockMs() ?? -Infinity) >= until && row + 8 < height) {
-        row += 8
-        return false
-      }
-    }
-    keptIn(lits, key, () => strip, 6)
-    latest.delete(`${land.key}:${size}`)
-    keptIn(latest, `${land.key}:${size}`, () => strip, 6)
-
-    return true
-  }
-
-  return job
-}
-
-/** The land strips drawn, in daylight and their lights, by what they show, their size and scheme: the band's and a pane's, and their next legs'. */
-const rasters = new Map<string, Uint8Array>()
-
-/** The land strips lit for the hour, by their light too; and the last lit of each strip, standing in while the next is lit. */
-const lits = new Map<string, Uint8Array>()
-const latest = new Map<string, Uint8Array>()
-
-/** What is behind the mascots as last drawn (the sky and the still land; and with what moves on it), by what it shows, its size and scheme. */
-const composites = new Map<string, Uint8Array>()

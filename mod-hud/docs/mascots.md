@@ -228,10 +228,13 @@ the stretch, pick up, dangle, throw and tumble.
   band) is drawn at 16 by 32. The hooks' timer comes every 33 ms. Each
   picture's world steps on by the time gone since its last frame (up to
   `MOST_STEP_MS`), so a late frame is never slow motion. A picture draws again
-  no sooner than three times what its last frame took (`PICTURE_SHARE`), so a
-  costly frame comes less often instead of making the rest late. While every
-  mascot stands still it draws every third frame (about ten a second), so a
-  breath or a blink costs little. Over the picture is a
+  no sooner than three times what its last frame took (`PICTURE_SHARE`, eight
+  frames at most), so a costly frame comes less often instead of making the
+  rest late; a frame that moved the scenery on holds none back (the frames
+  after it are the mascots alone), and a press on the picture draws at once.
+  While every mascot stands still it draws every third frame (about ten a
+  second), so a breath or a blink costs little. A tile whose swap is refused
+  is swapped in again at the next frame. Over the picture is a
   `Client` drawing nothing (`hooks/scene-hit.tsx`). It numbers each pointer
   event and posts its recent ones, so a press, a drag and a throw reach the
   world whole, and a click still asks to inspect.
@@ -319,9 +322,10 @@ now by its sun). From the hour comes the sun's height, and from that:
 - **Its layers.** Back to front: the sky's colours (a rect a stop, the
   next's faded in over each seam), what is in the sky, the land (still:
   drawn once per leg in daylight colours, `Land.still`, and seen from where
-  a pan has got to, `Land.shift`), its lights, what moves on it, the weather,
-  the mascots and their shadows, then the motes nearest the eye. Only the
-  stops whose art reaches the view are drawn.
+  a pan has got to, `Land.shift`), its lights, what moves on it, the stop's
+  name (`Land.caption`), the weather, the mascots and their shadows, then the
+  motes nearest the eye. Only the stops whose art reaches the view are
+  drawn.
 - **The ground.** Its field begins a little behind the back row's feet, each
   stop's ground blending into the next's; nearer it is darker, and it has
   its texture (tufts, ripples of sand, drifts of snow, paving stones).
@@ -333,26 +337,33 @@ now by its sun). From the hour comes the sun's height, and from that:
   one (`Scenery.still`), the sky's hour moving on every half second
   (`SKY_MS`). What moves on the land and the weather over it are the other
   (`Scenery.behind`). A frame between steps is the mascots over those
-  pixels. The still land is rasterized once a leg in daylight colours,
-  graded for the hour column by column with its lights laid over, and kept
-  until its light changes (`Land.litKey`, a two-hundredth of the sun's
-  height: at a stop's dawn and dusk every second or so in a fast day, never
-  in the middle of the day or the night). The next leg's land and its light
-  are drawn ahead, a few milliseconds a frame (`prefetchScenery`), and while
-  a new light is drawn the last one is shown. A picture that takes more than
-  30 ms to draw whole doesn't pan: halfway through the pan's time it is at
-  the next stop.
-- **On the desktop** (`smoothSvg`) the scenery is its own `Svg` under the
-  mascots' (`pixelsOf`). It is a document kept by `Scenery.behind`, so the
-  page draws it again only when what is behind the mascots changes, ten
-  times a second at most; the mascots' small `Svg` changes every frame. Its
-  shapes painted alike are one path each (`partMarkup`'s `merged`), the still
-  land relit as shapes and kept by `Land.litKey`. Short of room (90,000
-  characters for the two `Svg`s together), it gives up the ground's texture
-  first, then the weather, the sky's sun, moon, stars and clouds, what moves
-  on the land, then all of it, never a mascot for it. A band up to about 150
-  cells across always has room for all of it; wider, where four stops are in
-  view, mostly all of it, else without the texture.
+  pixels (`hooks/scenery-pixels.ts`). The still land is rasterized once a
+  leg in daylight colours, graded for the hour column by column with its
+  lights laid over, and kept until its light changes (`Land.litKey`, a
+  two-hundredth of the sun's height: at a stop's dawn and dusk every second
+  or so in a fast day, never in the middle of the day or the night). That
+  work is done sixteen rows at a time, 4 ms of each timer's frame
+  (`workScenery`): the next leg's land and its light drawn ahead
+  (`prefetchScenery`), a new light drawn while the last is shown, one at a
+  time. Each picture keeps its leg's land and the next one's, no other. A
+  picture that takes more than 30 ms to draw whole doesn't pan: from the next
+  leg on, halfway through each pan's time it is at the next stop, its land
+  drawn ahead as wide as its view.
+- **On the desktop** (`smoothSvg`) the scenery is two `Svg`s under the
+  mascots' (`pixelsOf`): the sky and the still land of the stops in view
+  (`Land.parts`) with their lights, a document that changes only as the sky
+  or the light moves on (twice a second at most while the tour stays), and
+  over it what moves on the land, the stop's name and the weather, at each
+  of the scenery's steps; the mascots' small `Svg` changes every frame.
+  While the tour pans, the scenery changes every frame too, so the pan is
+  smooth. Shapes painted alike are one path each (`partMarkup`'s `merged`),
+  the still land relit as shapes and kept by `Land.litKey`. Short of room
+  (90,000 characters for the three `Svg`s together), it gives up the
+  ground's texture first, then the weather, the sky's sun, moon, stars and
+  clouds, what moves on the land, then the lights, never a mascot for it,
+  and the stop's name last. A band up to about 150 cells across has room for
+  all of it; a wider one, two times in three, else mostly without the
+  texture; a pane with several agents mostly leaves out the texture.
 - Off (`scenery: false`), or with the block art, the scene is drawn as
   before: no world, the band its usual five rows.
 

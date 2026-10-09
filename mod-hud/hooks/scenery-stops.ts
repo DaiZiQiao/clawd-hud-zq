@@ -88,7 +88,7 @@ const heightAlong = (outline: readonly Point[], dx: number, past = 0): number =>
 }
 
 /** A ridge across `from` to `to` (stop units), `up` high give or take `vary`, filled down to the horizon. */
-const ridge = (at: At, from: number, to: number, up: number, vary: number, fill: string, seed: number, grad?: Gradient): Shape => {
+const ridge = (at: At, from: number, to: number, up: number, vary: number, fill: string, seed: number): Shape => {
   const points: Point[] = [[from, -0.2]]
   for (let dx = from; dx <= to; dx += 3) {
     const k = (dx - from) / (to - from)
@@ -97,18 +97,19 @@ const ridge = (at: At, from: number, to: number, up: number, vary: number, fill:
   }
   points.push([to, -0.2])
 
-  return poly(placer(at)(points), fill, 1, grad)
+  return poly(placer(at)(points), fill)
 }
 
 /** Water from `from` to `to` (stop units), `deep` up from the horizon. */
 const water = (at: At, from: number, to: number, deep: number, fill: string): Shape[] => [box(at, from, 0, to, deep, fill), box(at, from, deep - 0.25, to, deep, '#ffffff', 0.18)]
 
-const glints = (at: At, from: number, to: number, deep: number, now: number, colour = '#ffffff'): Shape[] =>
-  Array.from({ length: Math.ceil((to - from) / 9) }, (_, i) => {
+/** Glints swaying on water from `from` to `to`, each kept within it. */
+const glints = (at: At, from: number, to: number, deep: number, now: number): Shape[] =>
+  Array.from({ length: Math.max(0, Math.floor((to - from - 7.2) / 9) + 1) }, (_, i) => {
     const dx = from + 4 + i * 9 + 2 * Math.sin(now / 1500 + i * 1.7)
     const up = deep * (0.25 + 0.5 * rnd('glint', i, Math.floor(from)))
 
-    return line(placer(at)([[dx - 1.2, up], [dx + 1.2, up]]), 0.18 * at.s, colour, 0.35 + 0.3 * Math.sin(now / 600 + i))
+    return line(placer(at)([[dx - 1.2, up], [dx + 1.2, up]]), 0.18 * at.s, '#ffffff', 0.35 + 0.3 * Math.sin(now / 600 + i))
   })
 
 const palm = (at: At, dx: number, h: number, trunk = '#6a4a32', leaf = '#2f6a3a'): Shape[] => {
@@ -124,8 +125,8 @@ const palm = (at: At, dx: number, h: number, trunk = '#6a4a32', leaf = '#2f6a3a'
 
 const cypress = (at: At, dx: number, h: number, fill = '#2a4a32'): Shape => poly(placer(at)([[dx - 0.9, 0.3], [dx - 1, h * 0.4], [dx - 0.4, h * 0.85], [dx, h], [dx + 0.4, h * 0.85], [dx + 1, h * 0.4], [dx + 0.9, 0.3]]), fill)
 
-const roundTree = (at: At, dx: number, h: number, crown: string, lit: string, trunk = '#4a3428'): Shape[] => [
-  box(at, dx - 0.35, 0, dx + 0.35, h * 0.55, trunk),
+const roundTree = (at: At, dx: number, h: number, crown: string, lit: string): Shape[] => [
+  box(at, dx - 0.35, 0, dx + 0.35, h * 0.55, '#4a3428'),
   dot(at, dx - h * 0.2, h * 0.62, h * 0.3, h * 0.24, crown),
   dot(at, dx + h * 0.22, h * 0.6, h * 0.28, h * 0.23, crown),
   dot(at, dx, h * 0.76, h * 0.34, h * 0.26, crown),
@@ -163,22 +164,22 @@ const skyline = (at: At, from: number, to: number, low: number, high: number, fi
   return lit ? windows : [...towers, ...windows]
 }
 
-/** Birds crossing the sky by day, wings beating. */
+/** Birds crossing the sky by day, wings beating, fading in and out at the ends of their run. */
 export const birds = (at: At, now: number, light: Light): Shape[] =>
   [0, 1, 2].map(i => {
     const dx = mod(now / 260 + i * 37 + 9 * rnd('bird', i), 120) - 60
     const up = 14 + 2.5 * i + Math.sin(now / 1100 + i) * 0.8
     const flap = Math.sin(now / 140 + i * 2) * 0.55
 
-    return line(placer(at)([[dx - 0.9, up + flap], [dx, up], [dx + 0.9, up + flap]]), 0.2 * at.s, '#2a2a36', 0.8 * light.day)
+    return line(placer(at)([[dx - 0.9, up + flap], [dx, up], [dx + 0.9, up + flap]]), 0.2 * at.s, '#2a2a36', 0.8 * light.day * Math.min(1, (60 - Math.abs(dx)) / 6))
   })
 
 /** Mist drifting along the slopes, thinning out to the stop's edges. */
-const mist = (at: At, now: number, up: number, colour = '#ffffff'): Shape[] =>
+const mist = (at: At, now: number, up: number): Shape[] =>
   [0, 1, 2].map(i => {
     const dx = mod(now / 400 + i * 41, 110) - 55
 
-    return dot(at, dx, up + i * 2.2, 14, 1.3, colour, 0.22 * Math.min(1, (55 - Math.abs(dx)) / 20))
+    return dot(at, dx, up + i * 2.2, 14, 1.3, '#ffffff', 0.22 * Math.min(1, (55 - Math.abs(dx)) / 20))
   })
 
 // --- the stops -------------------------------------------------------------------
@@ -252,29 +253,33 @@ const bigBenLights = (at: At): Shape[] => {
   return shapes
 }
 
-/** Where London's bus is along Westminster: across the stop, and round again. */
-const londonBus = (now: number): number => mod(now / 90, 104) - 55
+/** Where London's bus is along Westminster, across the stop and round again, and how much of it shows: it fades in at one end and out at the other. */
+const londonBus = (now: number): { dx: number; fade: number } => {
+  const dx = mod(now / 90, 104) - 55
+
+  return { dx, fade: Math.max(0, Math.min(1, (dx + 55) / 4, (49 - dx) / 4)) }
+}
 
 /** Its clock at the hour in London, and a red bus going by. */
 const bigBenMoving = (at: At, now: number, light: Light): Shape[] => {
   const p = placer(at)
   const hand = (turns: number, length: number): Shape => line(p([[0, 13.1], [Math.sin(turns * 2 * Math.PI) * length, 13.1 + Math.cos(turns * 2 * Math.PI) * length]]), 0.18 * at.s, '#2a2a30')
-  const bus = londonBus(now)
+  const { dx: bus, fade } = londonBus(now)
 
   return [
     hand((light.hour % 12) / 12, 0.75),
     hand(light.hour % 1, 1.15),
-    box(at, bus, 0.4, bus + 6, 3.6, '#d43a30'),
-    dot(at, bus + 1.2, 0.45, 0.55, 0.55, '#202024'),
-    dot(at, bus + 4.8, 0.45, 0.55, 0.55, '#202024'),
+    ...(fade > 0 ? [box(at, bus, 0.4, bus + 6, 3.6, '#d43a30', fade), dot(at, bus + 1.2, 0.45, 0.55, 0.55, '#202024', fade), dot(at, bus + 4.8, 0.45, 0.55, 0.55, '#202024', fade)] : []),
   ]
 }
 
 /** The bus's windows, glass by day and lit by night. */
 const busWindows = (at: At, now: number, light: Light): Shape[] => {
-  const bus = londonBus(now)
+  const { dx: bus, fade } = londonBus(now)
+  if (fade === 0) return []
+  const alpha = (0.35 + 0.5 * light.dark) * fade
 
-  return [box(at, bus + 0.4, 2.3, bus + 5.6, 3.1, '#ffe2a0', 0.35 + 0.5 * light.dark), box(at, bus + 0.4, 1.2, bus + 5.6, 1.9, '#ffe2a0', 0.35 + 0.5 * light.dark)]
+  return [box(at, bus + 0.4, 2.3, bus + 5.6, 3.1, '#ffe2a0', alpha), box(at, bus + 0.4, 1.2, bus + 5.6, 1.9, '#ffe2a0', alpha)]
 }
 
 const windmill = (at: At, dx: number, h: number): Shape[] => {
@@ -388,7 +393,7 @@ const tajMahal = (at: At): Shape[] => {
     line(p([[0, 12.8], [0, 13.8]]), 0.16 * at.s, '#d8a850'),
     onion(-4.6, 7, 1, 1.8),
     onion(4.6, 7, 1, 1.8),
-    // Its pool, narrowing to the horizon, the sunset in it.
+    // Its pool, narrowing to the horizon.
     poly(p([[-1.2, -0.2], [1.2, -0.2], [2.6, (at.y - at.bottom) / at.s], [-2.6, (at.y - at.bottom) / at.s]]), '#5a7cb0'),
     poly(p([[-0.5, -0.4], [0.5, -0.4], [1, (at.y - at.bottom) / at.s * 0.6], [-1, (at.y - at.bottom) / at.s * 0.6]]), '#e8eef8', 0.35),
   )
@@ -578,9 +583,11 @@ const aurora = (at: At, now: number, light: Light): Shape[] => {
       const wave = Math.sin(dx / 11 + now / (2400 + i * 700) + i * 2) * 2 + Math.sin(dx / 5 - now / 1900) * 0.7
       const foot = 11.5 - i * 1.2 + wave * 0.7
       const top = foot + 3 + 3.5 * rnd('ray', i, Math.round(dx * 10)) + wave * 0.3
-      glow[0]?.push(box(at, dx, foot, dx + 1.3, foot + 1.2, colour, 0.34 * light.dark))
-      glow[1]?.push(box(at, dx, foot + 1.2, dx + 1.3, (foot + top) / 2 + 0.6, colour, 0.17 * light.dark))
-      glow[2]?.push(box(at, dx, (foot + top) / 2 + 0.6, dx + 1.3, top, colour, 0.07 * light.dark))
+      // Thinning out to the curtain's ends, not cut off over the neighbours' skies.
+      const shown = light.dark * Math.max(0, Math.min(1, (60 - Math.abs(dx + 0.65)) / 12))
+      glow[0]?.push(box(at, dx, foot, dx + 1.3, foot + 1.2, colour, 0.34 * shown))
+      glow[1]?.push(box(at, dx, foot + 1.2, dx + 1.3, (foot + top) / 2 + 0.6, colour, 0.17 * shown))
+      glow[2]?.push(box(at, dx, (foot + top) / 2 + 0.6, dx + 1.3, top, colour, 0.07 * shown))
     }
   }
 
@@ -1309,7 +1316,10 @@ const niagara = (at: At): Shape[] => {
 /** The night's lights: the Skylon's pod and beacon, the hotels' windows, lamps along the Canadian rim. */
 const niagaraLights = (at: At): Shape[] => {
   const windows: Shape[] = []
-  for (const [left, right, top] of NIAGARA_HOTELS) for (let up = 8.8; up < top - 0.6; up += 1.3) for (let dx = left + 0.5; dx < right - 0.5; dx += 1) if (rnd('niagara-window', dx, up) < 0.6) windows.push(box(at, dx, up, dx + 0.5, up + 0.5, '#ffd27a', 0.85))
+  // On the rows of glass the hotels have by day.
+  for (const [left, right, top] of NIAGARA_HOTELS) {
+    for (let row = 0, up = 8.8; row < Math.floor((top - 8.6) / 1.3); row += 1, up += 1.3) for (let dx = left + 0.5; dx < right - 0.5; dx += 1) if (rnd('niagara-window', dx, up) < 0.6) windows.push(box(at, dx, up, dx + 0.5, up + 0.5, '#ffd27a', 0.85))
+  }
 
   return [
     ...glow(at, SKYLON, 15.6, 4.6, 2.8, '#ffd27a', 0.24),
@@ -2017,7 +2027,7 @@ const veniceCampanile = (at: At): Shape[] => {
 }
 
 /** A dome's outline `r` round and `h` high on its base at `[dx, base]`, in `steps` along its curve. */
-const veniceDome = (dx: number, base: number, r: number, h: number, steps = 8): Point[] => Array.from({ length: steps + 1 }, (_, i): Point => [dx - r * Math.cos((i * Math.PI) / steps), base + h * Math.sin((i * Math.PI) / steps)])
+const domeCurve = (dx: number, base: number, r: number, h: number, steps = 8): Point[] => Array.from({ length: steps + 1 }, (_, i): Point => [dx - r * Math.cos((i * Math.PI) / steps), base + h * Math.sin((i * Math.PI) / steps)])
 
 /** Santa Maria della Salute on the water: its white front and portal, the scrolls round its drum, its great lead dome and lantern, the little dome and bell towers behind. */
 const veniceSalute = (at: At): Shape[] => {
@@ -2027,11 +2037,11 @@ const veniceSalute = (at: At): Shape[] => {
     // Behind: the bell towers, the little dome on its drum.
     box(at, 21.6, VENICE_BANK, 22.5, 11, '#e6dfd0'),
     box(at, 25, VENICE_BANK, 25.9, 11, '#e6dfd0'),
-    poly(p(veniceDome(22.05, 11, 0.6, 0.9, 4)), '#9aa6b8'),
-    poly(p(veniceDome(25.45, 11, 0.6, 0.9, 4)), '#9aa6b8'),
+    poly(p(domeCurve(22.05, 11, 0.6, 0.9, 4)), '#9aa6b8'),
+    poly(p(domeCurve(25.45, 11, 0.6, 0.9, 4)), '#9aa6b8'),
     box(at, 22.4, VENICE_BANK, 25.2, 9.4, '#e6dfd0'),
     box(at, 22.4, VENICE_BANK, 25.2, 7, '#2a3050', 0.12),
-    poly(p(veniceDome(23.8, 9.4, 1.6, 1.8, 6)), '#9aa6b8'),
+    poly(p(domeCurve(23.8, 9.4, 1.6, 1.8, 6)), '#9aa6b8'),
     // The church: its front, its steps, the columns either side of the portal; its drum, the scrolls, the pediment, the dome and the lantern.
     box(at, 9.6, VENICE_BANK, 22.4, 8, '#f2ece0'),
     box(at, 18.6, VENICE_BANK, 22.4, 8, '#2a3050', 0.12),
@@ -2044,10 +2054,10 @@ const veniceSalute = (at: At): Shape[] => {
     ...[11.3, 20.7].map(dx => dot(at, dx, 9.2, 0.8, 0.8, '#e2dace')),
     poly(p([[12.8, 7.7], [16, 10.1], [19.2, 7.7]]), '#d6ccba'),
     poly(p([[13.5, 8], [16, 9.75], [18.5, 8]]), '#f6f0e6'),
-    poly(p(veniceDome(16, 10.8, 4.4, 4.6)), '#9aa6b8'),
-    poly(p([...veniceDome(16, 10.8, 4.4, 4.6).slice(0, 5), [15, 10.8]]), '#c6cfdc', 0.6),
+    poly(p(domeCurve(16, 10.8, 4.4, 4.6)), '#9aa6b8'),
+    poly(p([...domeCurve(16, 10.8, 4.4, 4.6).slice(0, 5), [15, 10.8]]), '#c6cfdc', 0.6),
     box(at, 15.4, 15.2, 16.6, 16.6, '#f2ece0'),
-    poly(p(veniceDome(16, 16.6, 0.8, 0.8, 4)), '#9aa6b8'),
+    poly(p(domeCurve(16, 16.6, 0.8, 0.8, 4)), '#9aa6b8'),
     line(p([[16, 17.4], [16, 18.4], [16, 18], [15.6, 18], [16.4, 18]]), 0.14 * at.s, '#c8a050'),
   ]
 }
@@ -2100,7 +2110,7 @@ const veniceLights = (at: At): Shape[] => {
     box(at, 9.6, VENICE_BANK, 22.4, 8, '#ffe2ac', 0.6),
     box(at, 11.8, 8, 20.2, 10.8, '#ffe2ac', 0.6),
     box(at, 15.4, 15.2, 16.6, 16.6, '#ffe2ac', 0.6),
-    poly(p(veniceDome(16, 10.8, 4.4, 4.6)), '#f4e6cc', 0.45),
+    poly(p(domeCurve(16, 10.8, 4.4, 4.6)), '#f4e6cc', 0.45),
     // The Campanile washed warm, its spire's copper glinting, its belfry glowing.
     box(at, -5.5, 8.6, -3.1, 14.9, '#ffb878', 0.4),
     poly(p([[-5.6, 15.2], [-4.3, 19.9], [-3, 15.2]]), '#b0e0c4', 0.25),
@@ -2215,13 +2225,10 @@ const santoriniOpenings = ({ dx, w, h, seed }: SantoriniHouse, up: number): Sant
   return w > 2.9 ? [[door, up, 0.5, 0.95], [door > dx + w / 2 ? dx + 0.4 : dx + w - 1.1, up + h - 1.25, 0.45, 0.5]] : [[door, up, 0.5, 0.95]]
 }
 
-/** A dome's outline `r` round and `h` high on its drum at `[dx, base]`. */
-const santoriniDomeCurve = (dx: number, base: number, r: number, h: number): Point[] => Array.from({ length: 9 }, (_, i): Point => [dx - r * Math.cos((i * Math.PI) / 8), base + h * Math.sin((i * Math.PI) / 8)])
-
 /** A blue church dome `r` round on its drum at `[dx, base]`, lit on its left, its cross over it. */
 const santoriniDome = (at: At, dx: number, base: number, r: number, h: number): Shape[] => {
   const p = placer(at)
-  const curve = santoriniDomeCurve(dx, base, r, h)
+  const curve = domeCurve(dx, base, r, h)
 
   return [poly(p(curve), '#1f5bc6'), poly(p([...curve.slice(0, 4), [dx - r * 0.2, base]]), '#5a96e8', 0.6), line(p([[dx, base + h], [dx, base + h + 0.9], [dx, base + h + 0.6], [dx - 0.32, base + h + 0.6], [dx + 0.32, base + h + 0.6]]), 0.13 * at.s, '#f4f0e4')]
 }
@@ -2370,10 +2377,10 @@ const santoriniLights = (at: At): Shape[] => {
   return [
     ...glow(at, -3, 8, 21, 5.4, '#ffc874', 0.09),
     // The churches' walls floodlit above the houses in front of them, and the bell tower.
-    ...churches.map(({ church: [, from, to], base, drum }) => box(at, from, base + 0.8, to, drum, '#fff2d4', 0.3)),
+    ...churches.flatMap(({ church: [, from, to, tall, r], base, mid, drum }) => [box(at, from, base + 0.8, to, base + tall, '#fff2d4', 0.3), box(at, mid - r * 0.75, base + tall, mid + r * 0.75, drum, '#fff2d4', 0.3)]),
     box(at, SANTORINI_TOWER - 0.95, top, SANTORINI_TOWER + 0.95, top + 3.4, '#fff2d4', 0.3),
     box(at, SANTORINI_TOWER - 0.65, top + 3.4, SANTORINI_TOWER + 0.65, top + 4.7, '#fff2d4', 0.3),
-    ...churches.map(({ church: [, , , , r], mid, drum }) => poly(p(santoriniDomeCurve(mid, drum, r, r * 1.1)), '#9cc2ff', 0.35)),
+    ...churches.map(({ church: [, , , , r], mid, drum }) => poly(p(domeCurve(mid, drum, r, r * 1.1)), '#9cc2ff', 0.35)),
     ...windows.map(lit),
     ...SANTORINI_BELLS.map(([dx, up, w, h]) => lit([SANTORINI_TOWER + dx, top + up, w, h])),
     ...([[26.1, 1.2, 0.5, 0.6], [28.2, 1.2, 0.5, 0.4], ] as const).map(lit),
@@ -2585,7 +2592,7 @@ const cappadociaBalloons = (at: At, now: number): Shape[] => {
   })
 }
 
-/** The burners flaring now and then, a flame at each big balloon's mouth: by day a glint of fire; by night every envelope aglow from within, the more as its burner flares. */
+/** The burners flaring now and then, a flame at each big balloon's mouth: by day a glint of fire, fading as it darkens; by night every envelope aglow from within, the more as its burner flares. */
 const cappadociaBurners = (at: At, now: number, light: Light): Shape[] =>
   CAPPADOCIA_BALLOONS.flatMap((balloon, i) => {
     const [, , r] = balloon
@@ -2597,10 +2604,12 @@ const cappadociaBurners = (at: At, now: number, light: Light): Shape[] =>
     const p = placer(at)
     const night = light.dark > 0.05 ? [poly(p(cappadociaEnvelope(bx, by, r, 1)), '#ff9a48', light.dark * (0.3 + 0.3 * flare))] : []
     if (flare <= 0) return night
+    const day = Math.max(0, 1 - light.dark / 0.3) * flare
 
     return [
       ...night,
-      ...(light.dark > 0.05 ? [poly(p(cappadociaEnvelope(bx, by - 0.25 * r, r * 0.62, 0.8)), '#ffd078', 0.55 * light.dark * flare)] : [dot(at, bx, by - 1.35 * r, 0.5 * r, 0.6 * r, '#ffb048', 0.2 * flare), dot(at, bx, by - 1.35 * r, 0.3 * r, 0.36 * r, '#ffc860', 0.35 * flare)]),
+      ...(light.dark > 0.05 ? [poly(p(cappadociaEnvelope(bx, by - 0.25 * r, r * 0.62, 0.8)), '#ffd078', 0.55 * light.dark * flare)] : []),
+      ...(day > 0 ? [dot(at, bx, by - 1.35 * r, 0.5 * r, 0.6 * r, '#ffb048', 0.2 * day), dot(at, bx, by - 1.35 * r, 0.3 * r, 0.36 * r, '#ffc860', 0.35 * day)] : []),
       poly(p([[bx - 0.2 * r, by - 1.62 * r], [bx - 0.08 * r, by - 1.2 * r], [bx, by - 0.95 * r], [bx + 0.08 * r, by - 1.2 * r], [bx + 0.2 * r, by - 1.62 * r]]), '#fff0a0', flare),
     ]
   })
@@ -2936,7 +2945,7 @@ const dubaiLights = (at: At): Shape[] => {
   ]
 }
 
-/** How far the city's night lights are on: none until well into dusk. */
+/** How far the fountain's and the sail's night colours are on: none until well into dusk. */
 const dubaiLit = (light: Light): number => Math.max(0, Math.min(1, (light.dark - 0.2) / 0.6))
 
 /** The Dubai Fountain's jets dancing in the lake below the Burj, swelling and falling, in `spray`. */
@@ -3222,7 +3231,7 @@ const everestPlume = (at: At, now: number): Shape[] => {
   ]
 }
 
-/** The prayer flags fluttering in the wind on their strings: blue, white, red, green, yellow; drawn colour by colour (none overlaps another), so alike flags go together. */
+/** The prayer flags fluttering in the wind on their strings: blue, white, red, green, yellow; drawn colour by colour, so alike flags go together: a string's flags never overlap each other; where strings meet, the colours' order says which is in front. */
 const everestFlags = (at: At, now: number): Shape[] => {
   const p = placer(at)
   const colours = ['#2e64c8', '#f2f2ee', '#d8382e', '#2a9a4e', '#f2c420']
@@ -3685,9 +3694,11 @@ const halongMoving = (at: At, now: number, light: Light): Shape[] => {
   const near = halongJunkAt(now)
   const far = halongFarJunkAt(now)
   const day = Math.max(0, 1 - light.dark / 0.4)
+  // The glints fading out as it darkens.
+  const shine = Math.max(0, 1 - light.dark / 0.3)
 
   return [
-    ...(light.dark < 0.3 ? glints(at, -31, 31, 3, now) : []),
+    ...(shine > 0 ? glints(at, -31, 31, 3, now).map(glint => ({ ...glint, alpha: (glint.alpha ?? 1) * shine })) : []),
     ...(far.fade * (1 - light.dark) > 0.02 ? halongJunk(at, far.dx, 2.3, now, far.fade * (1 - light.dark), 0.36, -1, true) : []),
     ...halongDrift(at, now),
     ...(near.fade * day > 0.02 ? halongWake(at, near.dx, near.up, near.fade * day) : []),

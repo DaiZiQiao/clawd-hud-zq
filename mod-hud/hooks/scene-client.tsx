@@ -65,26 +65,32 @@ const svgOf = (elements: SceneElements): ElementConstructor<SvgProps> => element
 
 /**
  * The scene in pixels: the `Svg` the region's size (over the scenery's own,
- * when it has one: a document that stays the same while what is behind the
- * mascots does, so the page draws it again only then), and over them a box as
- * big with nothing in it, the region's hit layer. The desktop draws an `Svg`
+ * when it has them: its layers, each a document that stays the same while
+ * what it shows does, so the page draws it again only then), and over them a
+ * box as big with nothing in it, the region's hit layer. The desktop draws an `Svg`
  * as an image, and a press on an image starts the page's own drag of it, which
  * takes the pointer's moves and its release from the region: the layer over it
  * is what the press lands on, so the region's `onPointer` hears the whole
  * gesture; whose mascot was pressed still comes from the frame's cells.
  */
-const pixelsOf = (elements: SceneElements, drawn: SceneSvg & { scenery?: string }, room: { columns: number; rows: number }): RenderElement => {
+const pixelsOf = (elements: SceneElements, drawn: SceneSvg & { scenery?: readonly string[] }, room: { columns: number; rows: number }): RenderElement => {
   const { Box } = elements
   const Svg = svgOf(elements)
   const mascots = <Svg source={drawn.source} alt={drawn.alt} width={drawn.width} height={drawn.height} />
+  const [behind, ...over] = drawn.scenery ?? []
 
   return (
     <Box key="scene" width={room.columns} height={room.rows} flexShrink={0}>
-      {drawn.scenery === undefined ? (
+      {behind === undefined ? (
         mascots
       ) : (
         <Box key="layers" width={room.columns} height={room.rows}>
-          <Svg key="scenery" source={drawn.scenery} alt=" " width={drawn.width} height={drawn.height} />
+          <Svg key="scenery" source={behind} alt=" " width={drawn.width} height={drawn.height} />
+          {over.map((source, index) => (
+            <Box key={`scenery:${index + 1}`} position="absolute" top={0} left={0} width={room.columns} height={room.rows}>
+              <Svg source={source} alt=" " width={drawn.width} height={drawn.height} />
+            </Box>
+          ))}
           <Box key="figures" position="absolute" top={0} left={0} width={room.columns} height={room.rows}>
             {mascots}
           </Box>
