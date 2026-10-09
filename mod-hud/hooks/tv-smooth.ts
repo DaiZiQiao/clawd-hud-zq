@@ -191,7 +191,7 @@ const giantUsagi = (who: Who, layout: TvLayout, eyes: Eyes, spin: number): Shape
   const inside: Shape[] = []
   for (const side of [-1, 1]) {
     // About the ear's root on the head's top: together, the two a V.
-    const root = { x: middle + side * earW * 0.55, y: body.y + CH }
+    const root = { x: middle + side * earW * 0.8, y: body.y + CH }
     const turn = side * 0.16
     const m = [Math.cos(turn), Math.sin(turn), -Math.sin(turn), Math.cos(turn), root.x - root.x * Math.cos(turn) + root.y * Math.sin(turn), root.y - root.x * Math.sin(turn) - root.y * Math.cos(turn)] as const
     silhouette.push({ kind: 'rect', x: root.x - earW / 2, y: root.y - earLength, w: earW, h: earLength, r: earW / 2, fill: USAGI.cream, m })

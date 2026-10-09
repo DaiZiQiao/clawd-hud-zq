@@ -530,10 +530,10 @@ const usagiShapes = (pose: FigurePose, info: FigureInfo, t: number): Shape[] => 
   const inside: Shape[] = []
   for (const side of [-1, 1]) {
     const turn = side * 0.05 + 0.3 * pose.trail + side * (1.9 * droop + 1.45 * flat + (side < 0 ? pose.earL : pose.earR))
-    // Close together, their lines touching.
-    const ear = multiply(body, about(side * 0.95, -11.4, rotate(turn)))
-    part({ kind: 'rect', x: side * 0.95 - 0.85, y: -11.4 - earLength, w: 1.7, h: earLength + 0.4, r: 0.85, fill: USAGI.cream, m: ear })
-    inside.push({ kind: 'rect', x: side * 0.95 - 0.45, y: -10.95 - earLength, w: 0.9, h: Math.max(0.6, earLength - 2.2), r: 0.45, fill: USAGI.ear, m: ear })
+    // Close together, a sliver apart.
+    const ear = multiply(body, about(side * 1.45, -11.4, rotate(turn)))
+    part({ kind: 'rect', x: side * 1.45 - 0.85, y: -11.4 - earLength, w: 1.7, h: earLength + 0.4, r: 0.85, fill: USAGI.cream, m: ear })
+    inside.push({ kind: 'rect', x: side * 1.45 - 0.45, y: -10.95 - earLength, w: 0.9, h: Math.max(0.6, earLength - 2.2), r: 0.45, fill: USAGI.ear, m: ear })
   }
   const footHeight = Math.max(0, 1.2 * (1 - 0.45 * pose.tuck) * (1 - pose.hideLegs) * (1 - pose.run))
   for (const [index, x] of [[0, -1.55], [1, 1.55]] as const) {
