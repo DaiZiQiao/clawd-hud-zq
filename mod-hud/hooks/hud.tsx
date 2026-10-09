@@ -623,9 +623,31 @@ const repoRow = (data: HudData, { card }: Room): Span[] | undefined => {
   return [dim(fitPath(tildify(where), card))]
 }
 
+/**
+ * A count of changes in its sign's colour: `+142` added in green, `−37`
+ * deleted in red, anything else (`~2` modified) and a count of 0 dim.
+ */
+const markSpan = (mark: string): Span => {
+  const sign = mark[0]
+  if (/^[+−]0$/.test(mark) || (sign !== '+' && sign !== '−')) return dim(mark)
+
+  return tint(mark, sign === '+' ? GOOD : HOT)
+}
+
+/** `+142 −37 lines` (else `+3 ~2 −1`, the paths), each count in its sign's colour (markSpan), the rest dim. */
+const changeSpans = (changes: string): Span[] => {
+  const words = changes.split(' ')
+
+  return words.flatMap((word, index): Span[] => [
+    ...(index === 0 ? [] : [plain(' ')]),
+    /^[+~−]\d+$/.test(word) ? markSpan(word) : dim(word),
+  ])
+}
+
 // session · branch: `main* ↑2   +142 −37 lines · last commit 48m ago`. The
 // branch keeps at least BRANCH_KEEP cells; the lines changed (else the paths)
-// and the last commit's age follow while they fit.
+// and the last commit's age follow while they fit: the lines (or paths) added
+// green, deleted red.
 const branchRow = (data: HudData, { card }: Room, look: Look): Span[] | undefined => {
   const branch = clean(data.git?.branch)
   if (branch === '') return undefined
@@ -639,7 +661,7 @@ const branchRow = (data: HudData, { card }: Room, look: Look): Span[] | undefine
   const lastCommitAt = data.git?.lastCommitAt
   const committed = isNumber(lastCommitAt) ? `last commit ${formatAgo(data.now - lastCommitAt)}` : ''
 
-  return pieces(head, [changes === '' ? [] : [dim(changes)], committed === '' ? [] : [dim(committed)]], card, look, false)
+  return pieces(head, [changes === '' ? [] : changeSpans(changes), committed === '' ? [] : [dim(committed)]], card, look, false)
 }
 
 /** A main argument that is a path reads from the home `~` and loses its leading directories first; any other is cut at its end. */

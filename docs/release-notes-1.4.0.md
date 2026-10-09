@@ -16,3 +16,5 @@ The session's mascot moves above the prompt, and it tidies up.
 - While any compaction of the main conversation runs (yours, the built-in auto-compact, or a tidy), the session's mascot squashes a stack of pages beside it into a cube, over and over, and the band says it is tidying up. Afterwards the band shows the size before and after, `✓ tidied 182k → 21k (−88%)`, for 20 seconds. If Claude Code refuses a tidy, the band says why.
 - `tidyAt` is a token count rather than a percentage of the window: the cost of a compaction against what it saves depends on how many tokens are re-read, not on the window's size. See "Tidying up" in the README.
 
+## The HUD
+- The branch row's lines changed are coloured: `+2139` added in green, `−822` deleted in red, `lines` dim (a count of 0 stays dim). The paths changed, shown when the line counts are not known, follow suit: `+3` green, `−1` red, `~2` dim.

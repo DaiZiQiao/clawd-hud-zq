@@ -764,7 +764,7 @@ describe('the HUD', () => {
     }
   })
 
-  test('(8) dim for the secondary, bold for the headlines, colour only on bars, glyphs, the model, working, the ETA, the cooling cache and the alerts', async ($, on) => {
+  test('(8) dim for the secondary, bold for the headlines, colour only on bars, glyphs, the model, working, the ETA, the cooling cache, the lines changed and the alerts', async ($, on) => {
     const scene = stage(on)
     await eachDrawing($, scene, WIDTHS, async (rows, { name, columns }) => {
       for (const row of rows) {
@@ -775,7 +775,7 @@ describe('the HUD', () => {
           if (one.props.color !== undefined) {
             expect(THEME_KEYS, where).toContain(one.props.color)
             // The alert strip is coloured throughout: each alert in its severity's key.
-            if (row.id !== 'alerts') expect(/^[━◆●◐*]+$/.test(one.text) || /^out ~/.test(one.text.trim()) || ['cooling', MODEL, '● working'].includes(one.text), where).toBe(true)
+            if (row.id !== 'alerts') expect(/^[━◆●◐*]+$/.test(one.text) || /^out ~/.test(one.text.trim()) || ['cooling', MODEL, '● working'].includes(one.text) || (row.id === 'session.branch' && /^[+−]\d+$/.test(one.text.trim())), where).toBe(true)
           }
           if (one.props.bold === true) expect(['header', 'usage.cost'], where).toContain(row.id)
           if (one.props.dimColor === true) expect(one.props.bold, where).toBeUndefined()
@@ -788,7 +788,7 @@ describe('the HUD', () => {
       const rows = await rowsOf(ui)
       for (const [id, text] of [
         ['header', 'gateway'], ['header', '00:42'], ['session.repo', 'repo'], ['session.repo', '~/.claude/mods'],
-        ['session.branch', '↑2'], ['session.branch', '+142 −37 lines'], ['session.branch', 'last commit 48m ago'],
+        ['session.branch', '↑2'], ['session.branch', 'lines'], ['session.branch', 'last commit 48m ago'],
         ['session.now', 'npm test -- hud'], ['session.now', '00:04'],
         ['context.used', 'used'], ['context.used', '─'], ['context.used', '┃'], ['context.used', '412k / 1.0M'],
         ['context.growth', 'compact in ~6 turns'], ['context.cache', '42m left'], ['context.cache', '(1h)'],
@@ -798,6 +798,9 @@ describe('the HUD', () => {
       }
       expect(piece(rowOf(rows, 'session.repo'), 'session')?.props).toEqual({})
       expect(piece(rowOf(rows, 'session.branch'), '*')?.props).toEqual({ color: 'warning' })
+      // The lines changed: added green, deleted red.
+      expect(piece(rowOf(rows, 'session.branch'), '+142')?.props).toEqual({ color: 'success' })
+      expect(piece(rowOf(rows, 'session.branch'), '−37')?.props).toEqual({ color: 'error' })
       expect(piece(rowOf(rows, 'header'), '● working')?.props).toEqual({ color: 'claude' })
       expect(piece(rowOf(rows, 'session.now'), 'Bash')?.props).toEqual({})
       expect(piece(rowOf(rows, 'limits.5h'), `out ~${AT_OUT_5H}`)?.props).toEqual({ color: 'error' })
