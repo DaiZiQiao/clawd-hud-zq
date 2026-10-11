@@ -80,7 +80,7 @@ describe('frame tables', () => {
     expect(size('agent · at its laptop')).toEqual([SLOT, 4])
     expect(size('agent · hop')).toEqual([BOX, 8])
     expect(size('agent · flying')).toEqual([BOX, 8])
-    expect(size('agent · thinking (')).toEqual([SLOT, 5])
+    expect(size('agent · thinking: typing')).toEqual([SLOT, 5])
   })
 })
 

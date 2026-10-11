@@ -5,7 +5,7 @@ import type { Engine } from 'claude-code/testing'
 import type { AgentBoardEntry, HudData, HudMainFacts } from '../types'
 import { alertsOf } from './hud'
 import { hudLines } from './hud.fixtures'
-import { CROWN, HEADS, SLOT, TORSOS } from './mascot-sprites'
+import { CROWN, HEADS, SLOT } from './mascot-sprites'
 import { FRAME_TABLES } from './mascot-sprites.fixtures'
 import { register } from './register'
 import { PALETTE, colourFor, sceneOf } from './scene-model'
@@ -247,7 +247,7 @@ describe('in the pane', () => {
     held.set('listView', { value: { todosExpanded: true }, version: 1 })
     await $.command.run(TOGGLE)
     for (const type of ['Explore', 'general-purpose', 'Explore']) await spawn($, type)
-    // Past their arrival: all three stand in their slots, thinking (quiet under six seconds, so not idle yet).
+    // Past their arrival: all three stand in their slots at work (quiet, but far from stalled).
     await clock.advance(5 * SECOND)
     const hudRows = hudLines({ ...idleHud, motto: undefined, now: clock.now() }, { columns: 72, rows: 36, isNarrow: false }).length
 
@@ -264,12 +264,11 @@ describe('in the pane', () => {
       expect(rows.length).toBeGreaterThanOrEqual(4)
       expect(rows.length).toBeLessThanOrEqual(spare)
       const sky = rows.length - 4
-      // The session watching, crowned, and three agents in spawn order a slot apart, thinking away from their laptops: eyes up, a thought beside.
+      // The session watching, crowned, and three agents in spawn order a slot apart, thinking at their laptops: facing them, typing.
       expect(rows[sky]?.text.slice(5, 8)).toBe(CROWN.art)
       expect(rows[sky + 1]?.text.slice(0, 11)).toBe(`  ${HEADS.right}`)
-      expect(rows[sky + 1]?.text.match(new RegExp(HEADS.up.slice(1, 8), 'g'))).toHaveLength(3)
-      expect(rows[sky + 2]?.text.match(/▝▜█████▛▘/g)).toHaveLength(4)
-      expect([20, 38, 56].map(x => rows[sky + 2]?.text.slice(x, x + 9))).toEqual([TORSOS.rest, TORSOS.rest, TORSOS.rest])
+      expect(rows[sky + 1]?.text.match(new RegExp(HEADS.right.slice(1, 8), 'g'))).toHaveLength(4)
+      expect([18, 36, 54].map(x => rows[sky + 3]?.text.slice(x + 11, x + 17))).toEqual(['▀▀▀▀▀▀', '▀▀▀▀▀▀', '▀▀▀▀▀▀'])
       for (const id of ['sub-1', 'sub-2', 'sub-3']) {
         // The agent's name in the list, and its mascot, share its colour.
         const row = await ui.find({ key: `agent:${id}` })
@@ -386,8 +385,8 @@ describe('in the pane', () => {
     await step($, { index: 0, agentId: 'sub-9' })
     expect(main()).toEqual({ busySince: NOW })
     expect(writes()).toBe(1)
-    // Eyes up at its thought, rising beside its head; the crown keeps the row above.
-    expect(await head()).toBe(`  ${HEADS.up}·`)
+    // Typing at its laptop, its thought rising beside its head; the crown keeps the row above.
+    expect(await head()).toBe(`  ${HEADS.right}·▗▄▄▄▖`)
 
     await clock.advance(2 * SECOND)
     await completeTurn($)

@@ -92,14 +92,18 @@ export const mascotPlan = (scene: MascotScene, layout: MascotLayout, previous?: 
   }
   const rangeOf = (one: Placement): [number, number] => depthsFor(one.kind, depth, laid.minis, isChild(one))
 
-  // Who may wander: the session's mascot while awake (idle too, while its idle bit has it on its feet), an agent
-  // thinking away from its laptop; never one idle.
+  // Who may wander: one not at its laptop, idle while its idle bit has it on its feet (an agent stalled), or
+  // the session's mascot watching its agents; never one at work, typing.
   const isFree = (one: Placement): boolean => {
     if (!wander) return false
-    if (one.kind === 'main') return (scene.main.mood !== 'idle' || STANDING_BITS.has(idleBitOf('main', scene.main.idleMs ?? 0))) && scene.main.stretchMs === undefined && scene.main.tidyMs === undefined
+    if (one.kind === 'main') {
+      const { mood, idleMs, stretchMs, tidyMs } = scene.main
+
+      return (mood === 'watching' || (mood === 'idle' && STANDING_BITS.has(idleBitOf('main', idleMs ?? 0)))) && stretchMs === undefined && tidyMs === undefined
+    }
     const agent = byId.get(one.id)
 
-    return one.phase?.kind === 'work' && agent?.status === 'running' && agent.activity === 'thinking' && agent.idleMs === undefined
+    return one.phase?.kind === 'stalled' && agent?.idleMs !== undefined && STANDING_BITS.has(idleBitOf(agent.id, agent.idleMs))
   }
 
   const pos = new Map<string, { x: number; d: number }>()

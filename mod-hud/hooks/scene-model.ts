@@ -10,7 +10,6 @@ import {
   EXIT_TICKS,
   FAIL_PACK_TICKS,
   HAND_TICKS,
-  IDLE_AFTER_MS,
   LINK_WINDOW_MS,
   MESSAGE_TICKS,
   PACK_TICKS,
@@ -285,8 +284,8 @@ export const sceneOf = (
     const quiet = now - entry.lastActivityAt
     const stalled = entry.status === 'running' && quiet > stalledMs
     const asking = entry.awaitingPermission === true
-    // Idle: quiet a while with no tool running, or stalled (its laptop dropped); never while asking.
-    const idle = entry.status === 'running' && !asking && (stalled || entry.currentTool === undefined) && quiet >= IDLE_AFTER_MS
+    // Idle once stalled (its laptop dropped); till then it is at work, whether a tool runs or its model is thinking; never while asking.
+    const idle = stalled && !asking
     const role = entry.workflow === true ? undefined : roleOf(entry.type)
     const spawner = entry.workflow === true ? undefined : entry.parentId !== undefined && known.has(entry.parentId) ? entry.parentId : withoutMain ? undefined : 'main'
     const accessory = history?.worn[entry.id] ?? worn.get(entry.id)

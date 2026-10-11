@@ -1,6 +1,6 @@
 {
   "name": "mod-hud",
-  "version": "1.8.3",
+  "version": "1.9.0",
   "author": {
     "name": "Dai Zi Qiao",
     "url": "https://github.com/DaiZiQiao"
@@ -11,7 +11,7 @@
     "stalledAfterSec": {
       "type": "number",
       "title": "Stalled after (s)",
-      "description": "A running subagent with no activity for this many seconds is drawn as stalled.",
+      "description": "A running subagent with no activity for this many seconds is drawn as stalled: idle, off its laptop, and asleep from five minutes.",
       "default": 240
     },
     "statusLine": {
@@ -89,7 +89,7 @@
     "wander": {
       "type": "boolean",
       "title": "Mascots wander",
-      "description": "Mascots between tools walk about their line, hop and, with a spare row above, glide.",
+      "description": "Mascots off their laptops (idle, or the session watching its agents) walk about their line, hop and, with a spare row above, glide.",
       "default": true
     },
     "scenes": {

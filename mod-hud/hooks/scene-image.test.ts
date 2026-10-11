@@ -11,7 +11,7 @@ import { glyphShapes, textWidth } from './raster-font'
 import { arrange, mount } from './scene-client.fixtures'
 import { BYTES_A_SECOND, IMAGE_FRAME_MS, STILL_EVERY, cellPixels, createStage, hitsOf, refusedPicture, restage, stageHits, stagePicture, stageTick } from './scene-image'
 import type { HitEvent, Stage } from './scene-image'
-import { NOW } from './scene-model.fixtures'
+import { NOW, entry } from './scene-model.fixtures'
 import { smoothFrame } from './scene-smooth'
 import type { SceneInputs } from './scene-types'
 import { layoutAt, sceneAt, viewOf } from './scene-view'
@@ -138,17 +138,23 @@ describe('the stage', () => {
     expect(countColour(picture, CLAWD_BODY)).toBeLessThan(40)
   })
 
-  test('the timer\'s frame: the world on by a step, its picture when it changed every frame while anything moves, every few while all stand still; none when unchanged, waiting, or paused', () => {
+  test('the timer\'s frame: the world on by a step, its picture when it changed every frame while anything moves (typing too), every few while all stand still; none when unchanged, waiting, or paused', () => {
+    const framesOf = (stage: Stage): (string | undefined)[] => Array.from({ length: 3 * STILL_EVERY }, () => stageTick(stage, IMAGE_FRAME_MS, 'dark'))
+    // Asleep under its blanket: still, so a frame every STILL_EVERY (and as a blink begins and ends), swapped in only when it changed.
+    const sleeper = createStage(inputs([entry('z', { startedAt: NOW - 600_000, lastActivityAt: NOW - 400_000 })], { columns: 60, rows: 10, art: 'vector' }))
+    stagePicture(sleeper, 'dark')
+    const asleep = framesOf(sleeper)
+    expect(sleeper.still).toBe(true)
+    expect(asleep.filter(one => one !== undefined).length).toBeLessThanOrEqual(5)
+    expect(asleep.filter(one => one !== undefined).length).toBeGreaterThanOrEqual(1)
+    // At work, typing: its hands and its screen change all the time, so a frame most timer frames.
     const stage = createStage(inputs([TYPIST], { columns: 60, rows: 10, art: 'vector' }))
     stagePicture(stage, 'dark')
     const before = stage.world.ms
-    const drawn: (string | undefined)[] = []
-    for (let index = 0; index < 3 * STILL_EVERY; index += 1) drawn.push(stageTick(stage, IMAGE_FRAME_MS, 'dark'))
+    const drawn = framesOf(stage)
     expect(stage.world.ms).toBe(before + 3 * STILL_EVERY * IMAGE_FRAME_MS)
-    // At work: still, so a frame every STILL_EVERY (and as a blink begins and ends), swapped in only when it changed.
-    expect(stage.still).toBe(true)
-    expect(drawn.filter(one => one !== undefined).length).toBeLessThanOrEqual(5)
-    expect(drawn.filter(one => one !== undefined).length).toBeGreaterThanOrEqual(1)
+    expect(stage.still).toBe(false)
+    expect(drawn.filter(one => one !== undefined).length).toBeGreaterThanOrEqual(2 * STILL_EVERY)
     // Waiting its share of the time after a costly frame: the world steps on (by the time gone), nothing drawn.
     stage.wait = 2
     expect(stageTick(stage, 70, 'dark')).toBe(undefined)
@@ -177,6 +183,22 @@ describe('the stage', () => {
     const png = stageTick(stage, 1000, 'dark')
     expect(png).toBeDefined()
     expect(png).toBe(stage.png)
+  })
+
+  test('typing, the code on its laptop\'s screen grows a character at a time, line by line, the oldest scrolling off', () => {
+    const world = createWorld(inputs([TYPIST], { columns: 60, rows: 10, art: 'vector' }))
+    const smoother = createSmoother()
+    const screens: string[] = []
+    for (let step = 0; step < 80; step += 1) {
+      tick(world, IMAGE_FRAME_MS)
+      const plan = world.cur
+      const frame = plan === undefined ? undefined : smoothFrame(sceneAt(world, world.sceneNow), layoutAt(world, plan.tick), plan, viewOf(world).sprites, smoother, world.sceneNow, true)
+      const code = (frame?.shapes ?? []).filter(shape => shape.kind === 'rect' && shape.h === 0.5 && ['#7FC8F8', '#D77757', '#A8D8A0', '#E9E4DA'].includes(String(shape.fill)))
+      expect(code.length).toBeLessThanOrEqual(4)
+      screens.push(code.map(one => `${one.y}:${one.w.toFixed(2)}`).join(' '))
+    }
+    // Ten seconds of typing: a new screen most quarter seconds.
+    expect(new Set(screens).size).toBeGreaterThan(20)
   })
 
   test('the band\'s one row of sky: a thought\'s cloud comes down into it whole, nothing over its top', () => {

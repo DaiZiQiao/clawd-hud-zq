@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'claude-code/testing'
 
 import type { AgentBoardEntry } from '../types'
-import { boxed, cellOf, drawnAlone, placementOf } from './mascot-glyphs.fixtures'
+import { boxed, cellOf, drawnAlone, placementOf, rowsOf, spriteOf } from './mascot-glyphs.fixtures'
 import { HEADS, LEGS, OVERLAYS, SLOT, TORSOS } from './mascot-sprites'
 import { sceneOf } from './scene-model'
 import { ARRIVE_TICKS, DONE_HOLD, FAIL_HOLD, NOW, entry, idleHud, oneAgent, trio, working } from './scene-model.fixtures'
@@ -256,9 +256,11 @@ describe('lifecycle', () => {
     const sleep: MascotScene = { main: { mood: 'idle', sweating: false, idleMs: BLANKET_AFTER_MS }, agents: [] }
     expect(mascotLines(sleep, layout(20, 4, 0))).toEqual(mascotLines(sleep, layout(20, 4, 8)))
     expect(mascotLines(sleep, layout(20, 4, 0))).not.toEqual(mascotLines(sleep, layout(20, 4, 4)))
+    // Thinking at its laptop under a sky row: the thought's three steps, each with the hand down and up.
     const thinking = oneAgent(working('a', 'thinking'))
-    expect(drawnAlone(thinking, 'a', 0)).toEqual(drawnAlone(thinking, 'a', 8))
-    expect(new Set(Array.from({ length: 8 }, (_, tick) => drawnAlone(thinking, 'a', tick).join('\n'))).size).toBe(3)
+    const sky = (tick: number) => rowsOf(spriteOf(thinking, 'a', tick, 5)).join('\n')
+    expect(sky(0)).toBe(sky(8))
+    expect(new Set(Array.from({ length: 8 }, (_, tick) => sky(tick))).size).toBe(6)
     const typing = oneAgent(working('a', 'typing'))
     expect(new Set(Array.from({ length: 8 }, (_, tick) => drawnAlone(typing, 'a', tick).join('\n'))).size).toBe(2)
   })

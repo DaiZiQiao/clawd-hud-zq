@@ -28,11 +28,8 @@ describe('the laptop routine', () => {
   }
 
   // The laptop's frames while a tool runs: "looks", "at work".
-  test('thinking, no laptop: eyes up, its thought beside it', () => {
-    // Thinking, eyes up, its thought beside it (a row lower: this line has no sky).
-    const thinking = cellOf(working('a', 'thinking'), 0)
-    expect(thinking[1]).toBe(boxed(HEADS.up))
-    expect(thinking[2]).toBe(boxed(TORSOS.rest, '·'))
+  test('thinking, its model at work: typing on at its laptop (this line has no sky, so no room for its thought)', () => {
+    for (const tick of [0, 1]) expect(cellOf(working('a', 'thinking'), tick)).toEqual(cellOf(working('a', 'typing'), tick))
   })
 
   test('the laptop only at work: stalled and asking show none', () => {
@@ -41,8 +38,8 @@ describe('the laptop routine', () => {
     }
   })
 
-  test('the laptop pops in when a tool starts and out when it ends: no frames in between', () => {
-    const sceneAt = (tick: number) => oneAgent(working('a', tick % 6 < 3 ? 'typing' : 'thinking'))
+  test('the laptop pops out once it stalls and in when it is back at work: no frames in between', () => {
+    const sceneAt = (tick: number) => oneAgent(tick % 6 < 3 ? working('a', 'typing') : working('a', 'thinking', { status: 'stalled', idleMs: 240_000 }))
     const { lines, plans } = run(sceneAt, tick => room(40, 4, T0 + tick), 12)
     const a = plans[0]!.placements.find(one => one.id === 'a')!
     lines.forEach((frame, index) => {
@@ -90,30 +87,28 @@ describe('looks', () => {
     }
   })
 
-  test('thinking: eyes up at a thought growing beside the head, ·, then ∘, then (hmm) held; a row lower with no sky row', () => {
+  test('thinking: typing at its laptop, a thought growing beside the head, ·, then ∘, then (hmm) held; none with no sky row', () => {
     expect(OVERLAYS.thought).toHaveLength(8)
     const bubbles = OVERLAYS.thought.map(frame => frame.art.join('').replace(/ /g, ''))
     expect(bubbles).toEqual(['·', '·', '∘·', '∘·', '(hmm)∘·', '(hmm)∘·', '(hmm)∘·', '(hmm)∘·'])
     const sky = (tick: number) => rowsOf(spriteOf(oneAgent(working('a', 'thinking')), 'a', tick, 5))
-    expect(sky(0).slice(0, 3)).toEqual(['', '', `  ${HEADS.up}·`])
-    expect(sky(2).slice(0, 3)).toEqual(['', '            ∘', `  ${HEADS.up}·`])
+    expect(sky(0).slice(0, 3)).toEqual(['', '', `  ${HEADS.right}·▗▄▄▄▖`])
+    expect(sky(2).slice(0, 3)).toEqual(['', '            ∘', `  ${HEADS.right}·▗▄▄▄▖`])
     const bubble = sky(4)[0]!.trim()
     const phrase = bubble.slice(1, -1)
     expect(THOUGHTS).toContain(phrase)
-    expect(sky(4).slice(0, 3)).toEqual([bubble.padStart(Math.min(11, SLOT - bubble.length) + bubble.length), '            ∘', `  ${HEADS.up}·`])
+    expect(sky(4).slice(0, 3)).toEqual([bubble.padStart(Math.min(11, SLOT - bubble.length) + bubble.length), '            ∘', `  ${HEADS.right}·▗▄▄▄▖`])
     const thought = spriteOf(oneAgent(working('a', 'thinking')), 'a', 4, 5).cells[0]!.filter(cell => cell !== undefined && cell.ch !== ' ')
     expect(thought.map(cell => cell?.ink)).toEqual(['d', ...Array.from({ length: phrase.replace(/ /g, '').length }, () => 'f'), 'd'])
-    // With no spare row, keep the badge/crown clear and truncate into the side strip.
-    const lowBubble = thoughtBubble(phrase, SLOT - 11)
-    expect(drawnAlone(oneAgent(working('a', 'thinking')), 'a', 4).map(row => row.trimEnd())).toEqual([`           ${lowBubble}`, `  ${HEADS.up} ∘`, `  ${TORSOS.rest}·`, `  ${LEGS.stand}`.trimEnd()])
-    expect(drawnAlone(oneAgent(working('a', 'thinking')), 'a', 4)[1]?.slice(2, 11)).toBe(HEADS.up)
+    // With no spare row the laptop leaves its thought no room: typing alone.
+    expect(drawnAlone(oneAgent(working('a', 'thinking')), 'a', 4)).toEqual(drawnAlone(oneAgent(working('a', 'typing')), 'a', 4))
   })
 
   test('stalled: its idle bits and a turning clock beside its head; asking raises a hand', () => {
     const stalled = oneAgent(working('a', 'thinking', { status: 'stalled' }))
     expect([0, 2, 4, 6].map(tick => drawnAlone(stalled, 'a', tick)[0]?.[11])).toEqual(['◴', '◷', '◶', '◵'])
-    // A stall is past 90 s quiet, so asleep under its blanket: the clock still turns, on the floor beside it, clear of its z z Z.
-    const asleep = oneAgent(working('a', 'thinking', { status: 'stalled', idleMs: 240_000 }))
+    // Five minutes quiet, asleep under its blanket: the clock still turns, on the floor beside it, clear of its z z Z.
+    const asleep = oneAgent(working('a', 'thinking', { status: 'stalled', idleMs: BLANKET_AFTER_MS }))
     for (const [tick, glyph] of [[0, '◴'], [2, '◷'], [4, '◶'], [6, '◵']] as const) {
       const rows = drawnAlone(asleep, 'a', tick)
       expect(rows[2]?.slice(2, 11), `@${tick}`).toBe(BLANKET.quilt[Math.floor(tick / 4) % 2])
@@ -124,16 +119,16 @@ describe('looks', () => {
     expect(drawnAlone(oneAgent(working('a', 'asking')), 'a').map(row => row.trimEnd())).toEqual(['           ?', `  ${HEADS.open.trimEnd()}▌`, `  ${TORSOS.raised}`.trimEnd(), `  ${LEGS.stand}`.trimEnd()])
   })
 
-  test('idle bits: the first slot looks around, each later slot a new bit by a hash of id and slot; from 90 s the blanket', () => {
+  test('idle bits: the first slot looks around, each later slot a new bit by a hash of id and slot; from five minutes the blanket', () => {
     expect(IDLE_SLOT_MS).toBe(6000)
-    expect(BLANKET_AFTER_MS).toBe(90_000)
+    expect(BLANKET_AFTER_MS).toBe(300_000)
     const ids = Array.from({ length: 60 }, (_, index) => `idler-${index}`)
     const seen = new Set<string>()
     for (const id of ids) {
       expect(idleBitOf(id, 0)).toBe('look')
       expect(idleBitOf(id, IDLE_SLOT_MS - 1)).toBe('look')
       let before = idleBitOf(id, 0)
-      for (let slot = 1; slot < 15; slot += 1) {
+      for (let slot = 1; slot < BLANKET_AFTER_MS / IDLE_SLOT_MS; slot += 1) {
         const bit = idleBitOf(id, slot * IDLE_SLOT_MS)
         expect(bit, `${id} slot ${slot}`).not.toBe(before)
         // The same bit the whole slot.
@@ -165,11 +160,12 @@ describe('looks', () => {
     expect(blanket.every(frame => !frame.join('').includes('☾'))).toBe(true)
   })
 
-  test('an agent idle 90 s and still listed sleeps under its blanket; one idle less does its bits; neither wanders', () => {
+  test('an agent quiet five minutes and still listed sleeps under its blanket; quiet less than a stall, it types at its laptop; neither wanders', () => {
     const at = (quiet: number) => sceneOf([entry('a', { lastActivityAt: NOW - quiet })], idleHud, NOW)
-    expect(mascotLines(at(91_000), layout(40, 4))?.join('\n')).toContain(BLANKET.hem)
-    expect(mascotLines(at(30_000), layout(40, 4))?.join('\n')).not.toContain(BLANKET.hem)
-    for (const quiet of [30_000, 91_000]) {
+    expect(mascotLines(at(301_000), layout(40, 4))?.join('\n')).toContain(BLANKET.hem)
+    expect(mascotLines(at(250_000), layout(40, 4))?.join('\n')).not.toContain(BLANKET.hem)
+    expect(mascotLines(at(30_000), layout(40, 4))?.join('\n')).toContain('▀▀▀▀▀▀')
+    for (const quiet of [30_000, 301_000]) {
       const scene = at(quiet)
       const xs = new Set<number>()
       let previous: MascotPlan | undefined
@@ -181,14 +177,14 @@ describe('looks', () => {
     }
   })
 
-  test('the session mascot: idle bits, then its blanket and the moon; thinks; watches; sweats; stretches after a compaction', () => {
+  test('the session mascot: idle bits, then its blanket and the moon; types at its laptop thinking; watches; sweats; stretches after a compaction', () => {
     const draw = (main: MascotScene['main'], tick = 4) => rowsOf(spriteOf({ main, agents: [] }, 'main', tick, 5, 20))
     expect(draw({ mood: 'idle', sweating: false, idleMs: 0 }, 0)[2]).toBe(`  ${HEADS.left}`.trimEnd())
     expect(draw({ mood: 'idle', sweating: false, idleMs: BLANKET_AFTER_MS }).slice(2).join('\n')).toContain(BLANKET.quilt[1])
     expect(draw({ mood: 'idle', sweating: false, idleMs: LONG_IDLE_MS })[1]?.startsWith('☾')).toBe(true)
     const thought = draw({ mood: 'thinking', sweating: false })
     expect(THOUGHTS).toContain(thought[0]!.trim().slice(1, -1))
-    expect(thought.slice(1, 3)).toEqual([`     ${CROWN.art}    ∘`, `  ${HEADS.up}·`])
+    expect(thought.slice(1, 3)).toEqual([`     ${CROWN.art}    ∘`, `  ${HEADS.right}·▗▄▄▄▖`])
     expect(draw({ mood: 'watching', sweating: false })[2]).toBe(`  ${HEADS.right}`.trimEnd())
     expect(draw({ mood: 'watching', sweating: true }, 0)[2]?.[1]).toBe("'")
     expect(draw({ mood: 'idle', sweating: false, stretchMs: 0 }).slice(1, 4)).toEqual([`     ${CROWN.art}`, `  ▐${HEADS.shut.slice(1, 8)}▌`, `  ${TORSOS.up}`.trimEnd()])

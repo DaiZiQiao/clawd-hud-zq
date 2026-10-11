@@ -205,11 +205,12 @@ describe('the desktop draws it in pixels', () => {
   })
 
   test('in pixels a move is drawn where it is, unrounded: a walk glides a fifth of a cell a frame', () => {
+    // The session, watching its agent at work, strolls.
     const world = createWorld(inputs([entry('w', { startedAt: NOW - 60_000 })], { wander: true }))
     let seen = 0
     for (let frame = 0; frame < 400 && seen < 4; frame += 1) {
       tick(world)
-      const x = viewOf(world).sprites.get('w')?.x
+      const x = viewOf(world).sprites.get('main')?.x
       if (x === undefined || Number.isInteger(x)) continue
       seen += 1
       const px = Math.round(x * CELL_WIDTH * 100) / 100

@@ -61,7 +61,7 @@ Change any option from `/plugin` (select mod-hud, then its settings).
 
 | Option | Default | What it does |
 | --- | --- | --- |
-| `stalledAfterSec` | `240` | A running subagent with no activity for this many seconds is drawn as stalled. |
+| `stalledAfterSec` | `240` | A running subagent with no activity for this many seconds is drawn as stalled: idle, off its laptop, and asleep from five minutes. |
 | `statusLine` | `false` | Show the HUD and a count of running, done, failed and stalled subagents as one line in the status line. |
 | `maxRows` | `40` | The pane lists at most this many subagents and workflow agents together and counts the rest. |
 | `showGit` | `true` | Show the branch, its lines changed and its last commit in the HUD (`session · branch`). |
@@ -74,7 +74,7 @@ Change any option from `/plugin` (select mod-hud, then its settings).
 | `showWorkflows` | `true` | Track the agents a Workflow run starts and show them under the subagents, in the summary and as mascots. |
 | `inspect` | `true` | A button on every agent row and mascot opens that agent's detail view (the TV, or in place of the scene). |
 | `inspectView` | `tv` | `tv`: an inspected mascot grows into a TV of itself over the pane (terminal and desktop, in a pane of at least 42 columns and 20 rows for Clawd, 44 and 19 for Usagi). `pane`: the inspect view in place of the scene, as before 1.3.0. |
-| `wander` | `true` | Mascots between tools walk about their line, hop and, with a spare row above, glide. |
+| `wander` | `true` | Mascots off their laptops (idle, or the session watching its agents) walk about their line, hop and, with a spare row above, glide. |
 | `scenes` | `true` | Mascots act out real events: handing a task over, handing a report back, messages, review and fix visits, and a workflow squad's baton. |
 | `collisions` | `rare` | `off`: wanderers that meet step back. `rare`: only two moving mascots collide, falling over dizzy, at most once per pair in 30 s. `normal`: a moving mascot knocks over a standing one too, once per pair in 10 s. In `rare` and `normal` a thrown mascot knocks over whoever it hits. |
 | `motion` | `smooth` | `smooth`: on the terminal and desktop the scene runs at 20 frames a second, gliding between cells, with click, pick up, drag and throw. `classic`: the Box/Text scene at 4 frames a second everywhere, with a pick button under each mascot. |
@@ -137,7 +137,7 @@ Every request re-reads the whole conversation, mostly from the prompt cache, whi
 - A role letter above the head: `r` reviewer, `d` debugger, `p` Plan, `w` worker, `f` frontend, `e` Explore or researcher.
 - Eight accessories (beanie, cap, top hat, flower, bow, halo, note, propeller) tell agents apart.
 - Effort marks: none for low or medium, `✦` for high, `✦✦` for xhigh and max.
-- They think, work at a laptop, ask for permission, sit, stretch, sleep under a blanket, wander and hop, and act out hand-offs, reports and reviews.
+- At work they type at a laptop (the session's mascot while Claude works on a turn, a subagent the whole time it runs), code filling the screen and a thought beside them; idle they stroll about, stretch, sit and have a puff; after five minutes idle they sleep under a blanket. They also ask for permission, hop and act out hand-offs, reports and reviews.
 - Flights carry meaning: a web call sends a mascot into the sky, Explore agents scan the floor from above, a reading streak lifts off, finished agents fly out, and the session flies up on a compaction.
 - Collisions (`collisions` setting) knock mascots over, dizzy, before they get up and carry on.
 - Motion is `smooth` (20 fps, mouse grab and throw) or `classic` (4 fps, everywhere).

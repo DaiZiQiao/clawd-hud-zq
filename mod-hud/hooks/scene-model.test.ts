@@ -5,7 +5,7 @@ import { rowsOf, spriteOf } from './mascot-glyphs.fixtures'
 import { LAPTOP_COLOUR, OVERLAYS } from './mascot-sprites'
 import { PALETTE, activityOf, colourFor, sceneFromInputs, sceneInputsOf, sceneOf } from './scene-model'
 import { DONE_HOLD, FAIL_HOLD, NOW, SCENE_COLOURS, entry, everyState, family, hotHud, idleHud, oneAgent, trio, working } from './scene-model.fixtures'
-import { EXIT_TICKS, IDLE_AFTER_MS, LONG_IDLE_MS, PACK_TICKS, SCENE_FRAME_MS, phaseOf } from './scene-phases'
+import { EXIT_TICKS, LONG_IDLE_MS, PACK_TICKS, SCENE_FRAME_MS, phaseOf } from './scene-phases'
 import { mascotColours, mascotLines } from './scene-render.fixtures'
 import type { MascotLayout } from './scene-types'
 
@@ -45,15 +45,14 @@ describe('sceneOf', () => {
     expect(scene.agents.map(one => [one.activity, one.status])).toEqual([['asking', 'running'], ['thinking', 'stalled']])
   })
 
-  test('idle: quiet 6 s with no tool running, or stalled (its laptop dropped); never with a tool running or asking', () => {
-    expect(IDLE_AFTER_MS).toBe(6000)
+  test('idle only once stalled (its laptop dropped): till then at work, a tool running or its model thinking; never asking', () => {
     const idleOf = (extra: Partial<AgentBoardEntry>, stalledMs = 240_000) => sceneOf([entry('a', extra)], idleHud, NOW, { stalledMs }).agents[0]?.idleMs
-    expect(idleOf({ lastActivityAt: NOW - 5999 })).toBe(undefined)
-    expect(idleOf({ lastActivityAt: NOW - 6000 })).toBe(6000)
-    expect(idleOf({ lastActivityAt: NOW - 91_000 })).toBe(91_000)
+    expect(idleOf({ lastActivityAt: NOW - 6000 })).toBe(undefined)
+    expect(idleOf({ lastActivityAt: NOW - 240_000 })).toBe(undefined)
+    expect(idleOf({ lastActivityAt: NOW - 240_001 })).toBe(240_001)
     expect(idleOf({ lastActivityAt: NOW - 30_000, currentTool: 'Bash' })).toBe(undefined)
     expect(idleOf({ lastActivityAt: NOW - 30_000, currentTool: 'Bash' }, 20_000)).toBe(30_000)
-    expect(idleOf({ lastActivityAt: NOW - 30_000, awaitingPermission: true })).toBe(undefined)
+    expect(idleOf({ lastActivityAt: NOW - 300_000, awaitingPermission: true })).toBe(undefined)
     expect(idleOf({ lastActivityAt: NOW - 30_000, status: 'done', endedAt: NOW })).toBe(undefined)
     // A stalled agent at its laptop drops it for its idle bits.
     const stalled = sceneOf([entry('a', { lastActivityAt: NOW - 30_000, currentTool: 'Edit' })], idleHud, NOW, { stalledMs: 20_000 })

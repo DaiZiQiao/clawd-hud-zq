@@ -45,12 +45,10 @@ export const SPARK_EVERY = 8
 export const MESSAGE_TICKS = 40
 /** Idle this long, the sleeping mascot gets a moon. */
 export const LONG_IDLE_MS = 10 * 60_000
-/** An agent quiet this long with no tool running (or stalled) does idle bits. */
-export const IDLE_AFTER_MS = 6000
 /** Idle time comes in slots this long, each with one bit. */
 export const IDLE_SLOT_MS = 6000
-/** Idle this long, a mascot sleeps under its blanket. */
-export const BLANKET_AFTER_MS = 90_000
+/** Idle this long, a mascot sleeps under its blanket: five minutes. */
+export const BLANKET_AFTER_MS = 5 * 60_000
 
 /** A pipe of its own: down over its slot, it drops out, the pipe goes up. */
 export const soloPipe = (id: string): PipeShare => ({ anchor: id, after: 0, drop: PIPE_SLIDE_MS, up: PIPE_SLIDE_MS + PIPE_DROP_MS })
@@ -130,14 +128,14 @@ export const workTicks = (agent: MascotAgent, scenes: boolean): number | undefin
 
 // --- idle bits -------------------------------------------------------------------
 
-/** What an idle mascot does in a slot: look around, stretch, sit, have a puff; from 90 s, sleep under its blanket. */
+/** What an idle mascot does in a slot: look around, stretch, sit, have a puff; from five minutes, sleep under its blanket. */
 export type IdleBit = 'look' | 'stretch' | 'sit' | 'puff' | 'blanket'
 const BITS: readonly IdleBit[] = ['look', 'stretch', 'sit', 'puff', 'look']
 
 /**
  * The bit a mascot idle `idleMs` does: the first 6 s slot looks around; each
  * later slot takes a bit by a hash of its id and the slot, never the one
- * before it again; from 90 s it sleeps under its blanket.
+ * before it again; from five minutes it sleeps under its blanket.
  */
 export const idleBitOf = (id: string, idleMs: number): IdleBit => {
   if (idleMs >= BLANKET_AFTER_MS) return 'blanket'

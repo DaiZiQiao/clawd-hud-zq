@@ -1,6 +1,6 @@
 import { STRETCH_MS, stretchPose, tidyPose } from './clawd-moves'
 import type { Prop } from './clawd-moves'
-import { wave } from './clawd-vector'
+import { noise, wave } from './clawd-vector'
 import type { Look, MiniLook } from './mascot-poses'
 import { MINI_OVERLAYS, OVERLAYS, THOUGHTS, THOUGHT_FRAMES } from './mascot-sprites'
 import type { Overlay } from './mascot-sprites'
@@ -72,6 +72,8 @@ export type FigurePose = {
   tuck: number
   hideLegs: number
   laptop: number
+  /** Typing at its laptop: its seed, so no two type in step; absent, its hands are its own. */
+  typing?: number
   blanket: number
   /** Usagi's ears: lowered (1), drooping (1), trailing a walk (−1 to 1, past it streaming); each turned outward a twitch or a quirk's worth (radians). */
   earsDown: number
@@ -173,7 +175,7 @@ export type PoseContext = {
   tidyMs?: number
   stretchMs?: number
   mini?: boolean
-  /** Drawn for a picture of few frames: no breath, a blink shut whole while it lasts, a typing hand a stroke a frame. */
+  /** Drawn for a picture of few frames: no breath, a blink shut whole while it lasts. */
   calm?: boolean
 }
 
@@ -182,11 +184,7 @@ const BLINK_CYCLE = 4000
 const BLINK_LASTS = 230
 
 /** When a mascot's blink in its `k`th cycle begins. */
-const blinkStart = (k: number, seed: number): number => {
-  const x = Math.sin(k * 127.1 + seed * 311.7) * 43758.5453
-
-  return k * BLINK_CYCLE + 600 + (x - Math.floor(x)) * 2600 - seed * 997
-}
+const blinkStart = (k: number, seed: number): number => k * BLINK_CYCLE + 600 + noise(k, seed) * 2600 - seed * 997
 
 /** A blink every three to five seconds, its own times by `seed`. */
 export const blinkAt = (t: number, seed: number): number => {
@@ -308,6 +306,7 @@ export const fullTarget = (look: Look, context: PoseContext): FigurePose => {
     tuck: look.legs === 'tuck' ? 1 : look.legs === 'stretch' ? -0.6 : 0,
     hideLegs: look.legs === 'none' ? 1 : 0,
     laptop: laptop ? 1 : 0,
+    ...(look.desk === true ? { typing: context.seed } : {}),
     trail: usagi && look.lean !== undefined ? -look.lean : 0,
     ...(look.cap === undefined ? {} : { cap: 0 }),
     hatOff: look.hatOff === true,
@@ -406,7 +405,6 @@ export const targetOf = (look: Look | MiniLook, context: PoseContext, mini: bool
   if (context.pose === 'dangle') pose = { ...pose, legs: [0.9 * Math.max(0, wave(t, 240)), 0.9 * Math.max(0, -wave(t, 240)), 0.9 * Math.max(0, wave(t, 240)), 0.9 * Math.max(0, -wave(t, 240))], tilt: 0.12 * wave(t, 900) }
   if (context.pose === 'tumble') pose = { ...pose, spin: (t / 1000) * 7 }
   if (pose.cap !== undefined) pose = { ...pose, cap: (t / 1000) * 30 }
-  if (pose.laptop > 0.5 && pose.reach > 0) pose = { ...pose, armR: pose.armR - 0.35 + 0.18 * (context.calm === true ? (Math.floor(t / 500) % 2 === 0 ? 1 : -1) : wave(t, 400)) }
 
   return pose
 }
@@ -479,6 +477,26 @@ export const livelyOf = (pose: FigurePose, context: PoseContext, still: boolean)
   const blink = context.calm === true && blinking < 1 ? 0.08 : blinking
   const breath = still && context.calm !== true && pose.flat < 0.05 && pose.blanket < 0.5 ? wave(t, 2700, context.seed) : 0
   const [twitchL, twitchR] = context.character === 'usagi' && pose.blanket < 0.5 && pose.flat < 0.05 ? earTwitch(t, context.seed) : [0, 0]
+  // Typing: the near hand out on the keys, down on one a stroke at a time, the far hand lifting between.
+  const key = pose.typing !== undefined && pose.laptop > 0.5 ? strokeAt(t, pose.typing) : undefined
+  const hands = key === undefined ? {} : { reach: 0.6, armR: -0.12 - 0.34 * key, armL: pose.armL + 0.16 * (1 - key) }
 
-  return { ...pose, eyeOpen: pose.eyeOpen * blink, sx: pose.sx * (1 - 0.01 * breath), sy: pose.sy * (1 + 0.018 * breath), earL: pose.earL + twitchL, earR: pose.earR + twitchR }
+  return { ...pose, ...hands, eyeOpen: pose.eyeOpen * blink, sx: pose.sx * (1 - 0.01 * breath), sy: pose.sy * (1 + 0.018 * breath), earL: pose.earL + twitchL, earR: pose.earR + twitchR }
+}
+
+/** A key stroke's length, ms: a typing hand is down on a key or up for this long at a time. */
+export const KEY_MS = 125
+
+/**
+ * A typing hand at `t`: down on a key (1) or up (0). Strokes come every
+ * other KEY_MS, now and then two running; about a burst in five it rests,
+ * thinking. Its own rhythm by `seed`, a whole stroke's time on, so every
+ * stroke starts on the KEY_MS grid a picture's frames keep; the same at any
+ * frame rate.
+ */
+export const strokeAt = (t: number, seed: number): number => {
+  const slot = Math.floor(t / KEY_MS) + Math.floor(seed * 7)
+  if (noise(Math.floor(slot / 8), seed) < 0.2) return 0
+
+  return slot % 2 === 0 || noise(slot, seed) < 0.25 ? 1 : 0
 }

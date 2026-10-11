@@ -6,7 +6,7 @@ import { AIRBORNE, AIR_MARGIN, CONTACT_COOLDOWN_MS, DEPTH_FRAMES, FLY_SKY, GAP, 
 import { gapBetween } from './motion-space'
 import type { Memo, Motion, Mover } from './motion-types'
 import { oneAgent, working } from './scene-model.fixtures'
-import { SCENE_FRAME_MS } from './scene-phases'
+import { BLANKET_AFTER_MS, SCENE_FRAME_MS } from './scene-phases'
 import { mascotPlan } from './scene-plan'
 import { T0, lineRows, room, run, wanderers } from './scene-plan.fixtures'
 import { mascotLines } from './scene-render.fixtures'
@@ -85,18 +85,21 @@ describe('wandering', () => {
     for (let tick = 0; tick < 50; tick += 1) expect(stepField([busy], tick).get('typist')?.x).toBe(7)
   })
 
-  test('only mascots between tools wander: typing, reading, stalled, asking and idle ones stay put; the session strolls idle, till it is asleep under its blanket', () => {
+  test('only mascots off their laptops wander: at work (typing, reading, thinking), asking and asleep ones stay put; a stalled one on its feet strolls; the session strolls idle or watching, never typing through a turn', () => {
     const scene: MascotScene = {
-      main: { mood: 'idle', idleMs: 120_000, sweating: false },
-      agents: [working('t', 'typing'), working('r', 'reading'), working('s', 'thinking', { status: 'stalled' }), working('q', 'asking'), working('i', 'thinking', { idleMs: 30_000 })],
+      main: { mood: 'idle', idleMs: BLANKET_AFTER_MS, sweating: false },
+      agents: [working('t', 'typing'), working('r', 'reading'), working('h', 'thinking'), working('q', 'asking'), working('z', 'thinking', { status: 'stalled', idleMs: BLANKET_AFTER_MS })],
     }
     const places = (plans: readonly MascotPlan[], id: string): number => new Set(plans.map(plan => plan.placements.find(one => one.id === id)).map(one => `${one?.drawnX},${one?.d}`)).size
     for (const rows of [8, 16]) {
       const { plans } = run(() => scene, tick => room(120, rows, T0 + tick, { wander: true }), 120)
-      for (const id of ['main', 't', 'r', 's', 'q', 'i']) expect(places(plans, id), id).toBe(1)
+      for (const id of ['main', 't', 'r', 'h', 'q', 'z']) expect(places(plans, id), id).toBe(1)
     }
-    const awake = run(() => ({ main: { mood: 'idle', idleMs: 5000, sweating: false }, agents: [] }), tick => room(120, 8, T0 + tick, { wander: true }), 120)
-    expect(places(awake.plans, 'main')).toBeGreaterThan(1)
+    const strolls = (one: MascotScene, id: string): number => places(run(() => one, tick => room(120, 8, T0 + tick, { wander: true }), 120).plans, id)
+    expect(strolls({ main: { mood: 'idle', idleMs: 5000, sweating: false }, agents: [] }, 'main')).toBeGreaterThan(1)
+    expect(strolls({ main: { mood: 'watching', sweating: false }, agents: [] }, 'main')).toBeGreaterThan(1)
+    expect(strolls({ main: { mood: 'thinking', sweating: false }, agents: [] }, 'main')).toBe(1)
+    expect(strolls({ main: { mood: 'idle', idleMs: BLANKET_AFTER_MS, sweating: false }, agents: [working('s', 'thinking', { status: 'stalled', idleMs: 0 })] }, 's')).toBeGreaterThan(1)
   })
 
   test('flights: with three rows of sky or more, each flier climbs two rows a second to an altitude of its own, cruises with a bob, comes down and lands with a bounce', () => {
@@ -299,16 +302,14 @@ describe('wandering', () => {
     expect(stopped).toBeGreaterThan(0)
   })
 
-  test('walking between tools, no laptop: it is only out while a tool runs', () => {
-    const { plans, lines } = run(() => oneAgent(working('w', 'thinking')), tick => room(72, 4, T0 + tick, { wander: true }), 200)
+  test('walking idle (stalled), no laptop: it is only out at work', () => {
+    const { plans, lines } = run(() => oneAgent(working('w', 'thinking', { status: 'stalled', idleMs: 0 })), tick => room(72, 4, T0 + tick, { wander: true }), 200)
     const index = plans.findIndex(plan => plan.placements.find(one => one.id === 'w')?.motion?.kind === 'walk')
     expect(index).toBeGreaterThanOrEqual(0)
     const one = plans[index]!.placements.find(other => other.id === 'w')!
     const cell = lineRows(lines[index] ?? [], plans[index]!).map(row => row.padEnd(72).slice(one.drawnX, one.drawnX + one.width))
-    expect(cell[1]?.slice(2, 10)).toBe(HEADS[one.facing ?? 'right'].slice(0, 8))
-    // Its torso upright or leaning a cell the way it goes, a thought beside; no laptop.
-    // At rest, or leaning half a cell the way it walks.
-    expect([TORSOS.rest, ...Object.values(LEANING)].map(row => row.trim())).toContain(cell[2]?.replace('·', '').trim())
+    // Its eyes its idle bit's, looking about as it goes; its torso at rest, or leaning half a cell the way it walks; no laptop.
+    expect([TORSOS.rest, ...Object.values(LEANING)].map(row => row.trim())).toContain(cell[2]?.trim())
     expect(cell.join('')).not.toMatch(/▗▄▄▄▖|▐▒▒▒▌/)
     expect(cell[3]?.trim()).toMatch(/^[▘▝]{2} [▘▝]{2}$/)
   })
@@ -319,7 +320,7 @@ describe('choreography determinism', () => {
     const line = (tick: number) => room(72, 9, T0 + tick, { wander: true })
     expect(run(() => wanderers, line, 120).lines).toEqual(run(() => wanderers, line, 120).lines)
     // Four wandering over a deep field: the same places on every run, at more than three depths.
-    const four: MascotScene = { main: { mood: 'watching', sweating: false }, agents: ['w1', 'w2', 'w3', 'w4'].map(id => working(id, 'thinking')) }
+    const four: MascotScene = { main: { mood: 'watching', sweating: false }, agents: ['w1', 'w2', 'w3', 'w4'].map(id => working(id, 'thinking', { status: 'stalled', idleMs: 0 })) }
     const deep = (tick: number): MascotLayout => ({ columns: 96, rows: 24, tick: T0 + tick, wander: true, collisions: 'rare' })
     const places = () => run(() => four, deep, 160).plans.map(plan => plan.placements.map(one => `${one.id}@${one.drawnX},${one.d},${one.lift ?? 0}`))
     const once = places()

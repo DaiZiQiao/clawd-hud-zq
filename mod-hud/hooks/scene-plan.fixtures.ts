@@ -43,5 +43,6 @@ export const slotted = (scene: MascotScene, layout: MascotLayout, at: Record<str
 /** The session awake, watching three agents between tools. */
 export const wanderers: MascotScene = {
   main: { mood: 'watching', sweating: false },
-  agents: ['w1', 'w2', 'w3'].map(id => working(id, 'thinking', { colour: '#3681D1' })),
+  // Idle (stalled), looking about: on their feet, free to wander.
+  agents: ['w1', 'w2', 'w3'].map(id => working(id, 'thinking', { colour: '#3681D1', status: 'stalled', idleMs: 0 })),
 }

@@ -69,12 +69,14 @@ export type Put = (row: number, column: number, cell: Cell, own?: boolean) => vo
 
 /**
  * What is beside a figure, riding `dy` rows below its standing place (a
- * thought or sleep a row lower with no sky row free), then its laptop and its
- * near hand on the keys: Clawd's and Usagi's alike.
+ * thought or sleep a row lower with no sky row free; at its laptop, no room
+ * for a thought there), then its laptop and its near hand on the keys:
+ * Clawd's and Usagi's alike.
  */
 export const layBeside = (look: Look, put: Put, colour: string, above: number, dy: number, overlays: readonly Overlay[] = look.overlays): void => {
   for (const overlay of overlays) {
     const lower = RISING.has(overlay) && above < 1 ? 1 : 0
+    if (lower === 1 && look.desk === true) continue
     const art = lower === 1 ? overlay.lowArt ?? overlay.art : overlay.art
     art.forEach((text, y) => {
       ;[...text].forEach((glyph, column) => {

@@ -50,7 +50,8 @@ name colours, no scene clock, no raised hands and no compaction stamp
 main loop's busy and idle times (`main.busySince`, `main.idleSince`), a
 subagent's lingering permission ask (the `tool.check` hook, for the alert
 strip's count) and the files edited (the Session tab's Overview).
-`wander` (on) lets mascots roam the field between tools, `scenes` (on) plays
+`wander` (on) lets mascots off their laptops roam the field (idle ones on
+their feet, the session's watching its agents), `scenes` (on) plays
 the orchestration scenes, and `collisions` (`rare`) sets how mascots that meet
 behave; see "Choreography". `motion` (`smooth`) picks the renderer: `classic`
 keeps the Box/Text scene on every surface. `character` (`clawd`) picks who
@@ -177,7 +178,13 @@ the stretch, pick up, dangle, throw and tumble.
   so a squash bounces back and a fall turns over; the eyes, arms and ears
   glide. On top, what only time draws: the blink and the breath, a walk's
   legs and bounce, a dangle's kicks, a tumble's spin, the propeller, the
-  keys under a typing hand, and the session's tidy-up and stretch.
+  keys under a typing hand, and the session's tidy-up and stretch. Typing
+  (`strokeAt`), the near hand comes down on a key and up an eighth of a
+  second at a time (`KEY_MS`), now and then twice running, resting a burst
+  in five or so, while the far hand lifts between; on the laptop's screen
+  the code it writes grows a character every other stroke's time, line by
+  line, each its own length, colour and indent, the oldest scrolling off the
+  top, a cursor blinking at the end.
 - **The art** (`hooks/smooth-art.ts`): Clawd keeps Claude Code's own
   proportions (its logo's 18 by 6 quadrants) and wears its accessory, letter
   and energy marks. Usagi is drawn as Chiikawa draws it: cream, a bold
@@ -236,19 +243,20 @@ the stretch, pick up, dangle, throw and tumble.
   32.
 - **Kept light.** The terminal decodes and draws every picture it is sent, so a
   picture sends few: the hooks' timer comes every 125 ms, a frame each while
-  anything moves (eight a second), every fourth while every mascot stands
-  still (two a second), and one as a blink begins and as it ends. A picture's
-  mascots are drawn calm (`PoseContext.calm`): standing still they do not
-  breathe (a body swelling would send its picture again each frame), a blink is shut
-  whole while it lasts, and a typing hand strikes a key a frame. A picture
+  anything moves, typing included (eight a second), every fourth while every
+  mascot stands still (two a second), and one as a blink begins and as it
+  ends. A picture's mascots are drawn calm (`PoseContext.calm`): standing
+  still they do not breathe (a body swelling would send its picture again
+  each frame), and a blink is shut whole while it lasts. A picture
   sends at most 128 KiB a second (`BYTES_A_SECOND`, twice
   that at once): past it, its frames wait, whatever moves. It draws again no
   sooner than three times what its last frame took (`PICTURE_SHARE`, four
   frames at most), so a costly frame comes less often instead of making the
   rest late, and a press on it draws at once. Each picture's world steps on
   by the time gone since its last frame (up to `MOST_STEP_MS`), so a late
-  frame is never slow motion. A band 120 cells across sends about 60 KiB a
-  second while its mascot walks and under 20 while it works at its laptop;
+  frame is never slow motion. A band 120 cells across sends about 45 KiB a
+  second while its mascot walks or types, and about 10 while it sleeps; a
+  pane of agents all typing reaches the cap;
   the hooks spend a few percent of a core on it. A picture whose swap is
   refused is swapped in again at the next frame. Over the picture is a
   `Client` drawing nothing
@@ -429,9 +437,8 @@ apart, in `mod-hud.shadows` (see the pane sketch's "Workflow agents"), and
 `sceneOf` takes the ones the list shows (`options.shadows`) as more agents:
 
 - one mascot each, in `colourFor(id)`, which the `wf-…` name in the list shares;
-- its activity from its current tool, as a subagent's; a stall once quiet
-  longer than `stalledAfterSec`, from its last event; idle bits once quiet
-  six seconds with no tool running;
+- its activity from its current tool, as a subagent's; a stall, its idle,
+  once quiet longer than `stalledAfterSec`, from its last event;
 - its first tool call or second request sets `visibleAt` in the same shadow
   write that makes it visible. Its pipe arrival and scene spawn order start
   then, even if its first event was seconds earlier. The list's elapsed time
@@ -754,14 +761,15 @@ sheet):
   and 12) a thought, a cigarette and its smoke, a raised hand and its `?`, a
   tick, a clock, the `z`s; on the left (column 1) the sweat drop; the moon at
   column 0. They never touch the figure in the foreground.
-- **The laptop stands in its own cells**, only while a tool runs: an open
+- **The laptop stands in its own cells**, only while it is at work: an open
   laptop seen from the front and a little from its left, slate, 6 cells wide
   and 3 rows tall: its lid on the head row and its screen (a dim fill, no
   content) on the torso row at columns 12 to 16, its base on the floor at
   columns 11 to 16 with a row of dim keys, its deck reaching back under the
   near hand. The mascot faces it and does not move; every other frame its
   near hand reaches to the keys (`▀` and `▖` at columns 10 and 11). It pops
-  in when a tool starts and out when it ends; nobody carries it.
+  in when work starts and out once it stalls or ends; nobody carries it.
+  With no sky row free a thought has no room beside it and is left out.
 
 A child is a mini of 5 by 4, standing on the bottom two rows, its accessory's
 two cells over its head, no letter, no energy; at work a small laptop in
@@ -769,11 +777,10 @@ front of it. Every frame of a look has the same size.
 
 | Activity | Pose |
 | --- | --- |
-| any tool (Edit, Read, Grep, Bash, WebFetch, ...) | at its laptop, facing it, still, its near hand on the keys every other frame |
-| no tool | thinking: eyes up at a thought that grows beside its head (`·`, `∘`, then a phrase in parentheses); free to wander |
-| no tool and quiet 6 s, or stalled | idle bits (below); the laptop dropped; never wanders |
+| any tool (Edit, Read, Grep, Bash, WebFetch, ...) | at its laptop, facing it, typing: its near hand on the keys every other frame |
+| no tool (its model thinking) | typing on at its laptop, a thought growing beside its head (`·`, `∘`, then a phrase in parentheses) |
 | lingering permission ask | raised hand and `?`, even while stalled (no laptop) |
-| stalled | idle bits with a turning clock beside its head, where the bit leaves the side free; under its blanket (a stall is always past 90 s quiet) the clock turns on the floor beside it |
+| stalled (quiet longer than `stalledAfterSec`): its idle | idle bits with a turning clock beside its head, where the bit leaves the side free; on its feet, free to wander; from five minutes quiet under its blanket, the clock turning on the floor beside it |
 | smooth scene: WebFetch or WebSearch running; an Explore or researcher agent at work; reading (only Read, Grep, Glob) 5 s or more | flying under its propeller cap (an Explore agent scanning, eyes down), then back down at its laptop; see "Flights with a meaning" |
 | smooth scene: Explore or researcher working without room to fly (under three rows of sky over its floor, or a mini) | scans on foot, eyes down, no laptop; other workers keep their laptop |
 
@@ -845,7 +852,7 @@ canvas and SVG use the same protected mark position.
 ### Idle bits
 
 A mascot idle (the session with the main loop idle and nothing running; an
-agent quiet six seconds with no tool running, or stalled) does bits, in
+agent stalled, quiet longer than `stalledAfterSec`) does bits, in
 six-second slots from the start of its idle time: the first slot looks
 around; each later slot takes a bit by a hash of its id and the slot
 (`idleBitOf`), never the one before it again:
@@ -856,12 +863,13 @@ around; each later slot takes a bit by a hash of its id and the slot
 | stretch | 8, once, then at rest | arms up beside its head, eyes shut; arms down; at rest |
 | sit | 16, looped | sitting a row lower, a blink on frames 12 and 13 |
 | puff | 4 puffs of 500 ms | eyes shut, a cigarette `╼` in its hand, its smoke `·` `∘` `○` rising |
-| blanket | from 90 s, 8 looped | asleep under its quilt and hem, the quilt rising a little with each breath, every four frames; `z`, `z z`, `z z Z` rising beside its head, held |
+| blanket | from five minutes, 8 looped | asleep under its quilt and hem, the quilt rising a little with each breath, every four frames; `z`, `z z`, `z z Z` rising beside its head, held |
 
-The moon `☾` joins after ten minutes. Idle mascots never wander, so the
-blanket never walks; an errand or a flight in progress still moves one, out
-of its blanket. A main `turn.step`, a tool call or a step of the agent ends
-idle at once.
+The moon `☾` joins after ten minutes. An idle mascot on its feet (looking
+around, or a puff) strolls the field (`wander`); sitting, stretching or
+asleep it stays put, so the blanket never walks; an errand or a flight in
+progress still moves one, out of its blanket. A main `turn.step`, a tool
+call or a step of the agent ends idle at once.
 
 ### Picks
 
@@ -996,7 +1004,7 @@ without the pipe: "The pipe" shows them in the scene.
     ▘▘ ▝▝           ▘▘ ▝▝           ▘▘ ▝▝           ▘▘ ▝▝
 ```
 
-### idle · asleep under the blanket, from 90 s (z, z z, z z Z, held; the quilt breathes every 4 frames)
+### idle · asleep under the blanket, from five minutes (z, z z, z z Z, held; the quilt breathes every 4 frames)
 
 ```
                                                                                              Z
@@ -1048,56 +1056,56 @@ without the pipe: "The pipe" shows them in the scene.
   ▝▀▀▀▀▀▀▀▘           ▝▀▀▀▀▀▀▀▘           ▝▀▀▀▀▀▀▀▘
 ```
 
-### agent · thinking (·, then ∘, then a phrase, held: 1 1 2 2 3 3 3 3)
+### agent · thinking: typing on at its laptop, its thought beside (·, then ∘, then a phrase, held: 1 1 2 2 3 3 3 3)
 
 ```
-                                                                                      (hmmm…)
-   ▗▄▖w               ▗▄▖w               ▗▄▖w     ∘         ▗▄▖w     ∘         ▗▄▖w     ∘
-   ▐▛███▜▌ ·          ▐▛███▜▌ ·          ▐▛███▜▌ ·          ▐▛███▜▌ ·          ▐▛███▜▌ ·
-  ▝▜█████▛▘          ▝▜█████▛▘          ▝▜█████▛▘          ▝▜█████▛▘          ▝▜█████▛▘
-    ▘▘ ▝▝              ▘▘ ▝▝              ▘▘ ▝▝              ▘▘ ▝▝              ▘▘ ▝▝
+                                                                                          (hmmm…)
+   ▗▄▖w                ▗▄▖w                ▗▄▖w     ∘          ▗▄▖w     ∘          ▗▄▖w     ∘
+   ▐█▜██▛▌ ·▗▄▄▄▖      ▐█▜██▛▌ ·▗▄▄▄▖      ▐█▜██▛▌ ·▗▄▄▄▖      ▐█▜██▛▌ ·▗▄▄▄▖      ▐█▜██▛▌ ·▗▄▄▄▖
+  ▝▜█████▛▀▖▐▒▒▒▌     ▝▜█████▛▘ ▐▒▒▒▌     ▝▜█████▛▀▖▐▒▒▒▌     ▝▜█████▛▘ ▐▒▒▒▌     ▝▜█████▛▀▖▐▒▒▒▌
+    ▘▘ ▝▝  ▀▀▀▀▀▀       ▘▘ ▝▝  ▀▀▀▀▀▀       ▘▘ ▝▝  ▀▀▀▀▀▀       ▘▘ ▝▝  ▀▀▀▀▀▀       ▘▘ ▝▝  ▀▀▀▀▀▀
 ```
 
 ```
-          (hmmm…)            (hmmm…)            (hmmm…)
-   ▗▄▖w     ∘         ▗▄▖w     ∘         ▗▄▖w     ∘
-   ▐▛███▜▌ ·          ▐▛███▜▌ ·          ▐▛███▜▌ ·
-  ▝▜█████▛▘          ▝▜█████▛▘          ▝▜█████▛▘
-    ▘▘ ▝▝              ▘▘ ▝▝              ▘▘ ▝▝
+          (hmmm…)             (hmmm…)             (hmmm…)
+   ▗▄▖w     ∘          ▗▄▖w     ∘          ▗▄▖w     ∘
+   ▐█▜██▛▌ ·▗▄▄▄▖      ▐█▜██▛▌ ·▗▄▄▄▖      ▐█▜██▛▌ ·▗▄▄▄▖
+  ▝▜█████▛▘ ▐▒▒▒▌     ▝▜█████▛▀▖▐▒▒▒▌     ▝▜█████▛▘ ▐▒▒▒▌
+    ▘▘ ▝▝  ▀▀▀▀▀▀       ▘▘ ▝▝  ▀▀▀▀▀▀       ▘▘ ▝▝  ▀▀▀▀▀▀
 ```
 
 ### agent · thinking phrases across spells (one full bubble per eight-frame spell)
 
 ```
-          (hmmm…)             (ooh?)        (pondering)     (thinky thin…)            (hmmm…)
-   ▗▄▖w     ∘         ▗▄▖w     ∘         ▗▄▖w     ∘         ▗▄▖w     ∘         ▗▄▖w     ∘
-   ▐▛███▜▌ ·          ▐▛███▜▌ ·          ▐▛███▜▌ ·          ▐▛███▜▌ ·          ▐▛███▜▌ ·
-  ▝▜█████▛▘          ▝▜█████▛▘          ▝▜█████▛▘          ▝▜█████▛▘          ▝▜█████▛▘
-    ▘▘ ▝▝              ▘▘ ▝▝              ▘▘ ▝▝              ▘▘ ▝▝              ▘▘ ▝▝
+          (hmmm…)              (ooh?)         (pondering)      (thinky thin…)             (hmmm…)
+   ▗▄▖w     ∘          ▗▄▖w     ∘          ▗▄▖w     ∘          ▗▄▖w     ∘          ▗▄▖w     ∘
+   ▐█▜██▛▌ ·▗▄▄▄▖      ▐█▜██▛▌ ·▗▄▄▄▖      ▐█▜██▛▌ ·▗▄▄▄▖      ▐█▜██▛▌ ·▗▄▄▄▖      ▐█▜██▛▌ ·▗▄▄▄▖
+  ▝▜█████▛▀▖▐▒▒▒▌     ▝▜█████▛▀▖▐▒▒▒▌     ▝▜█████▛▀▖▐▒▒▒▌     ▝▜█████▛▀▖▐▒▒▒▌     ▝▜█████▛▀▖▐▒▒▒▌
+    ▘▘ ▝▝  ▀▀▀▀▀▀       ▘▘ ▝▝  ▀▀▀▀▀▀       ▘▘ ▝▝  ▀▀▀▀▀▀       ▘▘ ▝▝  ▀▀▀▀▀▀       ▘▘ ▝▝  ▀▀▀▀▀▀
 ```
 
 ```
-       (hm hm hm)            (hmmm…)         (hm hm hm)
-   ▗▄▖w     ∘         ▗▄▖w     ∘         ▗▄▖w     ∘
-   ▐▛███▜▌ ·          ▐▛███▜▌ ·          ▐▛███▜▌ ·
-  ▝▜█████▛▘          ▝▜█████▛▘          ▝▜█████▛▘
-    ▘▘ ▝▝              ▘▘ ▝▝              ▘▘ ▝▝
+       (hm hm hm)             (hmmm…)          (hm hm hm)
+   ▗▄▖w     ∘          ▗▄▖w     ∘          ▗▄▖w     ∘
+   ▐█▜██▛▌ ·▗▄▄▄▖      ▐█▜██▛▌ ·▗▄▄▄▖      ▐█▜██▛▌ ·▗▄▄▄▖
+  ▝▜█████▛▀▖▐▒▒▒▌     ▝▜█████▛▀▖▐▒▒▒▌     ▝▜█████▛▀▖▐▒▒▒▌
+    ▘▘ ▝▝  ▀▀▀▀▀▀       ▘▘ ▝▝  ▀▀▀▀▀▀       ▘▘ ▝▝  ▀▀▀▀▀▀
 ```
 
-### agent · thinking with no sky row free (the thought a row lower)
+### agent · thinking with no sky row free (typing on, no room for its thought beside the laptop)
 
 ```
-   ▗▄▖w               ▗▄▖w               ▗▄▖w               ▗▄▖w               ▗▄▖w    (hmm…)
-   ▐▛███▜▌            ▐▛███▜▌            ▐▛███▜▌  ∘         ▐▛███▜▌  ∘         ▐▛███▜▌  ∘
-  ▝▜█████▛▘·         ▝▜█████▛▘·         ▝▜█████▛▘·         ▝▜█████▛▘·         ▝▜█████▛▘·
-    ▘▘ ▝▝              ▘▘ ▝▝              ▘▘ ▝▝              ▘▘ ▝▝              ▘▘ ▝▝
+   ▗▄▖w                ▗▄▖w                ▗▄▖w                ▗▄▖w                ▗▄▖w
+   ▐█▜██▛▌  ▗▄▄▄▖      ▐█▜██▛▌  ▗▄▄▄▖      ▐█▜██▛▌  ▗▄▄▄▖      ▐█▜██▛▌  ▗▄▄▄▖      ▐█▜██▛▌  ▗▄▄▄▖
+  ▝▜█████▛▀▖▐▒▒▒▌     ▝▜█████▛▘ ▐▒▒▒▌     ▝▜█████▛▀▖▐▒▒▒▌     ▝▜█████▛▘ ▐▒▒▒▌     ▝▜█████▛▀▖▐▒▒▒▌
+    ▘▘ ▝▝  ▀▀▀▀▀▀       ▘▘ ▝▝  ▀▀▀▀▀▀       ▘▘ ▝▝  ▀▀▀▀▀▀       ▘▘ ▝▝  ▀▀▀▀▀▀       ▘▘ ▝▝  ▀▀▀▀▀▀
 ```
 
 ```
-   ▗▄▖w    (hmm…)     ▗▄▖w    (hmm…)     ▗▄▖w    (hmm…)
-   ▐▛███▜▌  ∘         ▐▛███▜▌  ∘         ▐▛███▜▌  ∘
-  ▝▜█████▛▘·         ▝▜█████▛▘·         ▝▜█████▛▘·
-    ▘▘ ▝▝              ▘▘ ▝▝              ▘▘ ▝▝
+   ▗▄▖w                ▗▄▖w                ▗▄▖w
+   ▐█▜██▛▌  ▗▄▄▄▖      ▐█▜██▛▌  ▗▄▄▄▖      ▐█▜██▛▌  ▗▄▄▄▖
+  ▝▜█████▛▘ ▐▒▒▒▌     ▝▜█████▛▀▖▐▒▒▒▌     ▝▜█████▛▘ ▐▒▒▒▌
+    ▘▘ ▝▝  ▀▀▀▀▀▀       ▘▘ ▝▝  ▀▀▀▀▀▀       ▘▘ ▝▝  ▀▀▀▀▀▀
 ```
 
 ### agent · start of work (turns to its desk, then at its laptop)
@@ -1143,7 +1151,7 @@ without the pipe: "The pipe" shows them in the scene.
     ▘▘ ▝▝
 ```
 
-### agent · stalled, asleep under its blanket (a stall is always past 90 s quiet): the clock turns on the floor beside it
+### agent · stalled five minutes quiet, asleep under its blanket: the clock turns on the floor beside it
 
 ```
                                                                                              Z
@@ -1367,19 +1375,19 @@ without the pipe: "The pipe" shows them in the scene.
 ### workflow agent (no badge, no letter: its colour and wf- name tell it) · thinking
 
 ```
-                                                                                      (hmmm…)
-    ♫                  ♫                  ♫       ∘          ♫       ∘          ♫       ∘
-   ▐▛███▜▌ ·          ▐▛███▜▌ ·          ▐▛███▜▌ ·          ▐▛███▜▌ ·          ▐▛███▜▌ ·
-  ▝▜█████▛▘          ▝▜█████▛▘          ▝▜█████▛▘          ▝▜█████▛▘          ▝▜█████▛▘
-    ▘▘ ▝▝              ▘▘ ▝▝              ▘▘ ▝▝              ▘▘ ▝▝              ▘▘ ▝▝
+                                                                                          (hmmm…)
+    ♫                   ♫                   ♫       ∘           ♫       ∘           ♫       ∘
+   ▐█▜██▛▌ ·▗▄▄▄▖      ▐█▜██▛▌ ·▗▄▄▄▖      ▐█▜██▛▌ ·▗▄▄▄▖      ▐█▜██▛▌ ·▗▄▄▄▖      ▐█▜██▛▌ ·▗▄▄▄▖
+  ▝▜█████▛▀▖▐▒▒▒▌     ▝▜█████▛▘ ▐▒▒▒▌     ▝▜█████▛▀▖▐▒▒▒▌     ▝▜█████▛▘ ▐▒▒▒▌     ▝▜█████▛▀▖▐▒▒▒▌
+    ▘▘ ▝▝  ▀▀▀▀▀▀       ▘▘ ▝▝  ▀▀▀▀▀▀       ▘▘ ▝▝  ▀▀▀▀▀▀       ▘▘ ▝▝  ▀▀▀▀▀▀       ▘▘ ▝▝  ▀▀▀▀▀▀
 ```
 
 ```
-          (hmmm…)            (hmmm…)            (hmmm…)
-    ♫       ∘          ♫       ∘          ♫       ∘
-   ▐▛███▜▌ ·          ▐▛███▜▌ ·          ▐▛███▜▌ ·
-  ▝▜█████▛▘          ▝▜█████▛▘          ▝▜█████▛▘
-    ▘▘ ▝▝              ▘▘ ▝▝              ▘▘ ▝▝
+          (hmmm…)             (hmmm…)             (hmmm…)
+    ♫       ∘           ♫       ∘           ♫       ∘
+   ▐█▜██▛▌ ·▗▄▄▄▖      ▐█▜██▛▌ ·▗▄▄▄▖      ▐█▜██▛▌ ·▗▄▄▄▖
+  ▝▜█████▛▘ ▐▒▒▒▌     ▝▜█████▛▀▖▐▒▒▒▌     ▝▜█████▛▘ ▐▒▒▒▌
+    ▘▘ ▝▝  ▀▀▀▀▀▀       ▘▘ ▝▝  ▀▀▀▀▀▀       ▘▘ ▝▝  ▀▀▀▀▀▀
 ```
 
 ### workflow agent · at its laptop
@@ -1391,22 +1399,22 @@ without the pipe: "The pipe" shows them in the scene.
     ▘▘ ▝▝  ▀▀▀▀▀▀       ▘▘ ▝▝  ▀▀▀▀▀▀
 ```
 
-### main · thinking
+### main · thinking (a turn running): typing at its laptop, its thought beside
 
 ```
-                                                                                (lemme think)
-     ▙█▟                ▙█▟                ▙█▟    ∘           ▙█▟    ∘           ▙█▟    ∘
-   ▐▛███▜▌ ·          ▐▛███▜▌ ·          ▐▛███▜▌ ·          ▐▛███▜▌ ·          ▐▛███▜▌ ·
-  ▝▜█████▛▘          ▝▜█████▛▘          ▝▜█████▛▘          ▝▜█████▛▘          ▝▜█████▛▘
-    ▘▘ ▝▝              ▘▘ ▝▝              ▘▘ ▝▝              ▘▘ ▝▝              ▘▘ ▝▝
+                                                                                    (lemme think)
+     ▙█▟                 ▙█▟                 ▙█▟    ∘            ▙█▟    ∘            ▙█▟    ∘
+   ▐█▜██▛▌ ·▗▄▄▄▖      ▐█▜██▛▌ ·▗▄▄▄▖      ▐█▜██▛▌ ·▗▄▄▄▖      ▐█▜██▛▌ ·▗▄▄▄▖      ▐█▜██▛▌ ·▗▄▄▄▖
+  ▝▜█████▛▀▖▐▒▒▒▌     ▝▜█████▛▘ ▐▒▒▒▌     ▝▜█████▛▀▖▐▒▒▒▌     ▝▜█████▛▘ ▐▒▒▒▌     ▝▜█████▛▀▖▐▒▒▒▌
+    ▘▘ ▝▝  ▀▀▀▀▀▀       ▘▘ ▝▝  ▀▀▀▀▀▀       ▘▘ ▝▝  ▀▀▀▀▀▀       ▘▘ ▝▝  ▀▀▀▀▀▀       ▘▘ ▝▝  ▀▀▀▀▀▀
 ```
 
 ```
-    (lemme think)      (lemme think)      (lemme think)
-     ▙█▟    ∘           ▙█▟    ∘           ▙█▟    ∘
-   ▐▛███▜▌ ·          ▐▛███▜▌ ·          ▐▛███▜▌ ·
-  ▝▜█████▛▘          ▝▜█████▛▘          ▝▜█████▛▘
-    ▘▘ ▝▝              ▘▘ ▝▝              ▘▘ ▝▝
+    (lemme think)       (lemme think)       (lemme think)
+     ▙█▟    ∘            ▙█▟    ∘            ▙█▟    ∘
+   ▐█▜██▛▌ ·▗▄▄▄▖      ▐█▜██▛▌ ·▗▄▄▄▖      ▐█▜██▛▌ ·▗▄▄▄▖
+  ▝▜█████▛▘ ▐▒▒▒▌     ▝▜█████▛▀▖▐▒▒▒▌     ▝▜█████▛▘ ▐▒▒▒▌
+    ▘▘ ▝▝  ▀▀▀▀▀▀       ▘▘ ▝▝  ▀▀▀▀▀▀       ▘▘ ▝▝  ▀▀▀▀▀▀
 ```
 
 ### main · watching (a blink every 2 s)
@@ -1462,10 +1470,10 @@ without the pipe: "The pipe" shows them in the scene.
 ### main · sweating (ctx ≥ 85 %)
 
 ```
-     ▙█▟             ▙█▟             ▙█▟    ∘        ▙█▟    ∘
- ' ▐▛███▜▌ ·     ' ▐▛███▜▌ ·     , ▐▛███▜▌ ·     , ▐▛███▜▌ ·
-  ▝▜█████▛▘       ▝▜█████▛▘       ▝▜█████▛▘       ▝▜█████▛▘
-    ▘▘ ▝▝           ▘▘ ▝▝           ▘▘ ▝▝           ▘▘ ▝▝
+     ▙█▟                 ▙█▟                 ▙█▟    ∘            ▙█▟    ∘
+ ' ▐█▜██▛▌ ·▗▄▄▄▖    ' ▐█▜██▛▌ ·▗▄▄▄▖    , ▐█▜██▛▌ ·▗▄▄▄▖    , ▐█▜██▛▌ ·▗▄▄▄▖
+  ▝▜█████▛▀▖▐▒▒▒▌     ▝▜█████▛▘ ▐▒▒▒▌     ▝▜█████▛▀▖▐▒▒▒▌     ▝▜█████▛▘ ▐▒▒▒▌
+    ▘▘ ▝▝  ▀▀▀▀▀▀       ▘▘ ▝▝  ▀▀▀▀▀▀       ▘▘ ▝▝  ▀▀▀▀▀▀       ▘▘ ▝▝  ▀▀▀▀▀▀
 ```
 
 ### main · stretch after a compaction
@@ -1520,13 +1528,13 @@ without the pipe: "The pipe" shows them in the scene.
 ▝▜▀▜▘   ▝▜▀▜▘   ▝▜▀▜▘   ▝▜▀▜▘   ▝▜▀▜▘   ▝▜▀▜▘   ▝▜▀▜▘   ▝▜▀▜▘
 ```
 
-### child · thinking
+### child · thinking: at its laptop, its thought beside
 
 ```
                     ∘       ∘       ○       ○
   ▗▖·     ▗▖·     ▗▖·     ▗▖·     ▗▖·     ▗▖·
  ▛█▜     ▛█▜     ▛█▜     ▛█▜     ▛█▜     ▛█▜
-▝▜▀▛▘   ▝▜▀▛▘   ▝▜▀▛▘   ▝▜▀▛▘   ▝▜▀▛▘   ▝▜▀▛▘
+▐▒▒▒▌   ▐▒▒▒▌   ▐▒▒▒▌   ▐▒▒▒▌   ▐▒▒▒▌   ▐▒▒▒▌
 ```
 
 ### child · at its laptop, any tool
@@ -1556,16 +1564,7 @@ without the pipe: "The pipe" shows them in the scene.
 ▝▜▀▛▘   ▝▜▀▛▘   ▝▜▀▜▘   ▝▜▀▜▘   ▝▜▀▛▘   ▝▜▀▛▘   ▝▜▀▜▘   ▝▜▀▜▘
 ```
 
-### child · idle (looking about)
-
-```
-
-  ▗▖      ▗▖      ▗▖      ▗▖      ▗▖      ▗▖
- ▛▛█     ▛▛█     ▛█▜     █▜▜     █▜▜     ▛█▜
-▝▜▀▛▘   ▝▜▀▛▘   ▝▜▀▛▘   ▝▜▀▛▘   ▝▜▀▛▘   ▝▜▀▛▘
-```
-
-### child · asleep, from 90 s idle
+### child · stalled five minutes quiet, asleep
 
 ```
                     Z       Z
@@ -1611,9 +1610,9 @@ The first match wins:
 | --- | --- |
 | tidying up | a compaction of the main conversation is running (`mod-hud.tidy`'s `runningSince`, any trigger but `precompute`): it squashes a stack of pages beside it into a cube, eight frames on a loop, and stands still while it does |
 | stretching | the main conversation was compacted less than 3 s ago (`main.compactedAt`) |
-| watching | any agent on the board, or any workflow agent the list shows, is running |
-| thinking | the main loop is at work (`main.busySince` is set) or a main-loop tool is running (`hud.tools.current`) |
-| idle | otherwise: its idle bits, from 90 s asleep under its blanket, the moon once idle 10 minutes (since `main.idleSince`, or the session's start before any turn) |
+| watching | any agent on the board, or any workflow agent the list shows, is running: eyes on them, free to stroll |
+| thinking | the main loop is at work (`main.busySince` is set) or a main-loop tool is running (`hud.tools.current`): typing at its laptop where it stands, its thought beside its head |
+| idle | otherwise: its idle bits, strolling while on its feet, from five minutes asleep under its blanket, the moon once idle 10 minutes (since `main.idleSince`, or the session's start before any turn) |
 
 Sweating goes over any of these while the context is 85 % full or more.
 
@@ -1648,15 +1647,14 @@ first takes the task's scroll from its spawner (2, see "Choreography"). With
 no known spawn time (`startedAt: 0`), arrival is skipped, but completion is
 not: a seeded agent that later finishes still cheers or sits.
 
-- Running with a tool, it stands at its laptop; with none, it thinks, the
-  laptop gone and a thought growing beside its head. Quiet six seconds with
-  no tool running (from its last tool call or step), it does idle bits; from
-  90 s, while it is still listed, it sleeps under its blanket. A stall (quiet
-  longer than `stalledAfterSec`) drops the laptop for the idle bits, a clock
-  beside its head. A stall is always past 90 s quiet (the default is 240 s),
-  so a stalled agent is under its blanket: its clock then turns on the floor
-  beside the blanket, where the `z z Z` leave room. `awaitingPermission`
-  overrides the tool, the idle bits and a stall.
+- Running, it types at its laptop: a tool running, or none while its model
+  thinks, a thought growing beside its head then. A stall (quiet longer than
+  `stalledAfterSec`, from its last tool call or step) is its idle: the
+  laptop dropped for the idle bits, a clock beside its head, strolling while
+  on its feet; from five minutes quiet, while it is still listed, it sleeps
+  under its blanket, its clock turning on the floor beside it, where the
+  `z z Z` leave room. `awaitingPermission` overrides the tool, the idle bits
+  and a stall.
 - Done first packs up: at its laptop (2 frames), then the laptop is gone
   (1); with the scenes it then walks back to its spawner and holds out its
   hand (up to 10) and a workflow agent hands on to the next of its squad (2).
@@ -1793,8 +1791,8 @@ collision.
 
 | State | When | Does |
 | --- | --- | --- |
-| free | the session awake (thinking or watching, not stretching); an agent at work thinking (no tool running, not idle, stalled or asking) | picks a target cell in the field by a hash (a column and a depth), walks there a cell a frame across and a row of depth every other frame (diagonally where it goes both ways), pauses 4 to 12 frames, picks again |
-| busy | an agent with a tool running (at its laptop), stalled, asking or idle; the session idle | stays put (a flight in progress finishes first) |
+| free | off its laptop and on its feet: the session watching, or idle looking around or with a puff (not stretching or tidying up); an agent stalled (its idle), looking around or with a puff | picks a target cell in the field by a hash (a column and a depth), walks there a cell a frame across and a row of depth every other frame (diagonally where it goes both ways), pauses 4 to 12 frames, picks again |
+| busy | at its laptop: an agent at work (a tool running, or its model thinking), the session thinking through a turn; an agent asking; anyone sitting, stretching or asleep | stays put (a flight in progress finishes first) |
 | errand | a scene sends it somewhere (below) | walks there a cell a frame (a row of depth every other frame), no pauses |
 | finishing | done or failed, from packing up until the pipe takes it | stays where it stands, but for its walk back to its spawner |
 | knocked | down after a collision | sits where it fell |
@@ -1809,8 +1807,8 @@ row) a frame to the nearest clear cell, the wanderer first, the newer
 before the older; nobody is ever moved in one jump. With `wander` off, each
 walks back to its own slot.
 
-An agent never carries its laptop: while a tool runs it stands at it and
-never moves; walking about, it has none. Others hop over it or turn back.
+No one carries a laptop: at work a mascot stands at it typing and never
+moves; walking about, it has none. Others hop over it or turn back.
 
 **The walk** is four frames, the feet passing (`▘▘ ▝▝`, `▝▝ ▘▘`, `▘▝ ▘▝`,
 `▝▘ ▝▘`), the eyes the way it goes; on frames 1 and 3 the whole figure

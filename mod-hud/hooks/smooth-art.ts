@@ -1,9 +1,10 @@
 import { CLAWD, propShapes } from './clawd-moves'
-import { about, applyTo, chain, multiply, rotate, scale, translate, wave } from './clawd-vector'
+import { about, applyTo, chain, multiply, noise, rotate, scale, translate, wave } from './clawd-vector'
 import type { Matrix, Shape } from './clawd-vector'
 import { ACCESSORIES, BLANKET, CROWN, LAPTOP_COLOUR } from './mascot-sprites'
 import type { Accessory } from './mascot-sprites'
 import { textWidth } from './raster-font'
+import { KEY_MS } from './smooth-pose'
 import type { Beside, FigurePose } from './smooth-pose'
 import type { Energy, MascotRole } from './scene-types'
 import { CAP, HATS, ROLE_HATS, USAGI } from './usagi-sprites'
@@ -943,18 +944,60 @@ const usagiShapes = (pose: FigurePose, info: FigureInfo, t: number): Shape[] => 
 }
 
 /** The laptop in front of it, opening (`open` 0 to 1), its screen lit, a key flickering under the near hand. */
-const laptopShapes = (m: Matrix, open: number, t: number): Shape[] => {
+/** Its laptop, `open` that far; typing (by its seed), the code it writes on the screen, else a few still lines glowing. */
+const laptopShapes = (m: Matrix, open: number, t: number, typing: number | undefined): Shape[] => {
   if (open <= 0.02) return []
   const lid = chain(m, translate(15, -1.6), scale(1, open))
+  const screen: Shape[] = typing === undefined
+    ? [
+        { kind: 'rect', x: -2.6, y: -5.4, w: 4.2, h: 0.5, r: 0.25, fill: '#7FC8F8', alpha: open * (0.5 + 0.3 * wave(t, 700)), m: lid },
+        { kind: 'rect', x: -2.6, y: -4.2, w: 3, h: 0.5, r: 0.25, fill: '#D77757', alpha: open * 0.6, m: lid },
+        { kind: 'rect', x: -2.6, y: -3, w: 3.6, h: 0.5, r: 0.25, fill: '#7FC8F8', alpha: open * 0.4, m: lid },
+      ]
+    : codeShapes(lid, open, t, typing)
 
   return [
     { kind: 'rect', x: -4, y: -7, w: 8, h: 7, r: 0.5, fill: LAPTOP_COLOUR, alpha: open, m: lid },
     { kind: 'rect', x: -3.3, y: -6.3, w: 6.6, h: 5.4, r: 0.3, fill: '#2B3440', alpha: open, m: lid },
-    { kind: 'rect', x: -2.6, y: -5.4, w: 4.2, h: 0.5, r: 0.25, fill: '#7FC8F8', alpha: open * (0.5 + 0.3 * wave(t, 700)), m: lid },
-    { kind: 'rect', x: -2.6, y: -4.2, w: 3, h: 0.5, r: 0.25, fill: '#D77757', alpha: open * 0.6, m: lid },
-    { kind: 'rect', x: -2.6, y: -3, w: 3.6, h: 0.5, r: 0.25, fill: '#7FC8F8', alpha: open * 0.4, m: lid },
+    ...screen,
     { kind: 'rect', x: 9.4, y: -1.8, w: 12, h: 1.2, r: 0.5, fill: '#5F6872', alpha: open, m },
   ]
+}
+
+/** The code a typing mascot writes: its script's lines (it starts over after the last), their colours, a character's width, the lines its screen shows. */
+const CODE_COLOURS = ['#7FC8F8', '#D77757', '#A8D8A0', '#E9E4DA'] as const
+const SCRIPT_LINES = 24
+const CHAR = 0.36
+const SCREEN_LINES = 4
+
+/**
+ * The screen as it types: a character every other key stroke's time, line
+ * by line (each its own length, colour and indent by `seed`, an Enter's
+ * pause after it), the oldest scrolling off the top; the cursor blinking at
+ * the end of the line it is on.
+ */
+const codeShapes = (lid: Matrix, open: number, t: number, seed: number): Shape[] => {
+  const lengthOf = (line: number): number => 4 + Math.floor(noise(line, seed) * 9)
+  const indentOf = (line: number): number => (noise(line + 50, seed) < 0.35 ? 0.8 : 0)
+  let script = 0
+  for (let line = 0; line < SCRIPT_LINES; line += 1) script += lengthOf(line) + 2
+  let left = Math.floor(t / (2 * KEY_MS) + seed * 13) % script
+  let line = 0
+  while (left >= lengthOf(line) + 2) {
+    left -= lengthOf(line) + 2
+    line += 1
+  }
+  const typed = Math.min(left, lengthOf(line))
+  const shapes: Shape[] = []
+  for (let row = 0; row < SCREEN_LINES; row += 1) {
+    const at = (line - (SCREEN_LINES - 1) + row + SCRIPT_LINES) % SCRIPT_LINES
+    const chars = row === SCREEN_LINES - 1 ? typed : lengthOf(at)
+    const fill = CODE_COLOURS[Math.floor(noise(at + 100, seed) * CODE_COLOURS.length)] ?? CODE_COLOURS[0]
+    if (chars > 0) shapes.push({ kind: 'rect', x: -2.7 + indentOf(at), y: -5.8 + row * 1.15, w: chars * CHAR, h: 0.5, r: 0.25, fill, alpha: open * 0.85, m: lid })
+  }
+  if (Math.floor(t / 500) % 2 === 0) shapes.push({ kind: 'rect', x: -2.6 + indentOf(line) + typed * CHAR, y: -5.9 + (SCREEN_LINES - 1) * 1.15, w: 0.3, h: 0.7, fill: '#E9E4DA', alpha: open, m: lid })
+
+  return shapes
 }
 
 /** The blanket over it, breathing; its hem on the floor. */
@@ -1223,7 +1266,7 @@ export const figureShapes = (pose: FigurePose, info: FigureInfo, m: Matrix, t: n
     ...figure,
     ...blanketShapes(chain(upright), pose.blanket, t, usagi),
     // Usagi narrower than Clawd, its laptop nearer.
-    ...laptopShapes(usagi ? chain(ground, translate(-2.6, 0)) : ground, pose.laptop, t),
+    ...laptopShapes(usagi ? chain(ground, translate(-2.6, 0)) : ground, pose.laptop, t, pose.typing),
     ...pose.beside.flatMap(one => besideShapes(one, upright, info, t, usagi, ceiling + pose.drop)),
   ]
 }

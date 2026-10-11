@@ -15,17 +15,18 @@ import { LAPTOP, TYPIST, frameLines, inputs, memoOf, ticks } from './scene-world
 
 describe('motion', () => {
   test('20 frames a second: a walk glides a fifth of a cell a frame between the choreography\'s cells, drawn at the nearest', () => {
+    // The session, watching its agent at work, strolls.
     const world = createWorld(inputs([entry('w', { startedAt: NOW - 60_000 })], { wander: true }))
     let walked = false
     for (let frame = 0; frame < 400 && !walked; frame += 1) {
       tick(world)
-      const cur = world.cur!.placements.find(one => one.id === 'w')!
-      const next = world.next!.placements.find(one => one.id === 'w')!
+      const cur = world.cur!.placements.find(one => one.id === 'main')!
+      const next = world.next!.placements.find(one => one.id === 'main')!
       if (next.motion?.kind !== 'walk' || next.drawnX === cur.drawnX || world.sceneNow % SCENE_FRAME_MS !== 0) continue
       walked = true
       const xs = [0, 1, 2, 3, 4].map(step => {
         if (step > 0) tick(world)
-        return viewOf(world).sprites.get('w')!.x!
+        return viewOf(world).sprites.get('main')!.x!
       })
       const stride = (next.drawnX - cur.drawnX) / 5
       xs.forEach((x, index) => expect(Math.abs(x - (cur.drawnX + stride * index))).toBeLessThan(1e-6))

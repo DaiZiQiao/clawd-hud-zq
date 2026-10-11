@@ -91,11 +91,11 @@ const thoughtOf = (id: string, tick: number): Overlay => {
   return at(THOUGHT_FRAMES[phrase]!, tick)
 }
 
-/** Thinking: eyes up at a thought growing beside its head. */
-const thinkLook = (id: string, tick: number): Look => ({ ...STAND, head: 'up', overlays: [thoughtOf(id, tick)] })
-
 /** At its laptop, facing it, the near hand on the keys every other frame. */
 const deskLook = (tick: number): Look => ({ ...STAND, head: 'right', desk: true, ...(tick % 2 === 0 ? { arms: 'point' as const, reach: true } : {}) })
+
+/** Thinking, its model at work between tools: typing on at its laptop, a thought growing beside its head. */
+const thinkLook = (id: string, tick: number): Look => ({ ...deskLook(tick), overlays: [thoughtOf(id, tick)] })
 
 /** The walk, four frames: the feet passing, and on frames 1 and 3 a bob up and the torso leaning a cell the way it goes. */
 const walkLook = (tick: number, facing: 'left' | 'right', extra: Partial<Look> = {}): Look => {
@@ -182,9 +182,9 @@ const idleLook = (id: string, idleMs: number, tick: number): Look => {
 }
 
 /**
- * Stalled: its idle bits, and a turning clock beside its head where the bit
- * leaves the side free; under its blanket (a stall is always past 90 s quiet)
- * the clock turns beside the quilt instead, clear of its z z Z.
+ * Stalled (an agent's idle): its idle bits, and a turning clock beside its
+ * head where the bit leaves the side free; under its blanket, from five
+ * minutes quiet, the clock turns beside the quilt instead, clear of its z z Z.
  */
 const stalledLook = (agent: MascotAgent, tick: number): Look => {
   const idleMs = agent.idleMs ?? 0
@@ -196,7 +196,7 @@ const stalledLook = (agent: MascotAgent, tick: number): Look => {
   return { ...look, overlays: [...look.overlays, at(OVERLAYS.clock, tick)] }
 }
 
-/** At work: idle bits once quiet a while; at its laptop while a tool runs; thinking, eyes up at its thought; asking, a hand up. */
+/** At work, typing at its laptop: a tool running, or thinking with its thought beside its head; asking, a hand up; idle, its idle bits. */
 const workLook = (agent: MascotAgent, tick: number): Look => {
   if (agent.activity === 'asking') return { ...STAND, arms: 'raised', overlays: OVERLAYS.ask }
   if (agent.idleMs !== undefined) return idleLook(agent.id, agent.idleMs, tick)
@@ -377,7 +377,7 @@ export const agentLook = (agent: MascotAgent, phase: Phase, tick: number, contex
   const motion = context.motion
   // On the move at work (a wander, an errand, a leap): no laptop, and no idle bit.
   const travelling = phase.kind === 'work' && motion !== undefined && motion.kind !== 'fallen'
-  let look = travelling ? walkLook(tick, facing, agent.activity === 'thinking' && agent.idleMs === undefined ? { overlays: [thoughtOf(agent.id, tick)] } : {}) : context.scanning && phase.kind === 'work' ? { ...STAND, head: 'down' as const } : phaseLook(agent, phase, tick, facing, context.pipe)
+  let look = travelling ? walkLook(tick, facing, agent.activity === 'thinking' ? { overlays: [thoughtOf(agent.id, tick)] } : {}) : context.scanning && phase.kind === 'work' ? { ...STAND, head: 'down' as const } : phaseLook(agent, phase, tick, facing, context.pipe)
   look = withCues(moved(look, motion, tick, facing), context.cues)
 
   const standing = look.pose === 'stand' && look.lift === 0 && look.bob !== true
@@ -403,6 +403,8 @@ const miniPhaseLook = (agent: MascotAgent, phase: Phase, tick: number, facing: '
     case 'baton':
       return base
     case 'stalled':
+      // Idle: looking about, tapping its foot, its clock turning; from five minutes quiet, eyes shut, its z rising.
+      if ((agent.idleMs ?? 0) >= BLANKET_AFTER_MS) return { ...base, head: 'shut', overlays: [at(MINI_OVERLAYS.zzz, tick)] }
       return { ...base, head: at(MINI_SCAN, tick), legs: at<MiniLegs>(['stand', 'stand', 'tap', 'tap'], tick), overlays: [at(MINI_OVERLAYS.clock, tick)] }
     case 'cheer':
       return { ...base, overlays: MINI_OVERLAYS.tick }
@@ -414,12 +416,8 @@ const miniPhaseLook = (agent: MascotAgent, phase: Phase, tick: number, facing: '
       return { ...base, head: agent.status === 'done' ? 'open' : 'shut', legs: 'step' }
     case 'work':
       if (agent.activity === 'asking') return { ...base, overlays: MINI_OVERLAYS.ask }
-      // Idle: looking about; from 90 s, eyes shut, its z rising.
-      if (agent.idleMs !== undefined) {
-        return agent.idleMs >= BLANKET_AFTER_MS ? { ...base, head: 'shut', overlays: [at(MINI_OVERLAYS.zzz, tick)] } : { ...base, head: at(MINI_SCAN, tick) }
-      }
-      // A tool running: its laptop in front of it, the same for every tool.
-      return agent.activity === 'thinking' ? { ...base, overlays: [at(MINI_OVERLAYS.thought, tick)] } : { ...base, legs: 'none', overlays: MINI_OVERLAYS.laptop }
+      // At work: its laptop in front of it, the same for every tool; thinking, its thought beside its head too.
+      return { ...base, legs: 'none', overlays: agent.activity === 'thinking' ? [...MINI_OVERLAYS.laptop, at(MINI_OVERLAYS.thought, tick)] : MINI_OVERLAYS.laptop }
   }
 }
 

@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'claude-code/testing'
 
-import { boxed, cellOf, drawnAlone, figureIn, placementOf, spriteOf, windowOf } from './mascot-glyphs.fixtures'
+import { boxed, cellOf, drawnAlone, figureIn, placementOf, rowsOf, spriteOf, windowOf } from './mascot-glyphs.fixtures'
 import { spriteSheet } from './mascot-sheet.fixtures'
 import type { SheetEntry } from './mascot-sheet.fixtures'
 import { ACCESSORIES, ACCESSORY_NAMES, BLANKET, CROWN, HAT_X, HEADS, LAPTOP_COLOUR, ROLE_LETTERS, SLOT, SQUASHED, THOUGHTS, TORSOS } from './mascot-sprites'
@@ -40,8 +40,12 @@ describe('accessories and the crown', () => {
     }
   })
 
-  test('an agent\'s role letter rides centred above its head in every frame, walking, hopping and flying; its thought rises beside it', () => {
-    const { lines, plans } = run(() => oneAgent(working('agent-7', 'thinking', { role: 'worker' })), tick => room(100, 9, T0 + tick, { wander: true }), 300)
+  test('an agent\'s role letter rides centred above its head in every frame, idle and walking, hopping and flying; at work, its thought rises beside it', () => {
+    const thinking = rowsOf(spriteOf(oneAgent(working('agent-7', 'thinking', { role: 'worker' })), 'agent-7', 4, 5))
+    expect(thinking.findIndex(row => row[6] === 'w')).toBeGreaterThanOrEqual(0)
+    expect(thinking.some(row => /·/.test(row))).toBe(true)
+    // Idle (stalled), it wanders.
+    const { lines, plans } = run(() => oneAgent(working('agent-7', 'thinking', { role: 'worker', status: 'stalled', idleMs: 0 })), tick => room(100, 9, T0 + tick, { wander: true }), 300)
     const kinds = new Set<string>()
     lines.forEach((frame, index) => {
       const one = plans[index]!.placements.find(p => p.id === 'agent-7')!
@@ -52,7 +56,6 @@ describe('accessories and the crown', () => {
       expect(frame[row + 1]?.slice(one.drawnX + 3, one.drawnX + 10), `${index}: ${one.motion?.kind}\n${frame.join('\n')}`).toMatch(/^(▐.{5}▌|█▛███▜█)$/)
     })
     expect([...kinds]).toEqual(expect.arrayContaining(['walk', 'hop']))
-    expect(lines.some(frame => frame.some(row => /·/.test(row)))).toBe(true)
   })
 })
 
@@ -301,7 +304,7 @@ describe('role letters', () => {
       for (const activity of ['thinking', 'typing'] as const) {
         const cell = drawnAlone(oneAgent(working('a', activity, { role: role as keyof typeof ROLE_LETTERS })), 'a')
         expect(cell[0]?.trimEnd(), `${role} ${activity}`).toBe(`      ${letter}`)
-        expect(cell[1]?.slice(2, 11), role).toBe(activity === 'typing' ? HEADS.right : HEADS.up)
+        expect(cell[1]?.slice(2, 11), role).toBe(HEADS.right)
       }
       const sprite = spriteOf(oneAgent(working('a', 'typing', { role: role as keyof typeof ROLE_LETTERS })), 'a')
       expect(sprite.cells[1]?.[6], role).toEqual(expect.objectContaining({ ch: letter, ink: 'f' }))

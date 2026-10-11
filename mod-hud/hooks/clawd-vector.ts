@@ -9,6 +9,13 @@ import type { ThemeKey } from './svg-style'
 /** A sine wave of `period` ms at time `t`, shifted by `phase`: what blinks, bobs and sways on. */
 export const wave = (t: number, period: number, phase = 0): number => Math.sin((2 * Math.PI * t) / period + phase)
 
+/** A number from 0 to 1 fixed by `n` and `seed`: the same on every frame, so what it picks holds still. */
+export const noise = (n: number, seed = 0): number => {
+  const x = Math.sin(n * 127.1 + seed * 311.7) * 43758.5453
+
+  return x - Math.floor(x)
+}
+
 /** Smoothstep: 0 to 1 over `x` 0 to 1, easing in and out. */
 export const smooth = (x: number): number => {
   const k = Math.max(0, Math.min(1, x))
