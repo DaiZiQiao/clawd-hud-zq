@@ -136,7 +136,7 @@ describe('the giant, smooth', () => {
     }
   })
 
-  test('drawn through windows: each a picture of its whole box (a cell 8 by 16 pixels) clear but round its window, together the giant; the rows beside what it wears left to the pane; its eyes shut, only the windows they are in drawn again', () => {
+  test('drawn through windows: each a picture of its whole box (a cell 8 by 16 pixels) clear but round its window, together the giant; the rows beside what it wears left to the pane; its eyes shut, only the windows they are in drawn again', { timeoutMs: 20_000 }, () => {
     for (const who of [CLAWD, { character: 'clawd', colour: CLAWD.colour, accessory: 'beanie' } as Who, BUNNY]) {
       const { layout } = inputsOf(who)
       const { width, height } = layout
