@@ -136,7 +136,7 @@ describe('the giant, smooth', () => {
     }
   })
 
-  test('drawn through windows: each a picture of its whole box (a cell 8 by 16 pixels) clear but round its window, together the giant; the rows beside what it wears left to the pane; its eyes shut, only the windows they are in drawn again', { timeoutMs: 20_000 }, () => {
+  test('drawn through windows: each a picture of its whole box (a cell 8 by 16 pixels) clear but round its window, together the giant; the rows beside what it wears and the column beside its body left to the pane; its eyes shut, only the windows they are in drawn again', { timeoutMs: 20_000 }, () => {
     for (const who of [CLAWD, { character: 'clawd', colour: CLAWD.colour, accessory: 'beanie' } as Who, BUNNY]) {
       const { layout } = inputsOf(who)
       const { width, height } = layout
@@ -179,6 +179,11 @@ describe('the giant, smooth', () => {
       const wearRows = Array.from({ length: layout.body.y }, (_, y) => y)
       const free = wearRows.flatMap(y => Array.from({ length: width }, (_, x) => y * width + x)).filter(cell => !owner.has(cell))
       expect(free.length, who.character).toBeGreaterThan(wearRows.length * width / 2)
+      // Clawd's: the column left of its body the pane's, but by its arms.
+      if (who.character === 'clawd') {
+        const beside = Array.from({ length: layout.body.h }, (_, k) => (layout.body.y + k) * width + layout.body.x - 1).filter(cell => !owner.has(cell))
+        expect(beside.length).toBeGreaterThan(layout.body.h * 0.6)
+      }
       // Shut, the windows its eyes are in drawn again; the rest kept.
       const shut = frame('shut', 0)
       const changed = shut.filter((png, at) => png !== open[at]).length

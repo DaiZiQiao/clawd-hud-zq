@@ -202,9 +202,13 @@ the stretch, pick up, dangle, throw and tumble.
   outlines under the OFL, `OFL-JetBrainsMono.txt`, drawn as shapes, so a
   picture needs no font), an ellipsis after it, and Claude Code's glimmer, a
   light three letters wide, stepping back along it every 200 ms in
-  `claudeShimmer`'s colour (the theme key `shimmer`). The pill floats a
-  little, and comes down beside the head as far as it must to show whole
-  under the band's one row of sky. A mini's thought is the dots alone.
+  `claudeShimmer`'s colour (the theme key `shimmer`). The pill and the dots
+  are solid (the theme key `bubble`, its outline in Claude's orange inside
+  its edge): a terminal draws a picture a cell at a time, the cells' edges
+  overlapping a pixel, so a see-through fill across a row's edge would show
+  a line. The pill floats a little, and comes down beside the head as far as
+  it must to show whole under the band's one row of sky. A mini's thought is
+  the dots alone.
 - **The art** (`hooks/smooth-art.ts`): Clawd keeps Claude Code's own
   proportions (its logo's 18 by 6 quadrants) and wears its accessory, letter
   and energy marks. Usagi is drawn as Chiikawa draws it: cream, a bold
@@ -704,20 +708,22 @@ giant as pictures, and the module draws only the glass, its panel and the
 `✕` over them, as text (`TvInputs.pictured`). A picture takes every cell of
 its box from the pane, so the giant is drawn through windows
 (`giantWindows`): the box its cells take, cut across where that gives the
-pane back 40 cells or more, up to six windows, most giants three (what it
-wears, its body, its arms and legs), so the pane's text shows in the rows
-beside what it wears and round its body, as it does round the block giant.
-Each window is a Box that clips to its cells (`overflow: hidden`) holding
-a picture of the giant's whole box (a cell 8 by 16 pixels), clear but for
+pane back 8 cells or more, up to 16 windows (most giants 8 to 10: what it
+wears, its body, its arms, each leg), so the pane's text shows beside what
+it wears, its body and its legs, as it does round the block giant. Each
+window is a Box that clips to its cells (`overflow: hidden`) holding a
+picture of the giant's whole box (a cell 8 by 16 pixels), clear but for
 what its cells may show: the terminal fits a picture to its box keeping its
 shape, squeezing it towards its middle where a cell is not 1 by 2, so
-pictures of one size are squeezed alike and the windows meet with no seam;
-each keeps the pixels the squeeze may bring into its cells (for cells 0.4
-to 0.625 as wide as high), and a cell such pixels may land in is in a
-window. Some 50 KiB when it grows into the giant (a whole picture was 22),
-drawn once, again for its blink and for a propeller cap's blade, only the
-windows a frame changes (two a blink), the blade turning two frames a
-second. The giant blinks every few seconds there too, the hooks swapping
+pictures of one size are squeezed alike and the windows meet with no seam.
+A cell is in a window where, squeezed as most fonts squeeze (cells 0.444
+to 0.53 as wide as high), it may show the giant; each window's picture
+keeps the pixels a squeeze for 0.4 to 0.625 may bring into its cells, and a
+pixel's blur, so a font squeezing further clips a little of the giant's
+edge but opens no seam. Some 130 to 160 KiB when it grows into the giant (a
+whole picture was 22), drawn once, again for its blink and for a propeller
+cap's blade, only the windows a frame changes (two a blink), the blade
+turning two frames a second. The giant blinks every few seconds there too, the hooks swapping
 its eyes shut a moment. The flight and the growing stay the module's quarters there.
 Drawn smooth, a press anywhere in the giant's box is on the mascot, not
 outside it.

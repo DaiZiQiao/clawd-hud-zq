@@ -12,7 +12,7 @@ export const FONT_SIZE = 13
 export const BASELINE = 12
 
 /** The theme keys the scene draws in, and the foreground and dim text. */
-export type ThemeKey = 'claude' | 'shimmer' | 'success' | 'warning' | 'error' | 'text' | 'inactive'
+export type ThemeKey = 'claude' | 'shimmer' | 'bubble' | 'success' | 'warning' | 'error' | 'text' | 'inactive'
 
 /**
  * The theme keys as colours: an image reads no theme, so the scene carries
@@ -20,12 +20,12 @@ export type ThemeKey = 'claude' | 'shimmer' | 'success' | 'warning' | 'error' | 
  * the surface's colour scheme (`prefers-color-scheme`).
  */
 export const SCENE_THEMES: Readonly<Record<'dark' | 'light', Readonly<Record<ThemeKey, string>>>> = {
-  dark: { claude: '#D77757', shimmer: '#EB9F7F', success: '#4EBA65', warning: '#FFC107', error: '#FF6B80', text: '#FFFFFF', inactive: '#999999' },
-  light: { claude: '#D77757', shimmer: '#F59575', success: '#2C7A39', warning: '#966C1E', error: '#AB2B3F', text: '#000000', inactive: '#666666' },
+  dark: { claude: '#D77757', shimmer: '#EB9F7F', bubble: '#2B2A37', success: '#4EBA65', warning: '#FFC107', error: '#FF6B80', text: '#FFFFFF', inactive: '#999999' },
+  light: { claude: '#D77757', shimmer: '#F59575', bubble: '#F5F1EC', success: '#2C7A39', warning: '#966C1E', error: '#AB2B3F', text: '#000000', inactive: '#666666' },
 }
 
 /** Each theme key's class in the document, for the light scheme's rule. */
-export const CLASSES: Readonly<Record<ThemeKey, string>> = { claude: 'a', shimmer: 'h', success: 'g', warning: 'y', error: 'r', text: 'f', inactive: 'd' }
+export const CLASSES: Readonly<Record<ThemeKey, string>> = { claude: 'a', shimmer: 'h', bubble: 'b', success: 'g', warning: 'y', error: 'r', text: 'f', inactive: 'd' }
 
 export const isThemeKey = (value: string): value is ThemeKey => value in CLASSES
 

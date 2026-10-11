@@ -327,26 +327,28 @@ export const giantPixels = (who: Who, layout: TvLayout, eyes: Eyes, scheme: 'dar
 export type GiantPiece = { x: number; y: number; w: number; h: number }
 
 /** Windows onto the giant at most, each cut from one before only where that leaves at least `LEAST_FREED` more of the box's cells to the pane. */
-const MOST_PIECES = 6
-const LEAST_FREED = 40
+const MOST_PIECES = 16
+const LEAST_FREED = 8
 
 /**
  * How far the terminal may draw a picture's pixels from where its cells are,
  * a cell away from the box's middle, in its pixels: it fits the whole picture
  * to its box keeping its shape, so where a cell is narrower than half its
- * height (to 0.4 of it) the picture is squeezed towards its middle row by up
- * to 4 pixels a row, and where wider (to 0.625) towards its middle column by
- * up to 2 a column. A cell so shows pixels from further out than its own,
- * never further in.
+ * height the picture is squeezed towards its middle row, and where wider
+ * towards its middle column. A cell so shows pixels from further out than
+ * its own, never further in. The cells left to the pane allow for most fonts
+ * (`seen`: cells 0.444 to 0.53 as wide as high, up to 2 pixels a row or half
+ * a column, and no blur); a window's picture keeps pixels for more (`kept`:
+ * 0.4 to 0.625, 4 a row or 2 a column, and 2 pixels' blur), so where a font
+ * squeezes further the giant's edge may be clipped a little but its windows
+ * still meet with no seam.
  */
-const SQUEEZE = { down: 4, across: 2 } as const
-/** A pixel's blur either side of what a cell shows. */
-const BLUR = 2
+const SQUEEZE = { seen: { down: 2, across: 0.5, blur: 0 }, kept: { down: 4, across: 2, blur: 2 } } as const
 
-/** The pixels cell `at` of `size` may show along one axis (`own` pixels a cell, squeezed up to `squeeze` a cell from the middle): its own and, on its side of the middle, those further out. */
-const shownOf = (at: number, size: number, own: number, squeeze: number): [number, number] => [
-  Math.max(0, at * own + Math.min(0, Math.floor(squeeze * (at - size / 2))) - BLUR),
-  Math.min(size * own, (at + 1) * own + Math.max(0, Math.ceil(squeeze * (at + 1 - size / 2))) + BLUR),
+/** The pixels cell `at` of `size` may show along one axis (`own` pixels a cell, squeezed up to `squeeze` a cell from the middle, blurred `blur` either side): its own and, on its side of the middle, those further out. */
+const shownOf = (at: number, size: number, own: number, squeeze: number, blur: number): [number, number] => [
+  Math.max(0, at * own + Math.min(0, Math.floor(squeeze * (at - size / 2))) - blur),
+  Math.min(size * own, (at + 1) * own + Math.max(0, Math.ceil(squeeze * (at + 1 - size / 2))) + blur),
 ]
 
 /** The cells of a box `width` by `height` that may show a pixel any of `frames` inks, as the terminal fits it (`shownOf`), row by row. */
@@ -367,9 +369,9 @@ const inkedCells = (frames: readonly Uint8Array[], width: number, height: number
   const sum = (x: number, y: number): number => sums[y * (across + 1) + x] ?? 0
   const inked = new Uint8Array(width * height)
   for (let y = 0; y < height; y += 1) {
-    const [top, bottom] = shownOf(y, height, CH, SQUEEZE.down)
+    const [top, bottom] = shownOf(y, height, CH, SQUEEZE.seen.down, SQUEEZE.seen.blur)
     for (let x = 0; x < width; x += 1) {
-      const [left, right] = shownOf(x, width, CW, SQUEEZE.across)
+      const [left, right] = shownOf(x, width, CW, SQUEEZE.seen.across, SQUEEZE.seen.blur)
       if (sum(right, bottom) - sum(left, bottom) - sum(right, top) + sum(left, top) > 0) inked[y * width + x] = 1
     }
   }
@@ -433,17 +435,18 @@ export const giantPieces = (inked: Uint8Array, width: number, height: number): G
   return pieces
 }
 
-/** The pixels a piece's picture keeps: those its window's cells may show (`shownOf`). */
+/** The pixels a window's picture keeps: those its cells may show (`shownOf`, `SQUEEZE.kept`). */
 const keptOf = (piece: GiantPiece, width: number, height: number): { left: number; right: number; top: number; bottom: number } => {
-  const [left] = shownOf(piece.x, width, CW, SQUEEZE.across)
-  const [, right] = shownOf(piece.x + piece.w - 1, width, CW, SQUEEZE.across)
-  const [top] = shownOf(piece.y, height, CH, SQUEEZE.down)
-  const [, bottom] = shownOf(piece.y + piece.h - 1, height, CH, SQUEEZE.down)
+  const { across, down, blur } = SQUEEZE.kept
+  const [left] = shownOf(piece.x, width, CW, across, blur)
+  const [, right] = shownOf(piece.x + piece.w - 1, width, CW, across, blur)
+  const [top] = shownOf(piece.y, height, CH, down, blur)
+  const [, bottom] = shownOf(piece.y + piece.h - 1, height, CH, down, blur)
 
   return { left, right, top, bottom }
 }
 
-/** A piece's picture: the frame's pixels it keeps (`keptOf`), the rest clear; the whole box's size, so the terminal fits it as it would the whole. */
+/** A window's picture: the frame's pixels it keeps (`keptOf`), the rest clear; the whole box's size, so the terminal fits each window's picture as it would the whole and shows each pixel where the whole would. */
 const piecePicture = (pixels: Uint8Array, width: number, height: number, piece: GiantPiece): string => {
   const across = width * CW
   const { left, right, top, bottom } = keptOf(piece, width, height)
@@ -475,7 +478,7 @@ export const giantWindows = (who: Who, layout: TvLayout, scheme: 'dark' | 'light
   const pieces = giantPieces(inkedCells(turns ? [first, pixelsOf('open', 1)] : [first], width, height), width, height)
   const firsts = pieces.map(piece => piecePicture(first, width, height, piece))
   const frames = new Map<string, string[]>([['open:0', firsts]])
-  // Whether two frames' pixels are the same over what a piece's picture keeps.
+  // Whether two frames' pixels are the same over what a window's picture keeps.
   const same = (a: Uint8Array, b: Uint8Array, piece: GiantPiece): boolean => {
     const { left, right, top, bottom } = keptOf(piece, width, height)
     for (let y = top; y < bottom; y += 1) {

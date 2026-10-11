@@ -1025,6 +1025,8 @@ const THOUGHT_EM = 2 / MONO_ADVANCE
 const SPIN = ['·', '✢', '✳', '✶', '✻', '✻'] as const
 const SPIN_MS = 120
 const GLIMMER_MS = 200
+/** The pill's outline, units. */
+const PILL_LINE = 0.28
 
 /** One of Claude Code's spinner glyphs about (x, y), as tall as a capital, in `fill`: a dot, then four, eight and six spokes or points. */
 const spinShapes = (m: Matrix, glyph: string, x: number, y: number, fill: Paint, alpha: number): Shape[] => {
@@ -1055,13 +1057,31 @@ const spinShapes = (m: Matrix, glyph: string, x: number, y: number, fill: Paint,
  * room over its feet (`ceiling`; the band's one row of sky) the pill comes
  * down and out by as much, the dots still leading up to it.
  */
+/**
+ * A thought's pill (or dot): solid, its outline inside it, so nothing of it
+ * is see-through but its very edge. A terminal draws a picture a cell at a
+ * time, the cells' edges overlapping a pixel, and there a see-through fill
+ * would be laid twice, a line across it.
+ */
+const solidPill = (m: Matrix, x: number, y: number, w: number, h: number): Shape[] => {
+  const r = Math.min(w, h) / 2
+  const inset = Math.min(PILL_LINE / 2, r / 2)
+
+  return [
+    { kind: 'rect', x, y, w, h, r, fill: 'bubble', m },
+    { kind: 'rect', x: x + inset, y: y + inset, w: w - 2 * inset, h: h - 2 * inset, r: r - inset, ring: 2 * inset, fill: 'claude', alpha: 0.6, m },
+  ]
+}
+
 const thoughtShapes = (m: Matrix, text: string, since: number | undefined, t: number, ceiling: number): Shape[] => {
   const age = since === undefined ? Infinity : t - since
   const float = (phase: number): number => 0.3 * Math.sin((2 * Math.PI * (t - (since ?? 0))) / 2600 + phase)
   const dot = (x: number, y: number, d: number, delay: number): Shape[] => {
     const r = (d / 2) * springAt(age - delay, 260, 0.45)
 
-    return r > 0.02 ? [{ kind: 'ellipse', x: x - r, y: y - r + float(delay / 200), w: 2 * r, h: 2 * r, fill: 'claude', alpha: 0.75, m }] : []
+    const cy = y + float(delay / 200)
+
+    return r > 0.02 ? solidPill(m, x - r, cy - r, 2 * r, 2 * r) : []
   }
   const shapes = [...dot(6.3, -11.3, 1, 0), ...dot(8.2, -13.4, 1.5, 90)]
   const grow = springAt(age - 180, 340, 0.3)
@@ -1074,10 +1094,7 @@ const thoughtShapes = (m: Matrix, text: string, since: number | undefined, t: nu
   const middle = -THOUGHT_HIGH + low + float(1.2)
   // Springing out of its corner by the dots.
   const pill = chain(m, translate(left, middle + THOUGHT_HALF), scale(grow), translate(-left, -middle - THOUGHT_HALF))
-  shapes.push(
-    { kind: 'rect', x: left, y: middle - THOUGHT_HALF, w: width, h: 2 * THOUGHT_HALF, r: THOUGHT_HALF, fill: 'text', alpha: 0.07, m: pill },
-    { kind: 'rect', x: left, y: middle - THOUGHT_HALF, w: width, h: 2 * THOUGHT_HALF, r: THOUGHT_HALF, ring: 0.28, fill: 'claude', alpha: 0.6, m: pill },
-  )
+  shapes.push(...solidPill(pill, left, middle - THOUGHT_HALF, width, 2 * THOUGHT_HALF))
   const shown = Math.max(0, Math.min(1, (age - 300) / 160))
   if (shown <= 0) return shapes
   const baseline = middle + 1.2

@@ -99,17 +99,21 @@ describe('thinking, as Claude Code\'s spinner says it', () => {
     expect(thought(targetOf(mini, { ...CONTEXT, mini: true }, true))?.text).toBe('')
   })
 
-  test('as it comes the dots spring in, then the pill, then its words (\u2731 and the word, in Claude\'s orange); it keeps when it came; the light sweeps back along the words and on', () => {
+  test('as it comes the dots spring in, then the pill, then its words (\u2731 and the word, in Claude\'s orange), all solid; it keeps when it came; the light sweeps back along the words and on', () => {
     const smoother = createSmoother()
     const poseAt = (now: number): FigurePose => smoother.ease('main', targetOf(look, { ...CONTEXT, now, word: 'Noodling' }, false), now)
     const drawn = (now: number) => figureShapes(poseAt(now), INFO, IDENTITY, now, 100)
-    const pills = (shapes: ReturnType<typeof drawn>) => shapes.filter(shape => shape.kind === 'rect' && shape.ring !== undefined)
+    const pills = (shapes: ReturnType<typeof drawn>) => shapes.filter(shape => shape.kind === 'rect' && shape.ring !== undefined && shape.w > 4)
     const words = (shapes: ReturnType<typeof drawn>) => shapes.filter(shape => shape.kind === 'poly' && (shape.fill === 'claude' || shape.fill === 'shimmer') && (shape.alpha ?? 1) > 0.5)
     expect(pills(drawn(1000))).toHaveLength(0)
     for (let now = 1100; now < 1700; now += 100) drawn(now)
     const settled = drawn(1700)
     expect(thought(poseAt(1800))?.since).toBe(1000)
     expect(pills(settled)).toHaveLength(1)
+    // Solid, the dots and the pill: a see-through fill crossing a cell's edge shows a line in a terminal.
+    const solid = settled.filter(shape => shape.fill === 'bubble')
+    expect(solid).toHaveLength(3)
+    expect(solid.every(shape => (shape.alpha ?? 1) === 1)).toBe(true)
     // Noodling… : nine characters, a polygon each (and the glyph's own when it is the six-pointed star).
     expect(words(settled).length).toBeGreaterThanOrEqual(9)
     // The light: three characters of the shimmer at a time while it crosses the words, none past them.
