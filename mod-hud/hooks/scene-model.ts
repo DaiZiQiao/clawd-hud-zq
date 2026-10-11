@@ -394,6 +394,7 @@ export const sceneOf = (
     ...(events.length === 0 ? {} : { events }),
     ...(options.character === 'usagi' ? { character: 'usagi' as const } : {}),
     ...(withoutMain ? { withoutMain: true as const } : {}),
+    ...(onlyMain ? { mainOnly: true as const } : {}),
   }
 }
 

@@ -95,7 +95,8 @@ export const smoothFrame = (scene: MascotScene, layout: MascotLayout, plan: Masc
     const left = sprite.exact?.x ?? sprite.x
     // The grid's sky row, less the cells' bounce (the pose bounces its own way).
     const top = room + (sprite.exact?.top ?? sprite.top) + (figure.bob ?? 0)
-    const feet = top + SKY + (usagi ? BOX_ROWS : BOX_ROWS - 0.5)
+    // Its feet on its box's floor: the band's, an eighth of a row over its edge so a foot set down is never cut off; Clawd's in a field where its block legs end, half a row up.
+    const feet = top + SKY + (scene.mainOnly === true ? BOX_ROWS - 0.125 : usagi ? BOX_ROWS : BOX_ROWS - 0.5)
     const middle = left + (mini ? MINI / 2 : BODY_X + BODY_WIDTH / 2)
     const context: PoseContext = {
       character: figure.info.character,

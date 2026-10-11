@@ -95,9 +95,10 @@ export type SceneCast = 'main' | 'agents'
 /**
  * The scene: the session's mascot, the agents', the messages between them,
  * and who they all are (absent, Clawd); `withoutMain`, the session's mascot is
- * elsewhere (the band) and the field leaves it out.
+ * elsewhere (the band) and the field leaves it out; `mainOnly`, the band: the
+ * session's mascot alone, standing on its floor.
  */
-export type MascotScene = { main: MascotMain; agents: MascotAgent[]; events?: SceneEvent[]; character?: Character; withoutMain?: true }
+export type MascotScene = { main: MascotMain; agents: MascotAgent[]; events?: SceneEvent[]; character?: Character; withoutMain?: true; mainOnly?: true }
 
 /**
  * The room the scene is drawn into: the rows the HUD and the list leave, and

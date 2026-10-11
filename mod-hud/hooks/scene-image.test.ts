@@ -279,7 +279,7 @@ describe('in a terminal that shows pictures', () => {
     await ui.unmount()
   })
 
-  test('the band\'s yard too: the session\'s mascot an Image, the hit layer under the band\'s key', { timeoutMs: 20_000 }, async ($, on) => {
+  test('the band\'s yard too: the session\'s mascot an Image on the band\'s floor, the hit layer under the band\'s key', { timeoutMs: 20_000 }, async ($, on) => {
     arrange(on, [])
     mock.env(on, GHOSTTY)
     blits(on)
@@ -293,6 +293,10 @@ describe('in a terminal that shows pictures', () => {
     expect(countColour(picture, CROWN.colour)).toBeGreaterThan(5)
     // Nothing behind it: the band shows through at its corners.
     for (const x of [0, picture.width - 1]) expect(picture.pixels[((picture.height - 1) * picture.width + x) * 4 + 3]).toBe(0)
+    // Standing on the band's floor, just over the prompt: its feet within a quarter of a row of the picture's bottom (half a row up before).
+    let lowest = 0
+    for (let y = 0; y < picture.height; y += 1) for (let x = 0; x < picture.width; x += 1) if ((picture.pixels[(y * picture.width + x) * 4 + 3] ?? 0) > 40) lowest = y
+    expect(lowest).toBeGreaterThanOrEqual(picture.height - 4)
     await ui.unmount()
   })
 

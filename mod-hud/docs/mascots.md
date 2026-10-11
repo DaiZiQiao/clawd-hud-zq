@@ -76,7 +76,11 @@ narrow to dock the pane.
   `Client` (`hooks/scene-client.tsx`, keyed `session`), cast with the
   session's mascot alone: `sceneInputsOf(..., { only: 'main' })`. The board
   rides along in its props so that its mood still reads the agents (watching
-  while they run), but `sceneOf` draws none of them there. With
+  while they run), but `sceneOf` draws none of them there, and marks the
+  scene `mainOnly`: drawn smooth, its feet stand on the band's floor (an
+  eighth of a row over its edge, so a foot set down is never cut off), not
+  half a row up where Clawd's block legs end. Under the band the engine
+  keeps a blank row over the prompt box, which no plugin draws in. With
   `motion: classic`, or where its `Client` failed, the classic scene draws it
   on the scene clock, which then runs for the band too (its plans and renders
   kept under `band:<surface>`, beside the pane's). A band narrower than a
@@ -205,7 +209,9 @@ the stretch, pick up, dangle, throw and tumble.
   `Haa?` getting up from a fall, and `Yaha!` as it bounds. Knocked flat, its hat (its ear holes
   empty) or its crown lies on the floor beside it. A child's mini is the same
   figure at 0.6 the size.
-- **The frame** (`hooks/scene-smooth.ts`): each mascot's feet on its floor,
+- **The frame** (`hooks/scene-smooth.ts`): each mascot's feet on its floor
+  (Clawd's half a row up in a field, where its block legs end; on the band's
+  floor in the band),
   the pipes, the marks (`✓`, `✦`, the envelope), and the strip's status dots
   as shapes. World units: a cell is 2 across and 4 down.
 - **The desktop** (`hooks/scene-client.tsx`): the `Svg` the region's size,
