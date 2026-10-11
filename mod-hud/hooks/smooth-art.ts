@@ -988,14 +988,23 @@ const bubbleShapes = (m: Matrix, x: number, y: number, d: number): Shape[] => [
   { kind: 'ellipse', x, y, w: d, h: d, fill: CLAWD.cloud, m },
 ]
 
-/** A thought cloud with its phrase (or its dots), grown `grow` (0, ½, 1), rimmed. */
-const thoughtShapes = (m: Matrix, text: string, grow: number, t: number): Shape[] => {
+/** How high over its feet a thought's cloud floats, its middle; how far over that it reaches, its lumps and rim. */
+const CLOUD_HIGH = 18.4
+const CLOUD_REACH = 4.1
+
+/**
+ * A thought cloud with its phrase (or its dots), grown `grow` (0, ½, 1),
+ * rimmed. Where the room over its feet (`ceiling`) is too low for it (the
+ * band's one row of sky), the cloud comes down and out by as much, its
+ * trail still leading up to it.
+ */
+const thoughtShapes = (m: Matrix, text: string, grow: number, t: number, ceiling: number): Shape[] => {
   const shapes: Shape[] = bubbleShapes(m, 5.8, -11.8, 1)
   if (grow >= 0.5) shapes.push(...bubbleShapes(m, 7.4, -14.2, 1.6))
   if (grow < 1) return shapes
   const width = Math.max(8, text.length * 1.95 + 4)
-  const cx = 6 + width / 2
-  const cloud = chain(m, translate(cx, -18.4))
+  const low = Math.max(0, CLOUD_HIGH + CLOUD_REACH + 0.5 - ceiling)
+  const cloud = chain(m, translate(6 + width / 2 + low, -CLOUD_HIGH + low))
   shapes.push(...lumpShapes(cloud, width, 0.3, RIM), ...lumpShapes(cloud, width, 0, CLAWD.cloud))
   if (text === '') {
     for (const one of [0, 1, 2]) {
@@ -1021,7 +1030,7 @@ const besideShapes = (one: Beside, m: Matrix, info: FigureInfo, t: number, usagi
   const row = (index: number): number => rowY(index, usagi)
   switch (one.kind) {
     case 'thought':
-      return thoughtShapes(m, one.text, one.grow, t)
+      return thoughtShapes(m, one.text, one.grow, t, ceiling)
     case 'shout':
       // Over its head where the room goes that high; else lower, beside its head, the room's top over it.
       return burstShapes(m, one.text, Math.max(row(-1) + 1, -ceiling + BURST_REACH), t)
@@ -1168,10 +1177,10 @@ const besideShapes = (one: Beside, m: Matrix, info: FigureInfo, t: number, usagi
   }
 }
 
-/** A shout burst out over its head: a spiky balloon, a dark rim round it, its words bold inside; it pops in time. */
 /** How far over its middle a shout's balloon reaches, its spikes, line and pop all out. */
 const BURST_REACH = 5.8
 
+/** A shout burst out over its head: a spiky balloon, a dark rim round it, its words bold inside; it pops in time. */
 const burstShapes = (m: Matrix, text: string, y: number, t: number): Shape[] => {
   const size = 3
   const rx = textWidth(text, size) / 2 + 2

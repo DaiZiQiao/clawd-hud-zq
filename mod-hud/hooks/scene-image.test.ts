@@ -2,7 +2,8 @@ import type { JsonValue } from 'claude-code'
 import { describe, expect, mock, test } from 'claude-code/testing'
 
 import type { HudSelection } from '../types'
-import { IDENTITY, rasterOf, scale, svgOf } from './clawd-vector'
+import { CLAWD } from './clawd-moves'
+import { IDENTITY, chain, rasterOf, scale, svgOf, translate } from './clawd-vector'
 import { CROWN } from './mascot-sprites'
 import { base64Of, deflate, pngOf } from './png'
 import { bytesOf, countColour, inflate, pngPixels } from './png.fixtures'
@@ -10,8 +11,13 @@ import { glyphShapes, textWidth } from './raster-font'
 import { arrange, mount } from './scene-client.fixtures'
 import { BYTES_A_SECOND, IMAGE_FRAME_MS, STILL_EVERY, cellPixels, createStage, hitsOf, refusedPicture, restage, stageHits, stagePicture, stageTick } from './scene-image'
 import type { HitEvent, Stage } from './scene-image'
+import { NOW } from './scene-model.fixtures'
+import { smoothFrame } from './scene-smooth'
 import type { SceneInputs } from './scene-types'
+import { layoutAt, sceneAt, viewOf } from './scene-view'
+import { createWorld, tick } from './scene-world'
 import { TYPIST, inputs, press } from './scene-world.fixtures'
+import { createSmoother } from './smooth-pose'
 import { USAGI } from './usagi-sprites'
 
 // The vector scene as a terminal's picture: the PNG writer, the raster font,
@@ -171,6 +177,25 @@ describe('the stage', () => {
     const png = stageTick(stage, 1000, 'dark')
     expect(png).toBeDefined()
     expect(png).toBe(stage.png)
+  })
+
+  test('the band\'s one row of sky: a thought\'s cloud comes down into it whole, nothing over its top', () => {
+    const world = createWorld(inputs([], { columns: 60, rows: 5, art: 'vector', only: 'main', main: { busySince: NOW - 5_000 } }))
+    const smoother = createSmoother()
+    let clouds = 0
+    for (let step = 0; step < 320; step += 1) {
+      tick(world, IMAGE_FRAME_MS)
+      const plan = world.cur
+      const frame = plan === undefined ? undefined : smoothFrame(sceneAt(world, world.sceneNow), layoutAt(world, plan.tick), plan, viewOf(world).sprites, smoother, world.sceneNow, true)
+      if (frame === undefined) continue
+      // Drawn a row lower in a canvas a row taller (a cell 8 by 16): what the band would cut off over its top lands in that row.
+      const pixels = rasterOf(frame.shapes, 480, 96, chain(translate(0, 16), scale(4, 4)), glyphShapes, 'dark')
+      let over = 0
+      for (let at = 3; at < 480 * 16 * 4; at += 4) if ((pixels[at] ?? 0) > 40) over += 1
+      expect(over).toBe(0)
+      if (countColour({ pixels }, CLAWD.cloud) > 200) clouds += 1
+    }
+    expect(clouds).toBeGreaterThan(0)
   })
 
   test('the hit layer\'s posts: read back oldest first, anything else none; each event taken once; a layer mounted afresh counts again', () => {

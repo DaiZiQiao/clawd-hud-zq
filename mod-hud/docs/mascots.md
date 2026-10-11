@@ -79,8 +79,11 @@ narrow to dock the pane.
   while they run), but `sceneOf` draws none of them there, and marks the
   scene `mainOnly`: drawn smooth, its feet stand on the band's floor (an
   eighth of a row over its edge, so a foot set down is never cut off), not
-  half a row up where Clawd's block legs end. Under the band the engine
-  keeps a blank row over the prompt box, which no plugin draws in. With
+  half a row up where Clawd's block legs end. With one row of sky over it,
+  a thought's cloud comes down and out beside its head as far as it must
+  to show whole (a shout's balloon already does). Under the band the engine
+  keeps a blank row over the prompt box: the band is drawn in a box that
+  clips to its own rows, so no plugin draws there. With
   `motion: classic`, or where its `Client` failed, the classic scene draws it
   on the scene clock, which then runs for the band too (its plans and renders
   kept under `band:<surface>`, beside the pane's). A band narrower than a
