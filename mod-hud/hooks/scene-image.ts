@@ -13,14 +13,15 @@ import type { Smoother } from './smooth-pose'
 
 // The vector scene in a terminal that shows pictures (Ghostty, kitty): the
 // hooks run the scene's world themselves, as the `Client` runs it on its
-// surface (hooks/scene-world.ts), and draw each frame as tiles, each a keyed
-// `Image`: a tile whose pixels changed is a PNG (hooks/png.ts) swapped in by
-// `$.ui.blit`, the rest left as they are, so a frame costs what moved in it.
-// Kept light for the terminal, which decodes and draws every tile it is
-// sent: a few frames a second, and no more bytes a second than
-// BYTES_A_SECOND. Over the tiles a `Client` with
-// nothing to draw (hooks/scene-hit.tsx) hands them the person's pointer,
-// each event numbered so none is taken twice. Pure: the hooks
+// surface (hooks/scene-world.ts), and draw each frame that changed as a PNG
+// (hooks/png.ts) swapped into a keyed `Image` by `$.ui.blit`: one picture
+// for the region, as the terminal fits a picture to its cells keeping its
+// shape, so pieces of one would show the terminal between them where its
+// cells are not 8 by 16. Kept light for the terminal, which decodes and draws
+// every picture it is sent: a few frames a second, none that did not change,
+// and no more bytes a second than BYTES_A_SECOND. Over the picture a
+// `Client` with nothing to draw (hooks/scene-hit.tsx) hands it the person's
+// pointer, each event numbered so none is taken twice. Pure: the hooks
 // (hooks/register.tsx) keep the stages, the timer and the blits.
 
 /** A frame every 125 ms while anything moves (eight a second); every fourth while all stand still (a hand on the keys: two a second do), and as a blink begins and ends. */
@@ -30,19 +31,6 @@ export const STILL_EVERY = 4
 /** The picture's pixels per cell: the desktop's 8 by 16; twice that for a small region (the band), which costs as little. */
 export const cellPixels = (columns: number, rows: number): { width: number; height: number } =>
   columns * rows <= 200 ? { width: 16, height: 32 } : { width: 8, height: 16 }
-
-/** A picture's tile: `columns` by `rows` cells from cell `x`, `y` of the region, its last frame (base64 PNG), and whether that is swapped in yet. */
-export type Tile = { x: number; y: number; columns: number; rows: number; png: string; sent: boolean }
-
-/** How big a tile is, in cells: small, so a mascot moving sends little more than the cells it is in. */
-export const TILE_COLUMNS = 10
-export const TILE_ROWS = 3
-
-/** A region of `columns` by `rows` cells as tiles, row by row, those at its right and bottom edges smaller. */
-export const tilesOf = (columns: number, rows: number): Omit<Tile, 'png' | 'sent'>[] =>
-  Array.from({ length: Math.ceil(rows / TILE_ROWS) }, (_, row) =>
-    Array.from({ length: Math.ceil(columns / TILE_COLUMNS) }, (_, column) => ({ x: column * TILE_COLUMNS, y: row * TILE_ROWS, columns: Math.min(TILE_COLUMNS, columns - column * TILE_COLUMNS), rows: Math.min(TILE_ROWS, rows - row * TILE_ROWS) })),
-  ).flat()
 
 /**
  * A picture's share of the time, its inverse: after a frame that took t ms
@@ -57,16 +45,17 @@ export const BYTES_A_SECOND = 128 * 1024
 const BYTES_AT_ONCE = 2 * BYTES_A_SECOND
 
 /**
- * One scene drawn as a picture: its world, its eased poses, its tiles as last
- * drawn and the frame they were cut from; the timer's frames it waits to
- * draw, and the bytes it may still send.
+ * One scene drawn as a picture: its world, its eased poses, its last frame
+ * (base64 PNG, and its pixels) and whether that is swapped in yet; the
+ * timer's frames it waits to draw, and the bytes it may still send.
  */
 export type Stage = {
   world: World
   smoother: Smoother
   cell: { width: number; height: number }
-  tiles?: Tile[]
+  png?: string
   pixels?: Uint8Array
+  sent: boolean
   wait: number
   allowance: number
   /** Whether anything in the last frame moved, and frames since; when a mascot's eyes next shut or open (the scene's time). */
@@ -82,6 +71,7 @@ export const createStage = (inputs: SceneInputs): Stage => ({
   world: createWorld(inputs),
   smoother: createSmoother(),
   cell: cellPixels(inputs.columns, inputs.rows),
+  sent: false,
   wait: 0,
   allowance: BYTES_AT_ONCE,
   still: false,
@@ -89,13 +79,13 @@ export const createStage = (inputs: SceneInputs): Stage => ({
   seq: 0,
 })
 
-/** New props from a redraw: the world takes them; a region of another size, its picture's pixels and tiles drawn afresh. */
+/** New props from a redraw: the world takes them; a region of another size, its picture drawn afresh. */
 export const restage = (stage: Stage, inputs: SceneInputs): void => {
   const resized = inputs.columns !== stage.world.props.columns || inputs.rows !== stage.world.props.rows
   receive(stage.world, inputs)
   stage.cell = cellPixels(inputs.columns, inputs.rows)
   if (resized) {
-    stage.tiles = undefined
+    stage.png = undefined
     stage.pixels = undefined
   }
 }
@@ -116,7 +106,7 @@ const stageFrame = (stage: Stage, scheme: 'dark' | 'light'): { pixels: Uint8Arra
     const scene = sceneAt(world, world.sceneNow)
     const layout = layoutAt(world, plan.tick)
     world.owners = sceneCanvas(scene, layout, plan, view.sprites)?.owners
-    // Calm: no breath (a body that swells and settles would send its every tile again each frame it stands still), a blink shut whole.
+    // Calm: no breath (a body that swells and settles would send its picture again each frame it stands still), a blink shut whole.
     frame = smoothFrame(scene, layout, plan, view.sprites, stage.smoother, world.sceneNow, true)
   }
   stage.still = (frame === undefined || frame.still) && world.carried.size === 0
@@ -125,55 +115,46 @@ const stageFrame = (stage: Stage, scheme: 'dark' | 'light'): { pixels: Uint8Arra
   return smoothPixels(frame ?? { shapes: [], wholes: [], width: 0, height: 0, still: true }, columns, rows, stage.cell, scheme)
 }
 
-/**
- * A frame's tiles that differ from those last drawn, each drawn again (and
- * so to be swapped in); all of them the first time, or after a resize.
- */
-const changedTiles = (stage: Stage, pixels: Uint8Array, width: number): void => {
-  const { cell } = stage
+/** A frame's picture, drawn again (and so to be swapped in) when its pixels differ from the last's, or there is none. */
+const changedPicture = (stage: Stage, pixels: Uint8Array, width: number): void => {
   const last = stage.pixels
-  const now32 = new Uint32Array(pixels.buffer, pixels.byteOffset, pixels.length / 4)
-  const last32 = last === undefined || last.length !== pixels.length ? undefined : new Uint32Array(last.buffer, last.byteOffset, last.length / 4)
-  const tiles = stage.tiles ?? tilesOf(Math.max(1, stage.world.props.columns), Math.max(1, stage.world.props.rows)).map(tile => ({ ...tile, png: '', sent: false }))
-  for (const tile of tiles) {
-    const [x0, y0, w, h] = [tile.x * cell.width, tile.y * cell.height, tile.columns * cell.width, tile.rows * cell.height]
-    let same = last32 !== undefined && tile.png !== ''
-    for (let y = y0; same && y < y0 + h; y += 1) for (let at = y * width + x0, end = at + w; same && at < end; at += 1) same = now32[at] === last32?.[at]
-    if (same) continue
-    const cut = new Uint8Array(w * h * 4)
-    for (let y = 0; y < h; y += 1) cut.set(pixels.subarray(((y0 + y) * width + x0) * 4, ((y0 + y) * width + x0 + w) * 4), y * w * 4)
-    tile.png = base64Of(pngOf(cut, w, h))
-    tile.sent = false
+  if (stage.png !== undefined && last !== undefined && last.length === pixels.length) {
+    const now32 = new Uint32Array(pixels.buffer, pixels.byteOffset, pixels.length / 4)
+    const last32 = new Uint32Array(last.buffer, last.byteOffset, last.length / 4)
+    let same = true
+    for (let at = 0; same && at < now32.length; at += 1) same = now32[at] === last32[at]
+    if (same) return
   }
-  stage.tiles = tiles
+  stage.png = base64Of(pngOf(pixels, width, pixels.length / 4 / width))
   stage.pixels = pixels
+  stage.sent = false
 }
 
-/** The stage's tiles to draw it with, its first frame drawn if it has none yet: the drawing carries each tile's last frame, so none waits to be swapped in. */
-export const stageTiles = (stage: Stage, scheme: 'dark' | 'light'): Tile[] => {
-  if (stage.tiles === undefined) {
+/** The stage's picture to draw it with, its first frame drawn if it has none yet: the drawing carries it, so it waits for no swap. */
+export const stagePicture = (stage: Stage, scheme: 'dark' | 'light'): string => {
+  if (stage.png === undefined) {
     const { pixels, width } = stageFrame(stage, scheme)
-    changedTiles(stage, pixels, width)
+    changedPicture(stage, pixels, width)
   }
-  for (const tile of stage.tiles ?? []) tile.sent = true
+  stage.sent = true
 
-  return stage.tiles ?? []
+  return stage.png ?? ''
 }
 
-/** Tiles whose swap was refused, and may show an old frame: swapped in again at the next frame. */
-export const refusedTiles = (tiles: readonly Tile[]): void => {
-  for (const tile of tiles) tile.sent = false
+/** A picture whose swap was refused, and may show an old frame: swapped in again at the next frame. */
+export const refusedPicture = (stage: Stage): void => {
+  stage.sent = false
 }
 
 /**
  * One frame of the timer: the world on by `step` (the time gone since the
  * last, so a late frame is never slow motion), then, when its picture is due
  * (its wait done and bytes to send; every frame while anything moves, every
- * STILL_EVERY while all stand still), the tiles that changed; with them, any
- * refused before: the tiles to swap in now.
+ * STILL_EVERY while all stand still), the picture if it changed, or if it
+ * was refused before: the picture to swap in now, if any.
  */
-export const stageTick = (stage: Stage, step: number, scheme: 'dark' | 'light'): Tile[] => {
-  if (stage.world.props.paused === true) return []
+export const stageTick = (stage: Stage, step: number, scheme: 'dark' | 'light'): string | undefined => {
+  if (stage.world.props.paused === true) return undefined
   tick(stage.world, step)
   stage.skipped += 1
   stage.wait -= 1
@@ -181,13 +162,11 @@ export const stageTick = (stage: Stage, step: number, scheme: 'dark' | 'light'):
   // All standing still: every STILL_EVERY frames, and as an eye shuts or opens.
   const resting = stage.still && stage.world.carried.size === 0 && stage.skipped < STILL_EVERY && !(stage.blinks !== undefined && stage.world.sceneNow >= stage.blinks)
   if (stage.wait < 0 && stage.allowance > 0 && !resting) drawTick(stage, scheme)
-  const unsent = (stage.tiles ?? []).filter(tile => !tile.sent)
-  for (const tile of unsent) {
-    tile.sent = true
-    stage.allowance -= tile.png.length
-  }
+  if (stage.sent || stage.png === undefined) return undefined
+  stage.sent = true
+  stage.allowance -= stage.png.length
 
-  return unsent
+  return stage.png
 }
 
 /** A frame drawn, and what drawing it took says how long till the next. */
@@ -195,7 +174,7 @@ const drawTick = (stage: Stage, scheme: 'dark' | 'light'): void => {
   stage.skipped = 0
   const at = clockMs()
   const { pixels, width } = stageFrame(stage, scheme)
-  changedTiles(stage, pixels, width)
+  changedPicture(stage, pixels, width)
   if (at !== undefined) stage.wait = Math.min(MOST_WAIT, Math.ceil((((clockMs() ?? at) - at) * PICTURE_SHARE) / IMAGE_FRAME_MS) - 1)
 }
 

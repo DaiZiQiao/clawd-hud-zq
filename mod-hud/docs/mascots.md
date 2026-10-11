@@ -212,23 +212,25 @@ the stretch, pick up, dangle, throw and tumble.
   under the same hit layer, a frame every 33 ms (`VECTOR_FRAME_MS`, thirty a
   second). Whose mascot is under the pointer still comes from the cells.
 - **A terminal that shows pictures** (`hooks/scene-image.ts`): the pane's
-  scene and the band's yard are each a picture cut in tiles of 10 by 3 cells
-  (`TILE_COLUMNS`, `TILE_ROWS`), each tile a keyed `Image` whose frames
-  `$.ui.blit` swaps in from the hooks. A frame writes and swaps only the tiles
-  whose pixels changed, so a mascot walking costs the few it is in. The hooks run the scene's world themselves, as the `Client` runs it
+  scene and the band's yard are each one picture, a keyed `Image` whose
+  frames `$.ui.blit` swaps in from the hooks, and only a frame whose pixels
+  changed. One, not pieces: the terminal fits a picture to its cells keeping
+  its shape, so where its cells are not 8 by 16 pieces of one would each
+  shrink a little and show the terminal between them, a line through the
+  mascot. The hooks run the scene's world themselves, as the `Client` runs it
   on its surface. Each frame is rasterized (`rasterOf`, anti-aliased by each
   edge's coverage), its text in a small bitmap font (`hooks/raster-font.ts`),
-  the theme keys in the person's theme's dark or light colours, and its
-  changed tiles written as PNGs (`hooks/png.ts`: rows filtered by `Sub`,
+  the theme keys in the person's theme's dark or light colours, and written
+  as a PNG (`hooks/png.ts`: rows filtered by `Sub`,
   deflated with the fixed Huffman codes; the hooks have no zlib). A pane's
   cell is 8 by 16 pixels; a region of 200 cells or fewer is drawn at 16 by
   32.
-- **Kept light.** The terminal decodes and draws every tile it is sent, so a
+- **Kept light.** The terminal decodes and draws every picture it is sent, so a
   picture sends few: the hooks' timer comes every 125 ms, a frame each while
   anything moves (eight a second), every fourth while every mascot stands
   still (two a second), and one as a blink begins and as it ends. A picture's
   mascots are drawn calm (`PoseContext.calm`): standing still they do not
-  breathe (a body swelling would send all its tiles again), a blink is shut
+  breathe (a body swelling would send its picture again each frame), a blink is shut
   whole while it lasts, and a typing hand strikes a key a frame. A picture
   sends at most 128 KiB a second (`BYTES_A_SECOND`, twice
   that at once): past it, its frames wait, whatever moves. It draws again no
@@ -236,9 +238,9 @@ the stretch, pick up, dangle, throw and tumble.
   frames at most), so a costly frame comes less often instead of making the
   rest late, and a press on it draws at once. Each picture's world steps on
   by the time gone since its last frame (up to `MOST_STEP_MS`), so a late
-  frame is never slow motion. A band 120 cells across sends about 40 KiB a
-  second while its mascot walks and under 10 while it works at its laptop;
-  the hooks spend a few percent of a core on it. A tile whose swap is
+  frame is never slow motion. A band 120 cells across sends about 60 KiB a
+  second while its mascot walks and under 20 while it works at its laptop;
+  the hooks spend a few percent of a core on it. A picture whose swap is
   refused is swapped in again at the next frame. Over the picture is a
   `Client` drawing nothing
   (`hooks/scene-hit.tsx`). It numbers each pointer event and posts its recent
