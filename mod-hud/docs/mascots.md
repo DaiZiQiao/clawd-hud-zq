@@ -700,12 +700,25 @@ ears, the crown by its left ear. In a terminal
 that shows pictures (Ghostty, kitty), the TV's module tells the hooks when
 the mascot has grown into the giant (as its glass switches on) and when it
 shrinks out of it (`{ kind: 'tv', giant }`); in between, the hooks draw the
-giant as one picture over its box (`giantPicture`: a cell 8 by 16 pixels,
-some 30 KiB, drawn once, once more for its blink, and for a propeller cap
-twice more, its blade turning two frames a second), and the module draws
-only the glass, its panel and the `✕` over it, as text (`TvInputs.pictured`).
-The giant blinks every few seconds there too, the hooks swapping its eyes
-shut a moment. The flight and the growing stay the module's quarters there.
+giant as pictures, and the module draws only the glass, its panel and the
+`✕` over them, as text (`TvInputs.pictured`). A picture takes every cell of
+its box from the pane, so the giant is drawn through windows
+(`giantWindows`): the box its cells take, cut across where that gives the
+pane back 40 cells or more, up to six windows, most giants three (what it
+wears, its body, its arms and legs), so the pane's text shows in the rows
+beside what it wears and round its body, as it does round the block giant.
+Each window is a Box that clips to its cells (`overflow: hidden`) holding
+a picture of the giant's whole box (a cell 8 by 16 pixels), clear but for
+what its cells may show: the terminal fits a picture to its box keeping its
+shape, squeezing it towards its middle where a cell is not 1 by 2, so
+pictures of one size are squeezed alike and the windows meet with no seam;
+each keeps the pixels the squeeze may bring into its cells (for cells 0.4
+to 0.625 as wide as high), and a cell such pixels may land in is in a
+window. Some 50 KiB when it grows into the giant (a whole picture was 22),
+drawn once, again for its blink and for a propeller cap's blade, only the
+windows a frame changes (two a blink), the blade turning two frames a
+second. The giant blinks every few seconds there too, the hooks swapping
+its eyes shut a moment. The flight and the growing stay the module's quarters there.
 Drawn smooth, a press anywhere in the giant's box is on the mascot, not
 outside it.
 

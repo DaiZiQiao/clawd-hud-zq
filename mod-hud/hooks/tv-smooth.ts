@@ -18,8 +18,8 @@ import type { HatName } from './usagi-sprites'
 // its eyes under the TV, its arms, legs and what it wears around it; and on
 // its way there, the scene's own figure flying in and growing. In the
 // region's pixels, a cell 8 across and 16 down. In a terminal that shows
-// pictures the hooks draw the giant alone as one (`giantPicture`), the TV's
-// module drawing its glass over it.
+// pictures the hooks draw the giant alone as pictures (`giantWindows`), the
+// TV's module drawing its glass over them.
 
 const CW = 8
 const CH = 16
@@ -319,11 +319,185 @@ export const giantCells = (who: Who, layout: TvLayout): Set<number> => {
   return cells
 }
 
-/** The giant as a picture of its box (a cell 8 by 16 pixels), as the desktop draws it, still (its propeller's blade at `spin`): a PNG, base64. */
-export const giantPicture = (who: Who, layout: TvLayout, eyes: Eyes, scheme: 'dark' | 'light' = 'dark', spin = 0): string => {
-  const width = Math.max(1, layout.width) * CW
-  const height = Math.max(1, layout.height) * CH
-  const pixels = rasterOf(giantShapes(who, layout, eyes, spin), width, height, translate(-layout.left * CW, -layout.top * CH), undefined, scheme)
+/** The giant's frame as the pixels of its box (a cell 8 by 16 pixels), RGBA, as the desktop draws it, still (its propeller's blade at `spin`). */
+export const giantPixels = (who: Who, layout: TvLayout, eyes: Eyes, scheme: 'dark' | 'light' = 'dark', spin = 0): Uint8Array =>
+  rasterOf(giantShapes(who, layout, eyes, spin), Math.max(1, layout.width) * CW, Math.max(1, layout.height) * CH, translate(-layout.left * CW, -layout.top * CH), undefined, scheme)
 
-  return base64Of(pngOf(pixels, width, height))
+/** A window onto the giant's picture: cells of its box, from the box's top left. */
+export type GiantPiece = { x: number; y: number; w: number; h: number }
+
+/** Windows onto the giant at most, each cut from one before only where that leaves at least `LEAST_FREED` more of the box's cells to the pane. */
+const MOST_PIECES = 6
+const LEAST_FREED = 40
+
+/**
+ * How far the terminal may draw a picture's pixels from where its cells are,
+ * a cell away from the box's middle, in its pixels: it fits the whole picture
+ * to its box keeping its shape, so where a cell is narrower than half its
+ * height (to 0.4 of it) the picture is squeezed towards its middle row by up
+ * to 4 pixels a row, and where wider (to 0.625) towards its middle column by
+ * up to 2 a column. A cell so shows pixels from further out than its own,
+ * never further in.
+ */
+const SQUEEZE = { down: 4, across: 2 } as const
+/** A pixel's blur either side of what a cell shows. */
+const BLUR = 2
+
+/** The pixels cell `at` of `size` may show along one axis (`own` pixels a cell, squeezed up to `squeeze` a cell from the middle): its own and, on its side of the middle, those further out. */
+const shownOf = (at: number, size: number, own: number, squeeze: number): [number, number] => [
+  Math.max(0, at * own + Math.min(0, Math.floor(squeeze * (at - size / 2))) - BLUR),
+  Math.min(size * own, (at + 1) * own + Math.max(0, Math.ceil(squeeze * (at + 1 - size / 2))) + BLUR),
+]
+
+/** The cells of a box `width` by `height` that may show a pixel any of `frames` inks, as the terminal fits it (`shownOf`), row by row. */
+const inkedCells = (frames: readonly Uint8Array[], width: number, height: number): Uint8Array => {
+  const across = width * CW
+  const down = height * CH
+  const ink = new Uint8Array(across * down)
+  for (const pixels of frames) for (let at = 0; at < ink.length; at += 1) if (pixels[at * 4 + 3] !== 0) ink[at] = 1
+  // The inked pixels above and left of each pixel's corner: any in a box, four lookups.
+  const sums = new Int32Array((across + 1) * (down + 1))
+  for (let y = 0; y < down; y += 1) {
+    let row = 0
+    for (let x = 0; x < across; x += 1) {
+      row += ink[y * across + x] ?? 0
+      sums[(y + 1) * (across + 1) + x + 1] = (sums[y * (across + 1) + x + 1] ?? 0) + row
+    }
+  }
+  const sum = (x: number, y: number): number => sums[y * (across + 1) + x] ?? 0
+  const inked = new Uint8Array(width * height)
+  for (let y = 0; y < height; y += 1) {
+    const [top, bottom] = shownOf(y, height, CH, SQUEEZE.down)
+    for (let x = 0; x < width; x += 1) {
+      const [left, right] = shownOf(x, width, CW, SQUEEZE.across)
+      if (sum(right, bottom) - sum(left, bottom) - sum(right, top) + sum(left, top) > 0) inked[y * width + x] = 1
+    }
+  }
+
+  return inked
+}
+
+/**
+ * The windows the giant is drawn through, so the pane shows round it as it
+ * does round the block giant: the box its inked cells take, cut in two (a row
+ * or a column across) where that leaves the most cells out, again and again
+ * while a cut leaves out `LEAST_FREED` or more, up to `MOST_PIECES`. Each
+ * window holds all of its inked cells and none of another's.
+ */
+export const giantPieces = (inked: Uint8Array, width: number, height: number): GiantPiece[] => {
+  // The inked cells a row (and a column) has before each cell: whether a run of it has any, one subtraction.
+  const rows = new Int32Array(height * (width + 1))
+  const columns = new Int32Array(width * (height + 1))
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      const ink = inked[y * width + x] ?? 0
+      rows[y * (width + 1) + x + 1] = (rows[y * (width + 1) + x] ?? 0) + ink
+      columns[x * (height + 1) + y + 1] = (columns[x * (height + 1) + y] ?? 0) + ink
+    }
+  }
+  const rowHas = (y: number, from: number, to: number): boolean => (rows[y * (width + 1) + to] ?? 0) > (rows[y * (width + 1) + from] ?? 0)
+  const columnHas = (x: number, from: number, to: number): boolean => (columns[x * (height + 1) + to] ?? 0) > (columns[x * (height + 1) + from] ?? 0)
+  // The box the inked cells in `box` take; undefined, none.
+  const tight = (box: GiantPiece): GiantPiece | undefined => {
+    let top = box.y
+    while (top < box.y + box.h && !rowHas(top, box.x, box.x + box.w)) top += 1
+    if (top === box.y + box.h) return undefined
+    let bottom = box.y + box.h - 1
+    while (!rowHas(bottom, box.x, box.x + box.w)) bottom -= 1
+    let left = box.x
+    while (!columnHas(left, top, bottom + 1)) left += 1
+    let right = box.x + box.w - 1
+    while (!columnHas(right, top, bottom + 1)) right -= 1
+
+    return { x: left, y: top, w: right - left + 1, h: bottom - top + 1 }
+  }
+  const whole = tight({ x: 0, y: 0, w: width, h: height })
+  const pieces = whole === undefined ? [] : [whole]
+  while (pieces.length < MOST_PIECES) {
+    let best = { freed: LEAST_FREED - 1, at: -1, parts: [] as GiantPiece[] }
+    pieces.forEach((piece, at) => {
+      const cuts = [
+        ...Array.from({ length: piece.h - 1 }, (_, k): [GiantPiece, GiantPiece] => [{ ...piece, h: k + 1 }, { ...piece, y: piece.y + k + 1, h: piece.h - k - 1 }]),
+        ...Array.from({ length: piece.w - 1 }, (_, k): [GiantPiece, GiantPiece] => [{ ...piece, w: k + 1 }, { ...piece, x: piece.x + k + 1, w: piece.w - k - 1 }]),
+      ]
+      for (const cut of cuts) {
+        const parts = cut.flatMap(part => tight(part) ?? [])
+        const freed = piece.w * piece.h - parts.reduce((sum, part) => sum + part.w * part.h, 0)
+        if (freed > best.freed) best = { freed, at, parts }
+      }
+    })
+    if (best.at < 0) break
+    pieces.splice(best.at, 1, ...best.parts)
+  }
+
+  return pieces
+}
+
+/** The pixels a piece's picture keeps: those its window's cells may show (`shownOf`). */
+const keptOf = (piece: GiantPiece, width: number, height: number): { left: number; right: number; top: number; bottom: number } => {
+  const [left] = shownOf(piece.x, width, CW, SQUEEZE.across)
+  const [, right] = shownOf(piece.x + piece.w - 1, width, CW, SQUEEZE.across)
+  const [top] = shownOf(piece.y, height, CH, SQUEEZE.down)
+  const [, bottom] = shownOf(piece.y + piece.h - 1, height, CH, SQUEEZE.down)
+
+  return { left, right, top, bottom }
+}
+
+/** A piece's picture: the frame's pixels it keeps (`keptOf`), the rest clear; the whole box's size, so the terminal fits it as it would the whole. */
+const piecePicture = (pixels: Uint8Array, width: number, height: number, piece: GiantPiece): string => {
+  const across = width * CW
+  const { left, right, top, bottom } = keptOf(piece, width, height)
+  const kept = new Uint8Array(pixels.length)
+  for (let y = top; y < bottom; y += 1) kept.set(pixels.subarray((y * across + left) * 4, (y * across + right) * 4), (y * across + left) * 4)
+
+  return base64Of(pngOf(kept, across, height * CH))
+}
+
+/**
+ * The giant in a terminal that shows pictures: the windows it is drawn
+ * through (`giantPieces`, from its eyes open and, `turns`, its blade's two
+ * frames, so none leaves out what another draws) and each frame's pictures,
+ * one a window (PNGs, base64), drawn as first asked for, a window's taken
+ * from the first frame where its pixels are the same.
+ */
+export const giantWindows = (who: Who, layout: TvLayout, scheme: 'dark' | 'light', turns: boolean): { pieces: GiantPiece[]; frame: (eyes: Eyes, spin: number) => string[] } => {
+  const width = Math.max(1, layout.width)
+  const height = Math.max(1, layout.height)
+  const drawn = new Map<string, Uint8Array>()
+  const pixelsOf = (eyes: Eyes, spin: number): Uint8Array => {
+    const key = `${eyes}:${spin}`
+    const pixels = drawn.get(key) ?? giantPixels(who, layout, eyes, scheme, spin)
+    drawn.set(key, pixels)
+
+    return pixels
+  }
+  const first = pixelsOf('open', 0)
+  const pieces = giantPieces(inkedCells(turns ? [first, pixelsOf('open', 1)] : [first], width, height), width, height)
+  const firsts = pieces.map(piece => piecePicture(first, width, height, piece))
+  const frames = new Map<string, string[]>([['open:0', firsts]])
+  // Whether two frames' pixels are the same over what a piece's picture keeps.
+  const same = (a: Uint8Array, b: Uint8Array, piece: GiantPiece): boolean => {
+    const { left, right, top, bottom } = keptOf(piece, width, height)
+    for (let y = top; y < bottom; y += 1) {
+      for (let at = (y * width * CW + left) * 4; at < (y * width * CW + right) * 4; at += 1) if (a[at] !== b[at]) return false
+    }
+
+    return true
+  }
+
+  return {
+    pieces,
+    frame: (eyes, spin) => {
+      const key = `${eyes}:${spin}`
+      let pictures = frames.get(key)
+      if (pictures === undefined) {
+        const pixels = pixelsOf(eyes, spin)
+        drawn.delete(key)
+        pictures = pieces.map((piece, at) => (same(pixels, first, piece) ? (firsts[at] as string) : piecePicture(pixels, width, height, piece)))
+        frames.set(key, pictures)
+      }
+
+      return pictures
+    },
+  }
 }

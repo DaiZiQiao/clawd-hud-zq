@@ -16,7 +16,7 @@ import type { Who } from './tv-figure'
 import { TV_FRAMES, TV_FRAME_MS, tvLayoutOf, tvLookAt } from './tv-model'
 import type { TvInputs, TvRow } from './tv-model'
 import { paintCells, paintSvg } from './tv-paint'
-import { casingOf, giantCells, giantPicture, giantShapes, spriteShapes } from './tv-smooth'
+import { casingOf, giantCells, giantPixels, giantShapes, giantWindows, spriteShapes } from './tv-smooth'
 import { BLINK_EVERY_MS, createTv, pointerTv, startClose, tickTv, tvPostOf } from './tv-world'
 import type { TvPost } from './tv-world'
 import { USAGI } from './usagi-sprites'
@@ -136,14 +136,56 @@ describe('the giant, smooth', () => {
     }
   })
 
-  test('a picture of its box: a PNG a cell 8 by 16 pixels, in its colours on a clear ground; its eyes shut, another', () => {
-    const { layout } = inputsOf(CLAWD)
-    const open = giantPicture(CLAWD, layout, 'open')
-    const picture = pngPixels(open)
-    expect([picture.width, picture.height]).toEqual([layout.width * 8, layout.height * 16])
-    expect(countColour(picture, CLAWD.colour)).toBeGreaterThan(layout.body.w * layout.body.h * 32)
-    expect(picture.pixels[3]).toBe(0)
-    expect(giantPicture(CLAWD, layout, 'shut')).not.toBe(open)
+  test('drawn through windows: each a picture of its whole box (a cell 8 by 16 pixels) clear but round its window, together the giant; the rows beside what it wears left to the pane; its eyes shut, only the windows they are in drawn again', () => {
+    for (const who of [CLAWD, { character: 'clawd', colour: CLAWD.colour, accessory: 'beanie' } as Who, BUNNY]) {
+      const { layout } = inputsOf(who)
+      const { width, height } = layout
+      const whole = giantPixels(who, layout, 'open')
+      const { pieces, frame } = giantWindows(who, layout, 'dark', false)
+      const open = frame('open', 0)
+      expect(pieces.length, who.character).toBeGreaterThan(1)
+      expect(open).toHaveLength(pieces.length)
+      // No two windows share a cell.
+      const owner = new Map<number, number>()
+      let shared = 0
+      pieces.forEach((piece, at) => {
+        for (let y = piece.y; y < piece.y + piece.h; y += 1) {
+          for (let x = piece.x; x < piece.x + piece.w; x += 1) {
+            if (owner.has(y * width + x)) shared += 1
+            owner.set(y * width + x, at)
+          }
+        }
+      })
+      expect(shared).toBe(0)
+      const pictures = open.map(png => pngPixels(png))
+      for (const picture of pictures) expect([picture.width, picture.height]).toEqual([width * 8, height * 16])
+      // Every inked pixel in a window, and its window's picture has it as the whole does.
+      let inked = 0
+      let outside = 0
+      let wrong = 0
+      for (let py = 0; py < height * 16; py += 1) {
+        for (let px = 0; px < width * 8; px += 1) {
+          const at = (py * width * 8 + px) * 4
+          if (whole[at + 3] === 0) continue
+          inked += 1
+          const piece = owner.get(Math.floor(py / 16) * width + Math.floor(px / 8))
+          if (piece === undefined) outside += 1
+          else if ([0, 1, 2, 3].some(k => pictures[piece]?.pixels[at + k] !== whole[at + k])) wrong += 1
+        }
+      }
+      expect([outside, wrong]).toEqual([0, 0])
+      expect(inked).toBeGreaterThan(layout.body.w * layout.body.h * 32)
+      // The box's top row, over what it wears, is the pane's; so are most of the rows beside what it wears.
+      const wearRows = Array.from({ length: layout.body.y }, (_, y) => y)
+      const free = wearRows.flatMap(y => Array.from({ length: width }, (_, x) => y * width + x)).filter(cell => !owner.has(cell))
+      expect(free.length, who.character).toBeGreaterThan(wearRows.length * width / 2)
+      // Shut, the windows its eyes are in drawn again; the rest kept.
+      const shut = frame('shut', 0)
+      const changed = shut.filter((png, at) => png !== open[at]).length
+      expect(changed).toBeGreaterThan(0)
+      expect(changed).toBeLessThan(pieces.length)
+      expect(frame('shut', 0)).toBe(shut)
+    }
   })
 })
 
@@ -282,7 +324,7 @@ describe('the TV with the vector art', () => {
 })
 
 describe('in a terminal that shows pictures', () => {
-  test('grown into the giant, the hooks draw it a picture over its box under the module\'s glass, the module told so; it blinks; shrinking, the picture goes', { timeoutMs: 20_000 }, async ($, on) => {
+  test('grown into the giant, the hooks draw it under the module\'s glass through windows onto pictures of its box, the module told so; it blinks; shrinking, the pictures go', { timeoutMs: 20_000 }, async ($, on) => {
     const { clock } = arrange(on, [TYPIST])
     mock.env(on, GHOSTTY)
     const sent: { key: string; png: string }[] = []
@@ -293,13 +335,13 @@ describe('in a terminal that shows pictures', () => {
       return { value: {} }
     })
     const ui = await mount($, 'terminal', 72, 36)
-    const giantOf = async () => (await ui.findAll({ type: 'Image' })).find(one => one.key === 'tv:giant')
+    const giantsOf = async () => (await ui.findAll({ type: 'Image' })).filter(one => one.key?.startsWith('tv:giant:') === true)
     const tvOf = async () => (await ui.findAll({ type: 'Client' })).find(one => one.key === 'tv')
     await ui.post({ kind: 'inspect', id: 'a', at: { x: 10, y: 1 } }, { in: 'mascots' })
     await ui.redraw()
     // Flying in: the module's own drawing.
     expect((await tvOf())?.props.module).toBe('hooks/tv-client.tsx')
-    expect(await giantOf()).toBe(undefined)
+    expect(await giantsOf()).toEqual([])
     expect(((await tvOf())?.props.props as TvInputs).pictured).toBe(undefined)
     // Grown, switching on: the giant a picture of its box.
     await ui.advance((TV_FRAMES.travel + TV_FRAMES.grow + 1) * TV_FRAME_MS)
@@ -308,32 +350,45 @@ describe('in a terminal that shows pictures', () => {
     expect(inputs.pictured).toBe(true)
     // The casing's colour as the picture has it, raw, for the glass's edge rows over it.
     expect(inputs.casing).toMatch(/^#[0-9A-Fa-f]{6}$/)
-    const image = await giantOf()
-    expect(image).toBeDefined()
-    expect([image?.props.columns, image?.props.rows]).toEqual([inputs.layout.width, inputs.layout.height])
-    const picture = pngPixels(String((image?.props.source as { png: string }).png))
-    expect([picture.width, picture.height]).toEqual([inputs.layout.width * 8, inputs.layout.height * 16])
-    expect(countColour(picture, inputs.who.colour)).toBeGreaterThan(1000)
-    // It blinks: its eyes swapped shut a moment, then open again.
+    const images = await giantsOf()
+    expect(images.length).toBeGreaterThan(1)
+    // Each the whole box's picture, in a window that clips it to its cells.
+    const windows = (await ui.findAll({ type: 'Box' })).filter(one => one.key?.startsWith('tv-giant:') === true)
+    expect(windows).toHaveLength(images.length)
+    for (const window of windows) {
+      expect(window.props.overflow).toBe('hidden')
+      expect(Number(window.props.width) * Number(window.props.height)).toBeLessThan(inputs.layout.width * inputs.layout.height)
+    }
+    const colour = images.reduce((sum, image) => {
+      expect([image.props.columns, image.props.rows]).toEqual([inputs.layout.width, inputs.layout.height])
+      const picture = pngPixels(String((image.props.source as { png: string }).png))
+      expect([picture.width, picture.height]).toEqual([inputs.layout.width * 8, inputs.layout.height * 16])
+
+      return sum + countColour(picture, inputs.who.colour)
+    }, 0)
+    expect(colour).toBeGreaterThan(1000)
+    // It blinks: the window its eyes are in swapped shut a moment, then open again.
     await clock.advance(BLINK_EVERY_MS + 200)
-    const blinks = sent.filter(one => one.key === 'tv:giant')
+    const blinks = sent.filter(one => one.key.startsWith('tv:giant:'))
     expect(blinks.length).toBeGreaterThanOrEqual(2)
-    expect(new Set(blinks.map(one => one.png)).size).toBe(2)
-    // Closed: the glass switches off, it shrinks out of the giant, the picture gone.
+    expect(blinks.length).toBeLessThan(images.length * 2)
+    const eyes = blinks[0]?.key
+    expect(new Set(blinks.filter(one => one.key === eyes).map(one => one.png)).size).toBe(2)
+    // Closed: the glass switches off, it shrinks out of the giant, the pictures gone.
     await ui.key({ key: 'q', in: 'tv' })
     await ui.advance((TV_FRAMES['power-off'] + 1) * TV_FRAME_MS)
     await ui.redraw()
-    expect(await giantOf()).toBe(undefined)
+    expect(await giantsOf()).toEqual([])
     await ui.unmount()
   })
 
   test('pressed in flight, the giant\'s propeller turns in its picture too: its blade\'s two frames swapped in turn', { timeoutMs: 20_000 }, async ($, on) => {
     const { clock } = arrange(on, [TYPIST])
     mock.env(on, GHOSTTY)
-    const sent: string[] = []
+    const sent: { key: string; png: string }[] = []
     on('ui.blit', (_$, e) => {
       const args = e as unknown as { key: string; source: { png?: string } }
-      if (args.key === 'tv:giant') sent.push(args.source.png ?? '')
+      if (args.key.startsWith('tv:giant:')) sent.push({ key: args.key, png: args.source.png ?? '' })
 
       return { value: {} }
     })
@@ -342,11 +397,13 @@ describe('in a terminal that shows pictures', () => {
     await ui.redraw()
     await ui.advance((TV_FRAMES.travel + TV_FRAMES.grow + 1) * TV_FRAME_MS)
     await ui.redraw()
-    expect((await ui.findAll({ type: 'Image' })).some(one => one.key === 'tv:giant')).toBe(true)
-    // Two blade frames a second, each the whole giant.
+    expect((await ui.findAll({ type: 'Image' })).some(one => one.key?.startsWith('tv:giant:') === true)).toBe(true)
+    // Two blade frames a second, the window the blade is in swapped each.
     await clock.advance(1600)
-    expect(new Set(sent).size).toBe(2)
-    expect(sent.length).toBeGreaterThanOrEqual(3)
+    const blade = sent[0]?.key
+    const turns = sent.filter(one => one.key === blade)
+    expect(new Set(turns.map(one => one.png)).size).toBe(2)
+    expect(turns.length).toBeGreaterThanOrEqual(3)
     await ui.unmount()
   })
 
@@ -374,7 +431,7 @@ describe('in a terminal that shows pictures', () => {
     const tv = (await ui.findAll({ type: 'Client' })).find(one => one.key === 'tv')
     expect((tv?.props.props as TvInputs).art).toBe(undefined)
     expect((tv?.props.props as TvInputs).pictured).toBe(undefined)
-    expect((await ui.findAll({ type: 'Image' })).some(one => one.key === 'tv:giant')).toBe(false)
+    expect((await ui.findAll({ type: 'Image' })).some(one => one.key?.startsWith('tv:giant') === true)).toBe(false)
     await ui.unmount()
   })
 })

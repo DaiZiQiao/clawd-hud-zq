@@ -113,7 +113,8 @@ import { tvLayoutOf, tvRowsOf } from './tv-model'
 import type { TvInputs, TvLayout, TvRow } from './tv-model'
 import { budgeted, tvHeadOf, tvRowOfInspect, tvWhoOf } from './tv-rows'
 import { SCENE_THEMES, isThemeKey } from './svg-style'
-import { casingOf, giantPicture } from './tv-smooth'
+import { casingOf, giantWindows } from './tv-smooth'
+import type { GiantPiece } from './tv-smooth'
 import { BLADE_MS, BLINK_EVERY_MS, BLINK_MS, tvPostOf } from './tv-world'
 
 const PANE = 'hud'
@@ -1259,14 +1260,16 @@ const PICTURE_FRESH = 10
 const PICTURE_GIVE_UP_MS = 3000
 
 /**
- * The TV's giant as a picture under its glass, by site: its Image's key, who
- * and where it was drawn for, its frames by eyes and propeller blade (each
- * drawn when first shown), the one shown, whether its blade turns (pressed in
- * flight), and its own clock for the blinks and the blade.
+ * The TV's giant as pictures under its glass, by site: its Images' key (each
+ * window's its own, `key:index`), who and where it was drawn for, the windows
+ * it is drawn through and a frame's pictures, one a window, by eyes and
+ * propeller blade (`giantWindows`), the frame shown and its pictures, whether
+ * its blade turns (pressed in flight), and its own clock for the blinks and
+ * the blade.
  */
-type GiantPicture = { requestId: string; surface: string; key: string; drawn: string; frames: Map<string, string>; shown: string; turns: boolean; ms: number; draw: (eyes: 'open' | 'shut', blade: number) => string }
+type GiantPicture = { requestId: string; surface: string; key: string; drawn: string; pieces: GiantPiece[]; frame: (eyes: 'open' | 'shut', blade: number) => string[]; shown: string; pictures: string[]; turns: boolean; ms: number }
 
-/** A giant's frame at its clock: its eyes shut a moment every few seconds, no shorter than the timer's frame so none is missed; its blade turning two frames a second (each frame the whole giant). */
+/** A giant's frame at its clock: its eyes shut a moment every few seconds, no shorter than the timer's frame so none is missed; its blade turning two frames a second. */
 const giantFrameOf = (giant: GiantPicture): { key: string; eyes: 'open' | 'shut'; blade: number } => {
   const eyes = giant.ms % BLINK_EVERY_MS < Math.max(BLINK_MS, IMAGE_FRAME_MS) ? 'shut' : 'open'
   const blade = giant.turns ? Math.floor(giant.ms / Math.max(BLADE_MS, 4 * IMAGE_FRAME_MS)) % 2 : 0
@@ -1274,13 +1277,6 @@ const giantFrameOf = (giant: GiantPicture): { key: string; eyes: 'open' | 'shut'
   return { key: `${eyes}:${blade}`, eyes, blade }
 }
 
-/** A giant's frame, drawn once. */
-const giantPng = (giant: GiantPicture, frame: { key: string; eyes: 'open' | 'shut'; blade: number }): string => {
-  const drawn = giant.frames.get(frame.key) ?? giant.draw(frame.eyes, frame.blade)
-  giant.frames.set(frame.key, drawn)
-
-  return drawn
-}
 const giantPictures = new Map<string, GiantPicture>()
 /** The last event taken from each hit layer, by its name: kept past the stages, which a session's end clears while their layers live on. */
 const hitSeqs = new Map<string, number>()
@@ -1361,25 +1357,30 @@ const startPictures = ($: EngineInterface): void => {
             })(),
           )
         }
+        // A giant's windows whose pictures its new frame changes, swapped in.
         for (const [site, giant] of giantPictures) {
           giant.ms += IMAGE_FRAME_MS
           const frame = giantFrameOf(giant)
           if (frame.key === giant.shown) continue
+          const before = giant.pictures
           giant.shown = frame.key
-          const png = giantPng(giant, frame)
-          swaps.push(
-            (async () => {
-              let deny: string | undefined
-              try {
-                deny = (await $.ui.blit({ requestId: giant.requestId, key: giant.key, source: { png } })).deny
-              } catch (error) {
-                deny = String(error)
-              }
-              if (deny === undefined) return
-              if (drawsAlt(deny)) noPictures($, giant.surface, deny)
-              else giantPictures.delete(site)
-            })(),
-          )
+          giant.pictures = giant.frame(frame.eyes, frame.blade)
+          giant.pictures.forEach((png, at) => {
+            if (png === before[at]) return
+            swaps.push(
+              (async () => {
+                let deny: string | undefined
+                try {
+                  deny = (await $.ui.blit({ requestId: giant.requestId, key: `${giant.key}:${at}`, source: { png } })).deny
+                } catch (error) {
+                  deny = String(error)
+                }
+                if (deny === undefined) return
+                if (drawsAlt(deny)) noPictures($, giant.surface, deny)
+                else giantPictures.delete(site)
+              })(),
+            )
+          })
         }
         await Promise.all(swaps)
         // Nothing to draw: no pictures, or only scenes held paused (their next drawing starts the timer again).
@@ -1487,10 +1488,12 @@ const pictureOf = async (
 }
 
 /**
- * The TV's giant as a picture at `requestId`, over its box in the TV's
- * region, under the module's glass: drawn afresh for another who, place or
- * scheme, eyes open (shut a moment as it blinks); the timer swapping the
- * blinks in.
+ * The TV's giant as pictures at `requestId`, under the module's glass: each
+ * window it is drawn through (`giantWindows`) showing its cells of a picture
+ * of the giant's whole box, so the terminal fits each as it would the whole
+ * and they meet with no seam, and the pane shows in the cells round them.
+ * Drawn afresh for another who, place or scheme, eyes open (shut a moment as
+ * it blinks); the timer swapping the blinks in.
  */
 const giantPictureOf = async ($: EngineInterface, table: object, surface: string, requestId: string, layout: TvLayout, who: Who, now: number): Promise<RenderElement> => {
   const scheme = await schemeFor($, now)
@@ -1498,21 +1501,28 @@ const giantPictureOf = async ($: EngineInterface, table: object, surface: string
   const drawn = JSON.stringify([who, layout, scheme])
   let giant = giantPictures.get(site)
   if (giant === undefined || giant.drawn !== drawn) {
-    const draw = (eyes: 'open' | 'shut', blade: number): string => giantPicture(who, layout, eyes, scheme, blade)
+    const windows = giantWindows(who, layout, scheme, who.cap === true)
     // Its clock starts past a blink: the first comes a few seconds on.
-    giant = { requestId, surface, key: `${TV_KEY}:giant`, drawn, frames: new Map(), shown: '', turns: who.cap === true, ms: Math.max(BLINK_MS, IMAGE_FRAME_MS), draw }
+    giant = { requestId, surface, key: `${TV_KEY}:giant`, drawn, pieces: windows.pieces, frame: windows.frame, shown: '', pictures: [], turns: who.cap === true, ms: Math.max(BLINK_MS, IMAGE_FRAME_MS) }
     giantPictures.set(site, giant)
   }
   // The frame its clock is at, the one the timer then swaps on from.
   const frame = giantFrameOf(giant)
   giant.shown = frame.key
-  const shown = giantPng(giant, frame)
+  giant.pictures = giant.frame(frame.eyes, frame.blade)
   startPictures($)
   const { Box, Image } = table as { Box: (props: Record<string, unknown>) => RenderElement; Image: (props: ImageProps) => RenderElement }
+  const { key, pictures } = giant
 
   return (
     <Box key="tv-giant" position="absolute" top={layout.top} left={layout.left} width={layout.width} height={layout.height}>
-      <Image key={giant.key} source={{ png: shown }} columns={layout.width} rows={layout.height} alt=" " />
+      {giant.pieces.map((piece, at) => (
+        <Box key={`tv-giant:${at}`} position="absolute" top={piece.y} left={piece.x} width={piece.w} height={piece.h} overflow="hidden">
+          <Box marginLeft={-piece.x} marginTop={-piece.y} width={layout.width} height={layout.height} flexShrink={0}>
+            <Image key={`${key}:${at}`} source={{ png: pictures[at] as string }} columns={layout.width} rows={layout.height} alt=" " />
+          </Box>
+        </Box>
+      ))}
     </Box>
   )
 }
