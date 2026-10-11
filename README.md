@@ -137,7 +137,7 @@ Every request re-reads the whole conversation, mostly from the prompt cache, whi
 - A role letter above the head: `r` reviewer, `d` debugger, `p` Plan, `w` worker, `f` frontend, `e` Explore or researcher.
 - Eight accessories (beanie, cap, top hat, flower, bow, halo, note, propeller) tell agents apart.
 - Effort marks: none for low or medium, `✦` for high, `✦✦` for xhigh and max.
-- At work they type at a laptop (the session's mascot while Claude works on a turn, a subagent the whole time it runs), code filling the screen and a thought beside them; idle they stroll about, stretch, sit and have a puff; after five minutes idle they sleep under a blanket. They also ask for permission, hop and act out hand-offs, reports and reviews.
+- At work they type at a laptop (the session's mascot while Claude works on a turn, a subagent the whole time it runs), code filling the screen and a thought beside them, drawn smooth as Claude Code's spinner draws it (its glyph turning, the word in JetBrains Mono with the glimmer passing over it; the session's mascot thinks the turn's own spinner word); idle they stroll about, stretch, sit and have a puff; after five minutes idle they sleep under a blanket. They also ask for permission, hop and act out hand-offs, reports and reviews.
 - Flights carry meaning: a web call sends a mascot into the sky, Explore agents scan the floor from above, a reading streak lifts off, finished agents fly out, and the session flies up on a compaction.
 - Collisions (`collisions` setting) knock mascots over, dizzy, before they get up and carry on.
 - Motion is `smooth` (20 fps, mouse grab and throw) or `classic` (4 fps, everywhere).

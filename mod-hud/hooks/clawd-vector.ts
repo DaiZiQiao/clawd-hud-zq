@@ -16,6 +16,23 @@ export const noise = (n: number, seed = 0): number => {
   return x - Math.floor(x)
 }
 
+/**
+ * Motion's spring (motion.dev's `spring(visualDuration, bounce)`) from 0 to 1
+ * at rest, `t` ms in: its stiffness from the visual duration and its damping
+ * ratio from the bounce as Motion works them out (mass 1), then the spring's
+ * own curve, past 1 and back by the bounce.
+ */
+export const springAt = (t: number, visualMs: number, bounce: number): number => {
+  if (t <= 0) return 0
+  const zeta = Math.max(1 - bounce, 0.05)
+  const w0 = (2 * Math.PI) / ((visualMs / 1000) * 1.2)
+  const s = t / 1000
+  if (zeta >= 1) return 1 - Math.exp(-w0 * s) * (1 + w0 * s)
+  const wd = w0 * Math.sqrt(1 - zeta * zeta)
+
+  return 1 - Math.exp(-zeta * w0 * s) * (Math.cos(wd * s) + ((zeta * w0) / wd) * Math.sin(wd * s))
+}
+
 /** Smoothstep: 0 to 1 over `x` 0 to 1, easing in and out. */
 export const smooth = (x: number): number => {
   const k = Math.max(0, Math.min(1, x))
@@ -65,9 +82,10 @@ const invert = (m: Matrix): Matrix | undefined => {
 export type Paint = string
 
 /**
- * One shape, placed by `m`: a rectangle (corners rounded by `r`), an ellipse
- * (its box's; a ring `ring` thick instead of a disc), a polygon (`points`,
- * any simple one; grown `grow` all round, its corners rounded, as an outline
+ * One shape, placed by `m`: a rectangle (corners rounded by `r`) or an
+ * ellipse (its box's), either a ring `ring` thick on its edge instead, a
+ * polygon (`points`, any simple one, its `rings` with it even-odd; grown
+ * `grow` all round, its corners rounded, as an outline
  * laid under it is; or with its `outline` laid under it, that far out round
  * it), a line through `points` `stroke` thick (its ends and bends round), or
  * a line of text (its baseline's middle, start or end at `x`, `y`; `size` its
@@ -83,6 +101,8 @@ export type Shape = {
   r?: number
   ring?: number
   points?: readonly (readonly [number, number])[]
+  /** A polygon's further contours, filled with `points` even-odd: a glyph's holes and its other parts. */
+  rings?: readonly (readonly (readonly [number, number])[])[]
   grow?: number
   outline?: { width: number; fill: string }
   stroke?: number
@@ -106,7 +126,7 @@ const elementOf = (shape: Shape): string => {
   const alpha = shape.alpha ?? 1
   const grow = shape.kind === 'poly' ? shape.grow ?? 0 : 0
   const outline = shape.kind === 'poly' ? shape.outline : undefined
-  const paint = shape.kind === 'ellipse' && shape.ring !== undefined
+  const paint = (shape.kind === 'ellipse' || shape.kind === 'rect') && shape.ring !== undefined
     ? ` fill='none' stroke='${hexOf(shape.fill)}' stroke-width='${num(shape.ring)}'${alpha < 1 ? ` stroke-opacity='${num(alpha)}'` : ''}`
     : shape.kind === 'line'
       ? ` fill='none' stroke='${hexOf(shape.fill)}' stroke-width='${num(shape.stroke ?? 0)}' stroke-linecap='round' stroke-linejoin='round'${alpha < 1 ? ` stroke-opacity='${num(alpha)}'` : ''}`
@@ -126,6 +146,8 @@ const elementOf = (shape: Shape): string => {
     case 'ellipse':
       return `<ellipse cx='${num(shape.x + shape.w / 2)}' cy='${num(shape.y + shape.h / 2)}' rx='${num(shape.w / 2)}' ry='${num(shape.h / 2)}'${paint}/>`
     case 'poly':
+      if (shape.rings !== undefined) return `<path d='${ringsOf(shape).map(ring => `M${ring.map(([x, y]) => `${num(x)},${num(y)}`).join('L')}Z`).join('')}' fill-rule='evenodd'${paint}/>`
+
       return `<polygon points='${(shape.points ?? []).map(([x, y]) => `${num(x)},${num(y)}`).join(' ')}'${paint}/>`
     case 'line':
       return `<polyline points='${(shape.points ?? []).map(([x, y]) => `${num(x)},${num(y)}`).join(' ')}'${paint}/>`
@@ -197,17 +219,33 @@ const rgbOf = (hex: string): [number, number, number] => {
  * packed five numbers each for the pixel loops: where each starts, its run
  * across and down, and one over its length squared (0 for none).
  */
-const edgesOf = (points: readonly (readonly [number, number])[], closed: boolean): Float64Array => {
-  const count = closed ? points.length : Math.max(0, points.length - 1)
-  const edges = new Float64Array(count * 5)
-  for (let i = 0; i < count; i += 1) {
-    const [ax, ay] = points[i] ?? [0, 0]
-    const [bx, by] = points[(i + 1) % points.length] ?? [ax, ay]
-    const dx = bx - ax
-    const dy = by - ay
-    const length = dx * dx + dy * dy
-    edges.set([ax, ay, dx, dy, length > 0 ? 1 / length : 0], i * 5)
-  }
+/** A polygon's contours: its points, then its rings. */
+const ringsOf = (shape: Shape): readonly (readonly (readonly [number, number])[])[] => [shape.points ?? [], ...(shape.rings ?? [])]
+
+/** An edge's numbers in `edgesOf`: its start, its run, 1 over its length squared, the y it ends at. */
+const EDGE = 6
+
+/**
+ * The edges of `rings`, each closed back to its start (or open, a line's
+ * stretches), EDGE numbers an edge: where it ends in y is the next point's
+ * own, so a vertex on a row's middle is crossed once, never twice or not at
+ * all.
+ */
+const edgesOf = (rings: readonly (readonly (readonly [number, number])[])[], closed: boolean): Float64Array => {
+  const counts = rings.map(points => (closed ? points.length : Math.max(0, points.length - 1)))
+  const edges = new Float64Array(counts.reduce((sum, count) => sum + count, 0) * EDGE)
+  let at = 0
+  rings.forEach((points, ring) => {
+    for (let i = 0; i < (counts[ring] ?? 0); i += 1) {
+      const [ax, ay] = points[i] ?? [0, 0]
+      const [bx, by] = points[(i + 1) % points.length] ?? [ax, ay]
+      const dx = bx - ax
+      const dy = by - ay
+      const length = dx * dx + dy * dy
+      edges.set([ax, ay, dx, dy, length > 0 ? 1 / length : 0, by], at)
+      at += EDGE
+    }
+  })
 
   return edges
 }
@@ -228,16 +266,15 @@ const distanceTo = (shape: Shape): ((x: number, y: number) => number) => {
         : (x, y) => Math.abs((Math.hypot((x - cx) / rx, (y - cy) / ry) - 1) * small) - ring / 2
     }
     case 'poly': {
-      // Any simple polygon, convex or not (a stroke along an arc): the distance to its nearest edge, inside by its crossings;
-      // grown, that much nearer.
-      const points = shape.points ?? []
+      // Any simple polygon, convex or not (a stroke along an arc), its rings too: the distance to its nearest edge, inside by
+      // its crossings (even-odd); grown, that much nearer.
       const grow = shape.grow ?? 0
-      const edges = edgesOf(points, true)
+      const edges = edgesOf(ringsOf(shape), true)
 
       return (x, y) => {
         let nearest = Infinity
         let inside = false
-        for (let i = 0; i < edges.length; i += 5) {
+        for (let i = 0; i < edges.length; i += EDGE) {
           const ax = edges[i] ?? 0
           const ay = edges[i + 1] ?? 0
           const dx = edges[i + 2] ?? 0
@@ -250,7 +287,7 @@ const distanceTo = (shape: Shape): ((x: number, y: number) => number) => {
           const ey = py - t * dy
           const d = ex * ex + ey * ey
           if (d < nearest) nearest = d
-          if (ay > y !== (edges[((i + 5) % edges.length) + 1] ?? 0) > y && x < ax + (py * dx) / dy) inside = !inside
+          if (ay > y !== (edges[i + 5] ?? 0) > y && x < ax + (py * dx) / dy) inside = !inside
         }
         const distance = Math.sqrt(nearest)
 
@@ -260,11 +297,11 @@ const distanceTo = (shape: Shape): ((x: number, y: number) => number) => {
     case 'line': {
       // A line through its points: the distance to its nearest stretch, less half its width.
       const half = (shape.stroke ?? 0) / 2
-      const stretches = edgesOf(shape.points ?? [], false)
+      const stretches = edgesOf([shape.points ?? []], false)
 
       return (x, y) => {
         let nearest = Infinity
-        for (let i = 0; i < stretches.length; i += 5) {
+        for (let i = 0; i < stretches.length; i += EDGE) {
           const px = x - (stretches[i] ?? 0)
           const py = y - (stretches[i + 1] ?? 0)
           const dx = stretches[i + 2] ?? 0
@@ -285,11 +322,14 @@ const distanceTo = (shape: Shape): ((x: number, y: number) => number) => {
       const hx = shape.w / 2 - r
       const hy = shape.h / 2 - r
 
+      const ring = shape.ring
+
       return (x, y) => {
         const qx = Math.abs(x - cx) - hx
         const qy = Math.abs(y - cy) - hy
+        const d = (qx > 0 || qy > 0 ? Math.hypot(Math.max(qx, 0), Math.max(qy, 0)) : Math.max(qx, qy)) - r
 
-        return (qx > 0 || qy > 0 ? Math.hypot(Math.max(qx, 0), Math.max(qy, 0)) : Math.max(qx, qy)) - r
+        return ring === undefined ? d : Math.abs(d) - ring / 2
       }
     }
     case 'text':
@@ -300,8 +340,9 @@ const distanceTo = (shape: Shape): ((x: number, y: number) => number) => {
 /** The local box a shape covers, for its pixels' bounds. */
 const boundsOf = (shape: Shape): [number, number, number, number] => {
   if (shape.kind === 'poly' || shape.kind === 'line') {
-    const xs = (shape.points ?? []).map(one => one[0])
-    const ys = (shape.points ?? []).map(one => one[1])
+    const points = shape.kind === 'poly' ? ringsOf(shape).flat() : shape.points ?? []
+    const xs = points.map(one => one[0])
+    const ys = points.map(one => one[1])
     const pad = shape.kind === 'line' ? (shape.stroke ?? 0) / 2 : (shape.grow ?? 0) + (shape.outline?.width ?? 0)
 
     return [Math.min(...xs) - pad, Math.min(...ys) - pad, Math.max(...xs) + pad, Math.max(...ys) + pad]
@@ -395,7 +436,7 @@ const layShape = (pixels: Uint8Array, width: number, height: number, shape: Shap
   const [b0, b1, b2, b3, b4, b5] = back
   // A plain polygon a row at a time: where its edges (in pixels) cross the row's middle says which pixels are inside it,
   // and only those near an edge are worked out exactly; the rest are wholly in or out.
-  const scan = shape.kind === 'poly' && (shape.grow ?? 0) === 0 && outline === undefined ? edgesOf((shape.points ?? []).map(([x, y]) => applyTo(m, x, y)), true) : undefined
+  const scan = shape.kind === 'poly' && (shape.grow ?? 0) === 0 && outline === undefined ? edgesOf(ringsOf(shape).map(ring => ring.map(([x, y]) => applyTo(m, x, y))), true) : undefined
   const crossings: number[] = []
   const near = new Uint8Array(scan === undefined ? 0 : Math.max(0, x1 - x0 + 1))
   for (let py = y0; py <= y1; py += 1) {
@@ -408,13 +449,13 @@ const layShape = (pixels: Uint8Array, width: number, height: number, shape: Shap
       const middle = py + 0.5
       crossings.length = 0
       near.fill(0)
-      for (let i = 0; i < scan.length; i += 5) {
+      for (let i = 0; i < scan.length; i += EDGE) {
         const ax = scan[i] ?? 0
         const ay = scan[i + 1] ?? 0
         const dx = scan[i + 2] ?? 0
         const dy = scan[i + 3] ?? 0
-        // Crossed by the row's middle: its ends on either side, the end the next edge's start itself (not `ay + dy`, which may round to the other side of a vertex on the middle).
-        if (ay > middle !== (scan[((i + 5) % scan.length) + 1] ?? 0) > middle) crossings.push(ax + ((middle - ay) * dx) / dy)
+        // Crossed by the row's middle: its ends on either side, the end the next point's own (not `ay + dy`, which may round to the other side of a vertex on the middle).
+        if (ay > middle !== (scan[i + 5] ?? 0) > middle) crossings.push(ax + ((middle - ay) * dx) / dy)
         // The pixels within one of it, a pixel above or below the row's middle: near.
         const top = Math.max(Math.min(ay, ay + dy), middle - 1)
         const bottom = Math.min(Math.max(ay, ay + dy), middle + 1)

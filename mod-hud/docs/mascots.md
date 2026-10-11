@@ -81,8 +81,8 @@ narrow to dock the pane.
   scene `mainOnly`: drawn smooth, its feet stand on the band's floor (an
   eighth of a row over its edge, so a foot set down is never cut off), not
   half a row up where Clawd's block legs end. With one row of sky over it,
-  a thought's cloud comes down and out beside its head as far as it must
-  to show whole (a shout's balloon already does). Under the band the engine
+  a thought's pill comes down beside its head as far as it must to show
+  whole (a shout's balloon already does). Under the band the engine
   keeps a blank row over the prompt box: the band is drawn in a box that
   clips to its own rows, so no plugin draws there. With
   `motion: classic`, or where its `Client` failed, the classic scene draws it
@@ -185,6 +185,26 @@ the stretch, pick up, dangle, throw and tumble.
   the code it writes grows a character every other stroke's time, line by
   line, each its own length, colour and indent, the oldest scrolling off the
   top, a cursor blinking at the end.
+- **A thought** (`thoughtShapes`) says what Claude Code's spinner says, as
+  it says it. The session's mascot thinks its turn's spinner word
+  (`Noodling…`): the Spinner's `ui.render` hook, drawn as the engine draws
+  it, hands the main conversation's word on as it changes (written to the
+  `spinner` state off the render, on the clock, since a draw writes
+  nothing), and the scene carries it while the mascot is thinking. An agent
+  thinks one of Claude Code's own verbs (`CLAUDE_VERBS`, 52 of the
+  spinner's), a new one every 20 seconds (`VERB_MS`); Usagi its cries. Two
+  dots rise from its head, then a pill grows out of the second from its
+  bottom left corner, each on a spring ported from Motion's
+  (`springAt`: 260 ms with a bounce of 0.45 for the dots, 340 ms with 0.3
+  for the pill), the words fading in after: the spinner's glyph turning in
+  Claude's orange (`·✢✳✶✻✻` and back, 120 ms a glyph, drawn as shapes) and
+  the word in JetBrains Mono, Ghostty's own font (`hooks/mono-font.ts`: its
+  outlines under the OFL, `OFL-JetBrainsMono.txt`, drawn as shapes, so a
+  picture needs no font), an ellipsis after it, and Claude Code's glimmer, a
+  light three letters wide, stepping back along it every 200 ms in
+  `claudeShimmer`'s colour (the theme key `shimmer`). The pill floats a
+  little, and comes down beside the head as far as it must to show whole
+  under the band's one row of sky. A mini's thought is the dots alone.
 - **The art** (`hooks/smooth-art.ts`): Clawd keeps Claude Code's own
   proportions (its logo's 18 by 6 quadrants) and wears its accessory, letter
   and energy marks. Usagi is drawn as Chiikawa draws it: cream, a bold
@@ -214,7 +234,7 @@ the stretch, pick up, dangle, throw and tumble.
   panels the same way, its propeller turning over its ears; the session's
   crown, small and outlined, tilted on the left of its head in front of its
   ear. Its laptop stands nearer it than Clawd's, its body being narrower.
-  Its thoughts are its phrases (`Yahaa!`, `Haa?`) in the cloud, its
+  Its thoughts are its phrases (`Yahaa!`, `Haa?`) in the pill, its
   shouts on the cigarette's puffs (`Ura!`, `Haa?`, `Pururu!`, hands up),
   `Haa?` getting up from a fall, and `Yaha!` as it bounds. Knocked flat, its hat (its ear holes
   empty) or its crown lies on the floor beside it. A child's mini is the same

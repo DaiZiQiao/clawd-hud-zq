@@ -76,6 +76,8 @@ export type MascotMain = {
   energy?: Energy
   /** Tidying up: a compaction of the main conversation running this long (it squashes a pile of pages beside it). */
   tidyMs?: number
+  /** Thinking: Claude Code's spinner word for the turn (`Noodling`), its thought's words. */
+  word?: string
 }
 
 /** A message between two mascots: a bubble that travels from one to the other. */
@@ -144,6 +146,8 @@ export type SceneOptions = {
   only?: SceneCast
   /** A compaction of the main conversation running since then (`mod-hud.tidy`): the session's mascot tidies up. */
   tidyingSince?: number
+  /** Claude Code's spinner word for the main conversation's turn (`mod-hud.spinner`): what the session's mascot thinks. */
+  word?: string
 }
 
 /**
@@ -218,6 +222,8 @@ export type SceneInputs = {
   only?: SceneCast
   /** A compaction of the main conversation running since then: the session's mascot tidies up. */
   tidyingSince?: number
+  /** Claude Code's spinner word for the main conversation's turn: what the session's mascot thinks. */
+  word?: string
 }
 
 /** Where an agent is in its life, at this tick. */

@@ -85,6 +85,9 @@ describe('sceneOf', () => {
   test('idle time, sweat at 85 % as the HUD rounds it, and the stretch after a compaction', () => {
     const main: HudMainFacts = { idleSince: NOW - LONG_IDLE_MS }
     expect(sceneOf([], idleHud, NOW, { main }).main.idleMs).toBe(LONG_IDLE_MS)
+    // Claude Code's spinner word: what it thinks while the main loop works, none idle.
+    expect(sceneOf([], idleHud, NOW, { main: { busySince: NOW - 1000 }, word: 'Sautéing' }).main.word).toBe('Sautéing')
+    expect(sceneOf([], idleHud, NOW, { main, word: 'Sautéing' }).main.word).toBeUndefined()
     // Before any turn, idle since the session started.
     expect(sceneOf([], idleHud, NOW).main.idleMs).toBe(NOW - (idleHud.session?.startedAt ?? 0))
 

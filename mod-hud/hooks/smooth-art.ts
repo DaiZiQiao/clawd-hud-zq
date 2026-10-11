@@ -1,8 +1,9 @@
 import { CLAWD, propShapes } from './clawd-moves'
-import { about, applyTo, chain, multiply, noise, rotate, scale, translate, wave } from './clawd-vector'
-import type { Matrix, Shape } from './clawd-vector'
+import { about, applyTo, chain, multiply, noise, rotate, scale, springAt, translate, wave } from './clawd-vector'
+import type { Matrix, Paint, Shape } from './clawd-vector'
 import { ACCESSORIES, BLANKET, CROWN, LAPTOP_COLOUR } from './mascot-sprites'
 import type { Accessory } from './mascot-sprites'
+import { MONO_ADVANCE, monoShapes } from './mono-font'
 import { textWidth } from './raster-font'
 import { KEY_MS } from './smooth-pose'
 import type { Beside, FigurePose } from './smooth-pose'
@@ -1015,48 +1016,76 @@ const blanketShapes = (m: Matrix, cover: number, t: number, usagi: boolean): Sha
 
 // --- what is beside it ------------------------------------------------------------------
 
-/** A cloud's rim: on a light page the cloud's own colour barely shows. */
-const RIM = '#B8AE9C'
+/** How high over its feet a thought's pill floats, its middle, and half its height. */
+const THOUGHT_HIGH = 18.4
+const THOUGHT_HALF = 2.7
+/** Its words' size: the terminal's own, a character a cell (2 units) across. */
+const THOUGHT_EM = 2 / MONO_ADVANCE
+/** Claude Code's spinner glyphs on Ghostty, played there and back, one each SPIN_MS; the light's step along the words. */
+const SPIN = ['·', '✢', '✳', '✶', '✻', '✻'] as const
+const SPIN_MS = 120
+const GLIMMER_MS = 200
 
-/** A cloud's lumps about its middle, `width` across, grown `g` all round. */
-const lumpShapes = (m: Matrix, width: number, g: number, fill: string): Shape[] => [
-  { kind: 'ellipse', x: -width / 2 - g, y: -2.6 - g, w: width + 2 * g, h: 5.2 + 2 * g, fill, m },
-  { kind: 'ellipse', x: -width / 2 + 1 - g, y: -3.8 - g, w: width * 0.45 + 2 * g, h: 4.4 + 2 * g, fill, m },
-  { kind: 'ellipse', x: -width * 0.05 - g, y: -3.6 - g, w: width * 0.5 + 2 * g, h: 4.2 + 2 * g, fill, m },
-]
-
-/** A bubble `d` across at `x`, `y` (its box's corner), rimmed. */
-const bubbleShapes = (m: Matrix, x: number, y: number, d: number): Shape[] => [
-  { kind: 'ellipse', x: x - 0.3, y: y - 0.3, w: d + 0.6, h: d + 0.6, fill: RIM, m },
-  { kind: 'ellipse', x, y, w: d, h: d, fill: CLAWD.cloud, m },
-]
-
-/** How high over its feet a thought's cloud floats, its middle; how far over that it reaches, its lumps and rim. */
-const CLOUD_HIGH = 18.4
-const CLOUD_REACH = 4.1
+/** One of Claude Code's spinner glyphs about (x, y), as tall as a capital, in `fill`: a dot, then four, eight and six spokes or points. */
+const spinShapes = (m: Matrix, glyph: string, x: number, y: number, fill: Paint, alpha: number): Shape[] => {
+  const at = chain(m, translate(x, y))
+  const spokes = (count: number, w: number, h: number): Shape[] =>
+    Array.from({ length: count }, (_, index): Shape => ({ kind: 'ellipse', x: -w / 2, y: -1.25, w, h, fill, alpha, m: chain(at, rotate((2 * Math.PI * index) / count)) }))
+  switch (glyph) {
+    case '·':
+      return [{ kind: 'ellipse', x: -0.35, y: -0.35, w: 0.7, h: 0.7, fill, alpha, m: at }]
+    case '✢':
+      return spokes(4, 0.62, 1.05)
+    case '✳':
+      return spokes(8, 0.3, 1.1)
+    case '✶':
+      return [{ kind: 'poly', x: 0, y: 0, w: 0, h: 0, points: Array.from({ length: 12 }, (_, index): [number, number] => [(index % 2 === 0 ? 1.25 : 0.55) * Math.sin((Math.PI * index) / 6), -(index % 2 === 0 ? 1.25 : 0.55) * Math.cos((Math.PI * index) / 6)]), fill, alpha, m: at }]
+    default:
+      return spokes(6, 0.6, 1.1)
+  }
+}
 
 /**
- * A thought cloud with its phrase (or its dots), grown `grow` (0, ½, 1),
- * rimmed. Where the room over its feet (`ceiling`) is too low for it (the
- * band's one row of sky), the cloud comes down and out by as much, its
- * trail still leading up to it.
+ * A thought, as Claude Code's spinner says it: its glyph turning, its words
+ * (Usagi's line) in Claude's orange in the terminal's own font with a light
+ * sweeping back along them, an ellipsis after; in a pill over its head, two
+ * dots trailing up to it. Coming (`since`, the scene's time), the dots and
+ * then the pill spring in (Motion's springs), the words after; then it
+ * floats. A mini's thought (no words) is its dots alone. With too little
+ * room over its feet (`ceiling`; the band's one row of sky) the pill comes
+ * down and out by as much, the dots still leading up to it.
  */
-const thoughtShapes = (m: Matrix, text: string, grow: number, t: number, ceiling: number): Shape[] => {
-  const shapes: Shape[] = bubbleShapes(m, 5.8, -11.8, 1)
-  if (grow >= 0.5) shapes.push(...bubbleShapes(m, 7.4, -14.2, 1.6))
-  if (grow < 1) return shapes
-  const width = Math.max(8, text.length * 1.95 + 4)
-  const low = Math.max(0, CLOUD_HIGH + CLOUD_REACH + 0.5 - ceiling)
-  const cloud = chain(m, translate(6 + width / 2 + low, -CLOUD_HIGH + low))
-  shapes.push(...lumpShapes(cloud, width, 0.3, RIM), ...lumpShapes(cloud, width, 0, CLAWD.cloud))
-  if (text === '') {
-    for (const one of [0, 1, 2]) {
-      const lit = Math.max(0, Math.sin(Math.PI * ((t / 900 - one * 0.22) % 1)))
-      shapes.push({ kind: 'ellipse', x: -1.65 + one * 1.3 - 0.35, y: -0.5 - 0.5 * lit, w: 0.7, h: 0.7, fill: EYE, alpha: 0.35 + 0.65 * lit, m: cloud })
-    }
-  } else {
-    shapes.push({ kind: 'text', x: 0, y: 1.1, w: 0, h: 0, text, size: 3.1, fill: EYE, m: cloud })
+const thoughtShapes = (m: Matrix, text: string, since: number | undefined, t: number, ceiling: number): Shape[] => {
+  const age = since === undefined ? Infinity : t - since
+  const float = (phase: number): number => 0.3 * Math.sin((2 * Math.PI * (t - (since ?? 0))) / 2600 + phase)
+  const dot = (x: number, y: number, d: number, delay: number): Shape[] => {
+    const r = (d / 2) * springAt(age - delay, 260, 0.45)
+
+    return r > 0.02 ? [{ kind: 'ellipse', x: x - r, y: y - r + float(delay / 200), w: 2 * r, h: 2 * r, fill: 'claude', alpha: 0.75, m }] : []
   }
+  const shapes = [...dot(6.3, -11.3, 1, 0), ...dot(8.2, -13.4, 1.5, 90)]
+  const grow = springAt(age - 180, 340, 0.3)
+  if (text === '' || grow <= 0.02) return shapes
+  const line = /[…!?]$/.test(text) ? text : `${text}…`
+  const chars = [...line].length
+  const width = (chars + 2) * 2 + 2.4
+  const low = Math.max(0, THOUGHT_HIGH + THOUGHT_HALF + 0.4 - ceiling)
+  const left = 9 + low
+  const middle = -THOUGHT_HIGH + low + float(1.2)
+  // Springing out of its corner by the dots.
+  const pill = chain(m, translate(left, middle + THOUGHT_HALF), scale(grow), translate(-left, -middle - THOUGHT_HALF))
+  shapes.push(
+    { kind: 'rect', x: left, y: middle - THOUGHT_HALF, w: width, h: 2 * THOUGHT_HALF, r: THOUGHT_HALF, fill: 'text', alpha: 0.07, m: pill },
+    { kind: 'rect', x: left, y: middle - THOUGHT_HALF, w: width, h: 2 * THOUGHT_HALF, r: THOUGHT_HALF, ring: 0.28, fill: 'claude', alpha: 0.6, m: pill },
+  )
+  const shown = Math.max(0, Math.min(1, (age - 300) / 160))
+  if (shown <= 0) return shapes
+  const baseline = middle + 1.2
+  const spin = Math.floor(t / SPIN_MS) % (2 * SPIN.length)
+  shapes.push(...spinShapes(pill, SPIN[spin < SPIN.length ? spin : 2 * SPIN.length - 1 - spin] ?? '✻', left + 2.2, baseline - 1.2, 'claude', shown))
+  // The light: three characters, stepping back along the words and on past them (Claude Code's glimmer).
+  const glimmer = chars + 10 - (Math.floor(t / GLIMMER_MS) % (chars + 20))
+  shapes.push(...monoShapes(line, left + 5.2, baseline, THOUGHT_EM, index => ({ fill: Math.abs(index - glimmer) <= 1 ? 'shimmer' : 'claude', alpha: shown }), pill))
 
   return shapes
 }
@@ -1073,7 +1102,7 @@ const besideShapes = (one: Beside, m: Matrix, info: FigureInfo, t: number, usagi
   const row = (index: number): number => rowY(index, usagi)
   switch (one.kind) {
     case 'thought':
-      return thoughtShapes(m, one.text, one.grow, t, ceiling)
+      return thoughtShapes(m, one.text, one.since, t, ceiling)
     case 'shout':
       // Over its head where the room goes that high; else lower, beside its head, the room's top over it.
       return burstShapes(m, one.text, Math.max(row(-1) + 1, -ceiling + BURST_REACH), t)

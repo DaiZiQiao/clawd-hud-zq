@@ -66,6 +66,8 @@ declare module 'claude-code' {
       tidy: HudTidyFacts
       /** The band's one-second clock, written only while the band draws a tidy running, counting down or its result. */
       bandTick: number
+      /** Claude Code's spinner word for the main conversation (`Noodling`), sampled per turn: written as it changes, with mascots on; the session's mascot thinks it. */
+      spinner: string | null
     }
   }
 }

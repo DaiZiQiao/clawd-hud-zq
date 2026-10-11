@@ -170,6 +170,8 @@ const ledger = atom(LEDGER, NO_LEDGER)
 const NO_TIDY: HudTidyFacts = {}
 const tidyFacts = atom({ plugin: 'mod-hud', key: 'tidy' } as const, NO_TIDY)
 const bandTick = atom({ plugin: 'mod-hud', key: 'bandTick' } as const, 0)
+// Claude Code's spinner word for the main conversation's turn: written as it changes, with mascots on.
+const spinnerWord = atom({ plugin: 'mod-hud', key: 'spinner' } as const, null)
 
 // `git status` runs from its own timer, never the tick: at most once per
 // GIT_DEBOUNCE_MS, after a tool that may have changed the tree or a main turn.
@@ -1725,6 +1727,7 @@ const bandYard = async (
   const hud = await bandHudOf($, settings, now)
   const main = (await attempt(() => read($, mainFacts))) ?? NO_MAIN
   const tidyingSince = (await read($, tidyFacts)).runningSince
+  const word = (await attempt(() => read($, spinnerWord))) ?? null
   const svg = surface === 'desktop' && 'Svg' in table ? table.Svg : undefined
   if (settings.motion === 'smooth' && 'Client' in table && !bandFaulted.has(surface)) {
     const props: SceneInputs = sceneInputsOf(list, workflow, hud, {
@@ -1740,6 +1743,7 @@ const bandYard = async (
       inspect: settings.inspect,
       only: 'main',
       ...(tidyingSince === undefined ? {} : { tidyingSince }),
+      ...(word === null ? {} : { word }),
       ...(svg === undefined ? {} : { svg: true as const }),
       ...(settings.mascotArt === 'vector' ? { art: 'vector' as const } : {}),
       ...(settings.character === 'usagi' ? { character: 'usagi' as const } : {}),
@@ -2458,6 +2462,7 @@ export const register: Register = (on, options) => {
     const agentsOnly = settings.sessionMascot === 'band' && bandMascot.get(e.surface) === true
     // Where it is in the pane, it tidies up there while a compaction runs.
     const tidyingSince = settings.mascots && !agentsOnly ? (await attempt(() => read($, tidyFacts)))?.runningSince : undefined
+    const word = settings.mascots && !agentsOnly ? (await attempt(() => read($, spinnerWord))) ?? null : null
     let sceneTop: number | undefined
     if (settings.mascots && (smooth || inspecting === undefined)) {
       try {
@@ -2478,11 +2483,12 @@ export const register: Register = (on, options) => {
               ...(inspecting === undefined ? {} : { paused: true }),
               ...(svg === undefined ? {} : { svg: true as const }),
               ...(settings.mascotArt === 'vector' ? { art: 'vector' as const } : {}),
-                      ...(settings.character === 'usagi' ? { character: 'usagi' as const } : {}),
+              ...(settings.character === 'usagi' ? { character: 'usagi' as const } : {}),
               ...(away === undefined ? {} : { away }),
               ...(shaken === undefined ? {} : { startled: shaken }),
               ...(agentsOnly ? { only: 'agents' as const } : {}),
               ...(tidyingSince === undefined ? {} : { tidyingSince }),
+              ...(word === null ? {} : { word }),
             })
             const { Client } = table as { Client: (props: { key: string; module: string; props?: unknown; width?: number; height?: number }) => RenderElement }
             // A terminal that shows pictures: the vector art as one, swapped frame by frame; while
@@ -2612,6 +2618,22 @@ export const register: Register = (on, options) => {
         {tv}
       </Box>
     )
+  })
+
+  // Claude Code's spinner word for the main conversation's turn (`Noodling`): what the session's mascot
+  // thinks. Written only as it changes, and off the clock: a draw is pure, so it writes nothing itself.
+  // The spinner is drawn as the engine draws it.
+  let spinnerSaid: string | undefined
+  on('ui.render', { component: 'Spinner' }, ($, e, next) => {
+    if (settings.mascots && e.requestId === 'main' && e.props.word !== spinnerSaid) {
+      spinnerSaid = e.props.word
+      const word = e.props.word
+      $.clock.after(0, () => void quietly($, async () => {
+        await update($, spinnerWord, () => word)
+      }))
+    }
+
+    return next(e)
   })
 
   // The band above the prompt: the session's mascot in its yard (the

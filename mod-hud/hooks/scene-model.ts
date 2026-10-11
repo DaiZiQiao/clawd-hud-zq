@@ -388,6 +388,7 @@ export const sceneOf = (
       ...(stretch !== undefined && stretch >= 0 && stretch < STRETCH_TICKS * SCENE_FRAME_MS ? { stretchMs: stretch } : {}),
       ...(energy === 0 ? {} : { energy }),
       ...(tidy !== undefined && tidy >= 0 && tidy < TIDY_STALE_MS ? { tidyMs: tidy } : {}),
+      ...(mood === 'thinking' && options.word !== undefined && options.word !== '' ? { word: options.word } : {}),
     },
     agents: onlyMain ? [] : piped,
     ...(events.length === 0 ? {} : { events }),
@@ -488,5 +489,6 @@ export const sceneFromInputs = (inputs: SceneInputs, now: number): MascotScene =
     ...(inputs.character === undefined ? {} : { character: inputs.character }),
     ...(inputs.only === undefined ? {} : { only: inputs.only }),
     ...(inputs.tidyingSince === undefined ? {} : { tidyingSince: inputs.tidyingSince }),
+    ...(inputs.word === undefined ? {} : { word: inputs.word }),
   })
 }

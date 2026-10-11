@@ -111,6 +111,7 @@ export const smoothFrame = (scene: MascotScene, layout: MascotLayout, plan: Masc
       ...(figure.phase === undefined ? {} : { phase: figure.phase }),
       ...(figure.tidyMs === undefined ? {} : { tidyMs: figure.tidyMs }),
       ...(figure.stretchMs === undefined ? {} : { stretchMs: figure.stretchMs }),
+      ...(sprite.id === 'main' && scene.main.word !== undefined ? { word: scene.main.word } : {}),
     }
     const look = figure.look ?? figure.mini
     if (look === undefined) continue
@@ -126,8 +127,8 @@ export const smoothFrame = (scene: MascotScene, layout: MascotLayout, plan: Masc
       still = false
     }
     pose = livelyOf(pose, context, !sprite.moving && quirk === undefined)
-    // Typing moves its hands and its screen every stroke: no picture holds it still.
-    if (pose.typing !== undefined && pose.laptop > 0.5) still = false
+    // Typing moves its hands and its screen every stroke, a thought its glyph and its light: no picture holds them still.
+    if ((pose.typing !== undefined && pose.laptop > 0.5) || pose.beside.some(one => one.kind === 'thought')) still = false
     if (calm) blinks = Math.min(blinks, blinkTurn(now, context.seed))
     const info = mini ? { ...figure.info, energy: 0 as const, letter: undefined } : figure.info
     // The room's top is the canvas's: its feet's height over it, in the figure's units.

@@ -2,7 +2,7 @@ import { STRETCH_MS, stretchPose, tidyPose } from './clawd-moves'
 import type { Prop } from './clawd-moves'
 import { noise, wave } from './clawd-vector'
 import type { Look, MiniLook } from './mascot-poses'
-import { MINI_OVERLAYS, OVERLAYS, THOUGHTS, THOUGHT_FRAMES } from './mascot-sprites'
+import { MINI_OVERLAYS, OVERLAYS, THOUGHT_FRAMES } from './mascot-sprites'
 import type { Overlay } from './mascot-sprites'
 import type { Motion } from './motion-types'
 import type { Cue, Phase } from './scene-types'
@@ -24,7 +24,8 @@ export type MouthShape = 'dot' | 'scream' | 'o' | 'smirk'
 
 /** What sits beside a mascot or in its hand, drawn smooth (hooks/smooth-art.ts). */
 export type Beside =
-  | { kind: 'thought'; text: string; grow: number }
+  // Its words (none, a mini's: its dots alone), and when it came (the scene's time, the smoother's to keep).
+  | { kind: 'thought'; text: string; since?: number }
   | { kind: 'shout'; text: string }
   | { kind: 'zzz' }
   | { kind: 'moon' }
@@ -97,7 +98,7 @@ export const NEUTRAL: FigurePose = {
 
 // --- what each overlay is ---------------------------------------------------------
 
-type Known = { kind: Beside['kind'] | 'smoke' | 'tidy' | 'laptop'; text?: string; step?: number }
+type Known = { kind: Beside['kind'] | 'smoke' | 'tidy' | 'laptop'; step?: number; mini?: true }
 
 /** A line's text as its overlay lays it. */
 const lineOf = (overlay: Overlay): string => overlay.art.join('').replace(/\s+/g, '')
@@ -105,11 +106,8 @@ const lineOf = (overlay: Overlay): string => overlay.art.join('').replace(/\s+/g
 /** Usagi's shouts on the cigarette's puffs, one per two puff frames, as hooks/usagi-glyphs.ts has them. */
 const PUFF_LINES: readonly string[] = SHOUTS.map(lineOf)
 
-/** The growth spell's steps: 1 1 2 2 3 3 3 3 (hooks/mascot-sprites.ts GROWING). */
-const GROWING = [0, 0, 1, 1, 2, 2, 2, 2] as const
-
 const KNOWN: ReadonlyMap<Overlay, Known> = new Map<Overlay, Known>([
-  ...THOUGHT_FRAMES.flatMap((frames, phrase) => frames.map((frame, step): [Overlay, Known] => [frame, { kind: 'thought', text: THOUGHTS[phrase] ?? '', step: GROWING[step] ?? 2 }])),
+  ...THOUGHT_FRAMES.flat().map((one): [Overlay, Known] => [one, { kind: 'thought' }]),
   ...OVERLAYS.zzz.map((one): [Overlay, Known] => [one, { kind: 'zzz' }]),
   ...OVERLAYS.moon.map((one): [Overlay, Known] => [one, { kind: 'moon' }]),
   ...OVERLAYS.sweat.map((one): [Overlay, Known] => [one, { kind: 'sweat' }]),
@@ -124,7 +122,7 @@ const KNOWN: ReadonlyMap<Overlay, Known> = new Map<Overlay, Known>([
   ...OVERLAYS.smoke.map((one, step): [Overlay, Known] => [one, { kind: 'smoke', step }]),
   ...OVERLAYS.dizzy.map((one): [Overlay, Known] => [one, { kind: 'dizzy' }]),
   ...OVERLAYS.tidy.map((one): [Overlay, Known] => [one, { kind: 'tidy' }]),
-  ...MINI_OVERLAYS.thought.map((one): [Overlay, Known] => [one, { kind: 'thought', text: '', step: 1 }]),
+  ...MINI_OVERLAYS.thought.map((one): [Overlay, Known] => [one, { kind: 'thought', mini: true }]),
   ...MINI_OVERLAYS.zzz.map((one): [Overlay, Known] => [one, { kind: 'zzz' }]),
   ...MINI_OVERLAYS.laptop.map((one): [Overlay, Known] => [one, { kind: 'laptop' }]),
   ...MINI_OVERLAYS.ask.map((one): [Overlay, Known] => [one, { kind: 'ask' }]),
@@ -134,8 +132,22 @@ const KNOWN: ReadonlyMap<Overlay, Known> = new Map<Overlay, Known>([
   ...MINI_OVERLAYS.dizzy.map((one): [Overlay, Known] => [one, { kind: 'dizzy' }]),
 ])
 
-/** Usagi barely talks: in its thought cloud, its phrase at the same place in its list (hooks/usagi-sprites.ts). */
-const usagiLine = (phrase: string): string => USAGI_THOUGHTS[THOUGHTS.indexOf(phrase as (typeof THOUGHTS)[number])] ?? phrase
+/**
+ * The verbs Claude Code's spinner says (`Noodling`): an agent thinks one of
+ * them (the session thinks the spinner's own word), Usagi a line of its own
+ * (hooks/usagi-sprites.ts); each held VERB_MS.
+ */
+const CLAUDE_VERBS = [
+  'Baking', 'Brewing', 'Calculating', 'Channeling', 'Churning', 'Clauding', 'Coalescing', 'Cogitating', 'Composing', 'Concocting', 'Considering', 'Crafting',
+  'Crunching', 'Deliberating', 'Doodling', 'Envisioning', 'Fermenting', 'Finagling', 'Forging', 'Frolicking', 'Hatching', 'Ideating', 'Imagining', 'Incubating',
+  'Kneading', 'Manifesting', 'Marinating', 'Meandering', 'Moseying', 'Mulling', 'Musing', 'Noodling', 'Percolating', 'Perusing', 'Pondering', 'Puttering',
+  'Puzzling', 'Reticulating', 'Ruminating', 'Schlepping', 'Simmering', 'Spelunking', 'Stewing', 'Synthesizing', 'Thinking', 'Tinkering', 'Vibing', 'Whirring',
+  'Whisking', 'Wibbling', 'Wrangling', 'Zesting',
+] as const
+const VERB_MS = 20_000
+
+/** One of `words` at `now`, its own by `seed`, held VERB_MS. */
+const wordAt = (words: readonly string[], now: number, seed: number): string => words[Math.floor(noise(Math.floor(now / VERB_MS), seed) * words.length)] ?? ''
 
 // --- a look as a pose ---------------------------------------------------------------
 
@@ -177,6 +189,8 @@ export type PoseContext = {
   mini?: boolean
   /** Drawn for a picture of few frames: no breath, a blink shut whole while it lasts. */
   calm?: boolean
+  /** The session's: Claude Code's spinner word for the turn, its thought's words. */
+  word?: string
 }
 
 
@@ -225,11 +239,9 @@ const besideOf = (overlays: readonly Overlay[], context: PoseContext, desk: bool
     const known = KNOWN.get(overlay)
     if (known === undefined) continue
     switch (known.kind) {
-      case 'thought': {
-        const text = known.step === 2 ? (known.text ?? '') : ''
-        beside.push({ kind: 'thought', text: usagi && text !== '' ? usagiLine(text) : text, grow: (known.step ?? 0) / 2 })
+      case 'thought':
+        beside.push({ kind: 'thought', text: known.mini === true ? '' : context.word ?? wordAt(usagi ? USAGI_THOUGHTS : CLAUDE_VERBS, context.now, context.seed) })
         break
-      }
       case 'laptop':
         laptop = true
         break
@@ -426,10 +438,14 @@ export const createSmoother = (): Smoother => {
   const held = new Map<string, Held>()
 
   return {
-    ease: (id, target, now) => {
+    ease: (id, aim, now) => {
       const before = held.get(id)
       // The same moment drawn again (a surface's redraw): the pose it already has.
       if (before !== undefined && now === before.at) return before.pose
+      // A thought keeps when it came while it stays; a new one comes now.
+      const came = before?.pose.beside.find(one => one.kind === 'thought')
+      const since = came?.kind === 'thought' ? came.since ?? now : now
+      const target: FigurePose = aim.beside.some(one => one.kind === 'thought') ? { ...aim, beside: aim.beside.map(one => (one.kind === 'thought' ? { ...one, since } : one)) } : aim
       // New, or a jump in time (back, a pause, a reload): straight to the target.
       if (before === undefined || now < before.at || now - before.at > 500) {
         held.set(id, { pose: target, v: { dx: 0, drop: 0, sx: 0, sy: 0, tilt: 0, flat: 0 }, at: now })

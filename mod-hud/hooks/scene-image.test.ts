@@ -2,7 +2,6 @@ import type { JsonValue } from 'claude-code'
 import { describe, expect, mock, test } from 'claude-code/testing'
 
 import type { HudSelection } from '../types'
-import { CLAWD } from './clawd-moves'
 import { IDENTITY, chain, rasterOf, scale, svgOf, translate } from './clawd-vector'
 import { CROWN } from './mascot-sprites'
 import { base64Of, deflate, pngOf } from './png'
@@ -201,7 +200,7 @@ describe('the stage', () => {
     expect(new Set(screens).size).toBeGreaterThan(20)
   })
 
-  test('the band\'s one row of sky: a thought\'s cloud comes down into it whole, nothing over its top', () => {
+  test('the band\'s one row of sky: a thought\'s pill comes down into it whole, nothing over its top', () => {
     const world = createWorld(inputs([], { columns: 60, rows: 5, art: 'vector', only: 'main', main: { busySince: NOW - 5_000 } }))
     const smoother = createSmoother()
     let clouds = 0
@@ -215,7 +214,8 @@ describe('the stage', () => {
       let over = 0
       for (let at = 3; at < 480 * 16 * 4; at += 4) if ((pixels[at] ?? 0) > 40) over += 1
       expect(over).toBe(0)
-      if (countColour({ pixels }, CLAWD.cloud) > 200) clouds += 1
+      // Its words lit by the light passing along them: the pill is up.
+      if (frame.shapes.some(shape => shape.fill === 'shimmer')) clouds += 1
     }
     expect(clouds).toBeGreaterThan(0)
   })

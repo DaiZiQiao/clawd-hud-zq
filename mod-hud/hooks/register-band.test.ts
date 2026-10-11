@@ -89,6 +89,27 @@ describe('the session mascot in the band', () => {
     }
   })
 
+  test('Claude Code\'s spinner word for the main conversation is what the session\'s mascot thinks: written once as it changes, carried to the band\'s scene; an agent\'s spinner writes none', { timeoutMs: 20_000 }, async ($, on) => {
+    const { clock, held, world } = arrange(on)
+    // The engine's own spinner beneath the hook.
+    on('ui.render', { component: 'Spinner' }, ($, e) => $.ui.resolve(e).Box({ key: 'engine' }))
+    await $.session.start(START)
+    const spin = async (requestId: string, word: string) => {
+      const ui = await $.ui.mount({ plugin: 'mod-hud', surface: 'terminal', component: 'Spinner', props: { word, message: null, suffix: '…', mode: 'thinking' }, requestId, viewport: VIEWPORT })
+      await ui.unmount()
+      await clock.settle()
+    }
+    const writes = () => world.writes.filter(key => key === 'spinner').length
+    await spin('main', 'Sautéing')
+    expect(held.get('spinner')?.value).toBe('Sautéing')
+    await spin('main', 'Sautéing')
+    await spin('agent-1', 'Pondering')
+    expect([held.get('spinner')?.value, writes()]).toEqual(['Sautéing', 1])
+    const band = await mountBand($, 'terminal')
+    expect((await sceneOfClient(band, 'session'))?.word).toBe('Sautéing')
+    await band.unmount()
+  })
+
   test('motion classic: the band draws the classic scene, the session\'s crowned mascot in it', { options: { motion: 'classic' } }, async ($, on) => {
     const { clock } = bandWorld(on)
     await $.session.start(START)
