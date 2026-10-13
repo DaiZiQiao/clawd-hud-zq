@@ -13,7 +13,6 @@ import {
   CHEEKS,
   CROSS as USAGI_CROSS,
   DAZED,
-  DROOP_TOP,
   EARS,
   EYES,
   FACE,
@@ -67,7 +66,6 @@ const SWAPS: ReadonlyMap<Overlay, Overlay> = new Map([
 ])
 const CIGARETTE: ReadonlySet<Overlay> = new Set(OVERLAYS.cigarette)
 const SMOKE: ReadonlySet<Overlay> = new Set(OVERLAYS.smoke)
-const CROSS: ReadonlySet<Overlay> = new Set(OVERLAYS.cross)
 
 const blankRow = (width: number): string => '.'.repeat(width)
 
@@ -86,12 +84,11 @@ const shoutOf = (look: Look): Overlay | undefined => {
   return puff === undefined ? undefined : SHOUTS[Math.floor(OVERLAYS.smoke.indexOf(puff) / 2)]
 }
 
-/** Its ears for a look: through its hat's brim they stand; else lowered squatting or asleep, trailing a walk, drooping slumped (bare). */
-const earsOf = (look: Look, hatted: boolean, crowned: boolean): Ears => {
+/** Its ears for a look: through its hat's brim they stand; else lowered squatting or asleep, trailing a walk. */
+const earsOf = (look: Look, hatted: boolean): Ears => {
   if (hatted) return 'up'
   const squat = look.pose === 'sit' || look.pose === 'crouch' || look.pose === 'squash'
-  // Slumped under its cross they droop (the shapes' rule too), unless it is unimpressed, `hmph`: then lowered.
-  if (squat) return !crowned && look.pose === 'sit' && look.lids !== 'hmph' && look.overlays.some(one => CROSS.has(one)) ? 'droop' : 'short'
+  if (squat) return 'short'
   if (look.pose === 'blanket') return 'short'
   if (look.lean !== undefined) return look.lean === 1 ? 'trailLeft' : 'trailRight'
 
@@ -127,7 +124,7 @@ export const usagiFigure = (look: Look, dress: Dress): { bitmap: string[]; palet
   const shouting = shoutOf(look) !== undefined
   const capped = look.cap !== undefined
   const hat = look.hatOff === true || capped ? undefined : dress.hat === undefined ? undefined : HATS[dress.hat]
-  const ears = EARS[earsOf(look, hat !== undefined, dress.crown === true)]
+  const ears = EARS[earsOf(look, hat !== undefined)]
   const [eyes, cheeks] = faceOf(look, shouting)
   let rows: string[]
   switch (look.pose) {
@@ -143,7 +140,7 @@ export const usagiFigure = (look: Look, dress: Dress): { bitmap: string[]; palet
     case 'squash': {
       // Squatting: the seat wide; crouched, hands on the floor; squashed, wider still.
       const seat = look.pose === 'sit' ? SEAT : look.pose === 'crouch' ? ['#.##############.#', '##################'] : ['.################.', '##################']
-      rows = [...ears, ears === EARS.droop ? DROOP_TOP : TOP, eyes, cheeks, ...seat]
+      rows = [...ears, TOP, eyes, cheeks, ...seat]
       break
     }
     case 'stand':

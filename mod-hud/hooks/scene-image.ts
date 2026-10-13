@@ -105,14 +105,15 @@ const stageFrame = (stage: Stage, scheme: 'dark' | 'light'): { pixels: Uint8Arra
     const view = viewOf(world)
     const scene = sceneAt(world, world.sceneNow)
     const layout = layoutAt(world, plan.tick)
-    world.owners = sceneCanvas(scene, layout, plan, view.sprites)?.owners
+    const canvas = sceneCanvas(scene, layout, plan, view.sprites)
+    world.owners = canvas?.owners
     // Calm: no breath (a body that swells and settles would send its picture again each frame it stands still), a blink shut whole.
-    frame = smoothFrame(scene, layout, plan, view.sprites, stage.smoother, world.sceneNow, true)
+    if (canvas !== undefined) frame = smoothFrame(scene, layout, plan, view.sprites, stage.smoother, world.sceneNow, true, canvas)
   }
   stage.still = (frame === undefined || frame.still) && world.carried.size === 0
   stage.blinks = frame?.blinks
 
-  return smoothPixels(frame ?? { shapes: [], wholes: [], width: 0, height: 0, still: true }, columns, rows, stage.cell, scheme)
+  return smoothPixels(frame ?? { shapes: [], wholes: [], still: true }, columns, rows, stage.cell, scheme)
 }
 
 /** A frame's picture, drawn again (and so to be swapped in) when its pixels differ from the last's, or there is none. */

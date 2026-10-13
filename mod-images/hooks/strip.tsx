@@ -1,6 +1,6 @@
 import type { BoxProps, ElementConstructor, ImageProps, RasterProps, RenderElement, TextProps } from 'claude-code'
 
-import { COMPACT_SEPARATOR, SWATCH_COLUMNS } from './strip-layout'
+import { COMPACT_SEPARATOR, SWATCH_COLUMNS, cut } from './strip-layout'
 import type { CompactItem, Layout, PlacedTile } from './strip-layout'
 
 // The strip's elements, from a layout (hooks/strip-layout.ts) and what each
@@ -32,8 +32,6 @@ export type TileDrawable =
 
 /** The key the tests and the blit probe find a picture by. */
 export const pictureKeyOf = (id: number): string => `img:${id}`
-
-const cutTo = (text: string, width: number): string => (text.length <= width ? text : width <= 1 ? text.slice(0, width) : `${text.slice(0, width - 1)}…`)
 
 // A line wrapped at its spaces to `width`; a word longer than that is a line of its own.
 const wrapOf = (line: string, width: number): string[] => {
@@ -67,7 +65,7 @@ const noteLinesOf = (lines: readonly string[], columns: number, rows: number): s
     }
   }
 
-  return out.map(line => cutTo(line, width))
+  return out.map(line => cut(line, width))
 }
 
 const tileOf = (ui: StripElements, tile: PlacedTile, drawable: TileDrawable): RenderElement => {

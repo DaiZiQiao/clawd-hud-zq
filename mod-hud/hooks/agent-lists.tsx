@@ -10,7 +10,7 @@ import type { Settings } from './hud-options'
 import { colourFor } from './scene-model'
 import { clipped, fitted, renderTextRow } from './text-svg'
 import type { TextCell, TextRow, TextStyle, TextSvgElements } from './text-svg'
-import { printable } from './text-width'
+import { padEnd, printable, truncate } from './text-width'
 
 // The lists under the HUD: the session's row, the Agents group (the board's
 // subagents, indented under their parents) and the Workflow group, each its
@@ -47,8 +47,7 @@ const countParts = (text: string): { text: string; color?: string }[] =>
     return kind === undefined ? { text: part } : { text: part, color: COUNT_COLOURS[kind] }
   })
 
-const cell = (text: string, width: number): string =>
-  text.length > width ? `${text.slice(0, width - 1)}…` : text.padEnd(width)
+const cell = (text: string, width: number): string => padEnd(truncate(text, width), width)
 
 const workflowHeaderOf = (list: readonly ShadowAgentEntry[], now: number, stalledMs: number): string => {
   const { running, done, failed, stalled } = shadowCounts(list, now, stalledMs)

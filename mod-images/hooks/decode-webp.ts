@@ -135,6 +135,13 @@ const vp8lPayloadOf = (bytes: Uint8Array): Uint8Array | undefined => {
  */
 const vp8lFaultOf = (payload: Uint8Array): string | undefined => {
   const reader = new BitReader(payload)
+  const subImage = (w: number, h: number): Uint32Array => {
+    const cache = reader.peekPadded(5)
+    const bits = cache >> 1
+    if ((cache & 1) !== 0 && (bits < 1 || bits > MAX_CACHE_BITS)) throw new Error(`a ${bits}-bit colour cache`)
+
+    return decodeImage(reader, w, h, false)
+  }
   if (reader.read(8) !== 0x2f) return 'bad VP8L signature'
   let width = reader.read(14) + 1
   const height = reader.read(14) + 1
@@ -147,10 +154,10 @@ const vp8lFaultOf = (payload: Uint8Array): string | undefined => {
     seen.add(type)
     if (type === 0 || type === 1) {
       const bits = reader.read(3) + 2
-      decodeImage(reader, ceil(width / (1 << bits)), ceil(height / (1 << bits)), false)
+      subImage(ceil(width / (1 << bits)), ceil(height / (1 << bits)))
     } else if (type === 3) {
       const colours = reader.read(8) + 1
-      decodeImage(reader, colours, 1, false)
+      subImage(colours, 1)
       const packing = colours <= 2 ? 3 : colours <= 4 ? 2 : colours <= 16 ? 1 : 0
       width = ceil(width / (1 << packing))
     }
@@ -162,7 +169,7 @@ const vp8lFaultOf = (payload: Uint8Array): string | undefined => {
   }
   if (reader.read(1) === 0) return undefined
   const bits = reader.read(3) + 2
-  const blocks = decodeImage(reader, ceil(width / (1 << bits)), ceil(height / (1 << bits)), false)
+  const blocks = subImage(ceil(width / (1 << bits)), ceil(height / (1 << bits)))
   let groups = 0
   for (const pixel of blocks) groups = max(groups, ((pixel >>> 8) & 0xffff) + 1)
   if (groups > MAX_GROUPS || groups > blocks.length) return `${groups} Huffman groups`

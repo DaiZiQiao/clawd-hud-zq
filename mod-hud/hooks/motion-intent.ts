@@ -32,6 +32,7 @@ import {
   clamp,
   hopLift,
   hopPose,
+  isKnocked,
   nearDepth,
   pauseOf,
   roll,
@@ -80,6 +81,18 @@ const takeOff = (mover: Mover, tick: number, others: readonly Other[], reason: F
   return { x, d, lift: 1, memo: { x, d, lift: 1, target, ...(targetD === undefined ? {} : { targetD }), pauseUntil: tick, fly }, motion: { kind: 'fly', step: 0, lift: 1 } }
 }
 
+/** Whether a smooth flight still holds: its cruise, its errand, or its signal's minimum and request. */
+export const staysUp = (mover: Mover, fly: Flight, tick: number): boolean => {
+  const reason = fly.reason ?? 'idle'
+  if (reason === 'idle') return tick - fly.from < fly.cruise
+  if (reason === 'errand') {
+    const x = clamp(mover.x, mover.lo, mover.hi)
+    const { d, dLo, dHi } = depthsOf(mover)
+    return mover.goal !== undefined && (clamp(mover.goal, mover.lo, mover.hi) !== x || clamp(mover.goalD ?? d, dLo, dHi) !== d)
+  }
+  return tick < (fly.minUntil ?? fly.from + FLIGHT_MIN_TICKS) || mover.ask?.reason === reason
+}
+
 /**
  * One frame of a smooth flight: a climb two rows a second, a cruise that
  * changes altitude every few seconds (one change in three a loop) while it
@@ -94,8 +107,8 @@ const flySmooth = (mover: Mover, memo: Memo, fly: Flight, tick: number, others: 
   const { d, dLo, dHi } = depthsOf(mover)
   const before = memo.lift ?? 0
   const sky = mover.sky - PROPELLER_ROWS
-  // A fresh signal during descent keeps it airborne, starting a new minimum.
-  if (fly.stage === 'descend' && mover.ask !== undefined) {
+  // A fresh signal during descent keeps it airborne, unless it is giving way to another flier.
+  if (fly.stage === 'descend' && mover.ask !== undefined && fly.gaveWay !== true) {
     const heights = altitudesFor(mover, others, d)
     const altitude = heights[roll(mover.id, 'altitude', tick, heights.length)] ?? fly.altitude
     fly = { ...fly, reason: mover.ask.reason, home: mover.ask.home, homeD: mover.ask.homeD, stage: 'climb', since: tick, altitude: Math.max(before, altitude), minUntil: tick + FLIGHT_MIN_TICKS }
@@ -107,12 +120,10 @@ const flySmooth = (mover: Mover, memo: Memo, fly: Flight, tick: number, others: 
     if (fly.homeD === undefined) delete fly.homeD
   }
   const reason = fly.reason ?? 'idle'
-  const held = tick < (fly.minUntil ?? fly.from + FLIGHT_MIN_TICKS)
-  const asked = mover.ask?.reason === reason
   // Still up: a signal flight while asked (or its minimum not over), an idle one through its cruise, an errand until it gets there.
   const errandAt = reason === 'errand' && mover.goal !== undefined ? clamp(mover.goal, mover.lo, mover.hi) : undefined
   const errandD = errandAt === undefined ? undefined : clamp(mover.goalD ?? d, dLo, dHi)
-  const staying = reason === 'idle' ? tick - fly.from < fly.cruise : reason === 'errand' ? errandAt !== undefined && (errandAt !== x || errandD !== d) : held || asked
+  const staying = staysUp(mover, fly, tick)
   let stage = fly.stage
   let since = fly.since
   let altitude = Math.min(fly.altitude, Math.max(1, sky))
@@ -154,7 +165,7 @@ const flySmooth = (mover: Mover, memo: Memo, fly: Flight, tick: number, others: 
         stage = 'descend'
         since = tick
       }
-    } else if (reason !== 'errand' && (target === undefined || (target === x && (targetD ?? d) === d))) {
+    } else if (reason !== 'errand' && (target === undefined || (clamp(target, mover.lo, mover.hi) === x && (targetD ?? d) === d))) {
       // Roaming the field while it is up.
       target = mover.lo + roll(mover.id, 'roam', tick, mover.hi - mover.lo + 1)
       targetD = rollDepth(mover, 'roam-depth', tick)
@@ -165,40 +176,56 @@ const flySmooth = (mover: Mover, memo: Memo, fly: Flight, tick: number, others: 
   } else {
     lift = before - 1
   }
+  // Coming down, it aims only for ground on its side of any other lander.
+  let lo = mover.lo
+  let hi = mover.hi
+  if (stage === 'descend') {
+    for (const other of others) {
+      if (other.landing !== true || other.lift < AIRBORNE || Math.abs(other.lift - before) > 1 || !nearDepth(other.d, d)) continue
+      if (other.x + other.body / 2 < x + (mover.body ?? mover.width) / 2) lo = Math.max(lo, other.x + other.body + GAP)
+      else hi = Math.min(hi, other.x - (mover.body ?? mover.width) - GAP)
+    }
+    if (lo > hi) lo = hi = x
+    if (target !== undefined) target = clamp(target, lo, hi)
+  }
   const speed = reason === 'errand' ? ERRAND_CELLS : 1
   // Looping, it keeps its row of depth, and its circle's rows of sky over it.
   const looping = loop !== undefined && tick - loop < LOOP_TICKS
   let next = target === undefined ? x : clamp(x + Math.max(-speed, Math.min(speed, target - x)), mover.lo, mover.hi)
   let nextD = looping || targetD === undefined ? d : clamp(towardDepth(d, targetD, tick), dLo, dHi)
-  // A row of depth forward is a row less sky: its room is over the shallower of the two depths.
+  // A row of depth back is a row less sky: its room is over the shallower of the two depths.
   const room = sky + Math.min(0, nextD - d)
   lift = Math.min(lift, Math.max(1, room))
   if (looping) lift = Math.min(lift, Math.max(1, room - LOOP_ROWS))
   let waited = fly.waited
   let gap = fly.gap
   let gapD = fly.gapD
+  if (stage === 'descend' && gap !== undefined && (gap < lo || gap > hi)) gap = gapD = undefined
   // Down into the ground's rows only where the ground is clear; out of patience, over the nearest gap its neighbours open.
   const landingGap = (fly.waited ?? 0) >= SMOOTH_LANDING_PATIENCE ? GAP : need
   if (stage === 'descend' && lift < AIRBORNE && room >= AIRBORNE && (fly.waited ?? 0) < LANDING_GIVE_UP && !clearOnGround(others, next, nextD, mover.width, landingGap)) {
     lift = AIRBORNE
     waited = (fly.waited ?? 0) + 1
-    if (waited >= SMOOTH_LANDING_PATIENCE) {
-      const open = nearestClear(others, next, nextD, mover.width, GAP, mover.lo, mover.hi, dLo, dHi)
+    // A clear landing target holds until it is blocked or leaves this side.
+    const keep = gap === undefined && !(waited === SMOOTH_LANDING_PATIENCE && need > GAP) && memo.target !== undefined && memo.target >= lo && memo.target <= hi && target !== undefined && clearOnGround(others, target, targetD ?? nextD, mover.width, waited >= SMOOTH_LANDING_PATIENCE ? GAP : need)
+    if (!keep && waited >= SMOOTH_LANDING_PATIENCE) {
+      const open = nearestClear(others, next, nextD, mover.width, GAP, lo, hi, dLo, dHi)
       if (open !== undefined && gap === undefined) {
         target = open.x
         targetD = open.d
       } else {
-        gap = gap ?? gapSpot(others, next, mover.width, mover.lo, mover.hi, nextD)
+        gap = gap ?? gapSpot(others, next, mover.width, mover.lo, mover.hi, nextD, [lo, hi])
         gapD = gap === undefined ? gapD : (gapD ?? nextD)
         target = gap ?? target
         targetD = gap === undefined ? targetD : gapD
       }
-    } else {
-      const spot = nearestClear(others, next, nextD, mover.width, need, mover.lo, mover.hi, dLo, dHi)
+    } else if (!keep) {
+      const spot = nearestClear(others, next, nextD, mover.width, need, lo, hi, dLo, dHi)
       target = spot?.x ?? target ?? next
       targetD = spot?.d ?? targetD ?? nextD
     }
   }
+  if (stage === 'descend' && target !== undefined) target = clamp(target, lo, hi)
   if (lift <= 0) {
     return { x, d, lift: 0, memo: { x, d, lift: 0, pauseUntil: tick + pauseOf(mover.id, tick) }, motion: { kind: 'land' } }
   }
@@ -212,6 +239,10 @@ const flySmooth = (mover: Mover, memo: Memo, fly: Flight, tick: number, others: 
     ...(waited === undefined ? {} : { waited }),
     ...(gap === undefined ? {} : { gap }),
     ...(gap === undefined || gapD === undefined ? {} : { gapD }),
+  }
+  if (gap === undefined) {
+    delete flight.gap
+    delete flight.gapD
   }
   if (loop === undefined || tick - loop >= LOOP_TICKS) delete flight.loop
 
@@ -233,7 +264,7 @@ export const intend = (mover: Mover, tick: number, others: readonly Other[], rul
   if (mover.fixed === true) return { x, d, lift: 0, memo: { x, d, lift: 0, pauseUntil: Math.max(memo.pauseUntil, tick) } }
 
   // Knocked over: it sits where it fell until it is up again, errands waiting.
-  if (memo.fallFrom !== undefined && tick - memo.fallFrom < KNOCKED_TICKS) {
+  if (memo.fallFrom !== undefined && isKnocked(memo, tick)) {
     return { x, d, lift: 0, memo: { x, d, lift: 0, pauseUntil: memo.fallFrom + KNOCKED_TICKS, fallFrom: memo.fallFrom }, motion: { kind: 'fallen', step: tick - memo.fallFrom } }
   }
 
@@ -294,7 +325,7 @@ export const intend = (mover: Mover, tick: number, others: readonly Other[], rul
     } else {
       lift = before - 1
     }
-    // A row of depth forward is a row less sky: its room is over the shallower of the two depths.
+    // A row of depth back is a row less sky: its room is over the shallower of the two depths.
     const room = sky + Math.min(0, nextD - d)
     lift = Math.min(lift, room)
     let target = memo.target

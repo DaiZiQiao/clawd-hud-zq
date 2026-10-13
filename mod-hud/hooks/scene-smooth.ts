@@ -1,9 +1,9 @@
-import { chain, rasterOf, scale, shapesMarkup, svgOf, translate } from './clawd-vector'
+import { chain, rasterOf, scale, shapesMarkup, translate } from './clawd-vector'
 import type { Shape } from './clawd-vector'
 import { BODY_WIDTH, BODY_X, BOX_ROWS, MINI, MINI_SCALE, SKY } from './mascot-sprites'
 import { ACCENT } from './scene-model'
 import { PIPE_COLOUR, PIPE_SHINE, PIPE_WIDTH } from './scene-pipe'
-import { placedSprites } from './scene-placement'
+import { sceneCanvas } from './scene-canvas'
 import type { Cell, MascotLayout, MascotPlan, MascotScene, PlacedSprite, SceneView } from './scene-types'
 import { glyphShapes } from './raster-font'
 import { crossShapes, figureShapes, markShapes, pipeShapes, tickShapes } from './smooth-art'
@@ -11,7 +11,7 @@ import { blinkTurn, livelyOf, targetOf } from './smooth-pose'
 import { TODDLE_MS, quirkPose } from './usagi-moves'
 import { quirkAt } from './usagi-quirks'
 import type { PoseContext, Smoother } from './smooth-pose'
-import { CELL_HEIGHT, CELL_WIDTH } from './svg-style'
+import { CELL_HEIGHT, CELL_WIDTH, lightRule } from './svg-style'
 
 // The mascot scene drawn smooth: the same plan, view and looks as the cells
 // (hooks/scene-placement.ts), each mascot as Clawd's or Usagi's shapes
@@ -22,12 +22,12 @@ import { CELL_HEIGHT, CELL_WIDTH } from './svg-style'
 
 /**
  * A frame of the smooth scene: its shapes, back to front, each mascot's run
- * of them (`wholes`, from and to), its size in units, whether all its mascots
+ * of them (`wholes`, from and to), whether all its mascots
  * stand still (none moving, held or thrown, in a scene's step, tidying up; no
  * pipe, no mark: only a breath or a blink between this frame and the next),
  * and drawn calm, when a mascot's eyes next shut or open (`blinks`).
  */
-export type SmoothFrame = { shapes: Shape[]; wholes: (readonly [number, number])[]; width: number; height: number; still: boolean; blinks?: number }
+export type SmoothFrame = { shapes: Shape[]; wholes: (readonly [number, number])[]; still: boolean; blinks?: number }
 
 /** The phases a mascot keeps still in: at work, stalled, slumped. */
 const RESTING: ReadonlySet<string> = new Set(['work', 'stalled', 'sit'])
@@ -71,12 +71,12 @@ const stripShapes = (sprite: PlacedSprite, room: number): Shape[] => {
  * The scene's frame at `now` (the scene's time, ms): each mascot's pose eased
  * by `smoother` (kept by the caller from frame to frame), `calm` for a
  * picture of few frames (`PoseContext.calm`); undefined when nothing fits.
+ * `canvas` must be `sceneCanvas`'s full canvas, painted with full sky.
  */
-export const smoothFrame = (scene: MascotScene, layout: MascotLayout, plan: MascotPlan | undefined, view: SceneView | undefined, smoother: Smoother, now: number, calm = false): SmoothFrame | undefined => {
-  const placed = placedSprites(scene, layout, plan, view)
-  if (placed === undefined || plan === undefined) return undefined
+export const smoothFrame = (scene: MascotScene, layout: MascotLayout, plan: MascotPlan | undefined, view: SceneView | undefined, smoother: Smoother, now: number, calm = false, canvas = sceneCanvas(scene, layout, plan, view)): SmoothFrame | undefined => {
+  if (canvas === undefined || plan === undefined) return undefined
+  const placed = canvas.placed
   const room = placed.headroom
-  const rows = room + BOX_ROWS + placed.depth - 1
   const shapes: Shape[] = []
   const wholes: (readonly [number, number])[] = []
   const kept = new Set<string>()
@@ -102,7 +102,6 @@ export const smoothFrame = (scene: MascotScene, layout: MascotLayout, plan: Masc
       character: figure.info.character,
       now,
       seed: seedOf(sprite.id),
-      mini,
       ...(calm ? { calm } : {}),
       ...(figure.context.motion === undefined ? {} : { motion: figure.context.motion }),
       ...(figure.context.facing === undefined ? {} : { facing: figure.context.facing }),
@@ -126,26 +125,28 @@ export const smoothFrame = (scene: MascotScene, layout: MascotLayout, plan: Masc
       pose = quirkPose(pose, quirk, context.facing)
       still = false
     }
+    if (calm && pose.eyes === 'normal' && pose.eyeOpen > 0.5) blinks = Math.min(blinks, blinkTurn(now, context.seed))
     pose = livelyOf(pose, context, !sprite.moving && quirk === undefined)
     // Typing moves its hands and its screen every stroke, a thought its glyph and its light: no picture holds them still.
     if ((pose.typing !== undefined && pose.laptop > 0.5) || pose.beside.some(one => one.kind === 'thought')) still = false
-    if (calm) blinks = Math.min(blinks, blinkTurn(now, context.seed))
-    const info = mini ? { ...figure.info, energy: 0 as const, letter: undefined } : figure.info
     // The room's top is the canvas's: its feet's height over it, in the figure's units.
     const from = shapes.length
-    shapes.push(...figureShapes(pose, info, chain(translate(middle * 2, feet * 4), scale(mini ? MINI_SCALE : 1)), now, (feet * 4) / (mini ? MINI_SCALE : 1)))
+    shapes.push(...figureShapes(pose, figure.info, chain(translate(middle * 2, feet * 4), scale(mini ? MINI_SCALE : 1)), now, (feet * 4) / (mini ? MINI_SCALE : 1)))
     wholes.push([from, shapes.length])
   }
   smoother.keep(kept)
   for (const pipe of placed.pipes) {
     shapes.push(...pipeShapes(pipe.x * 2, PIPE_WIDTH[pipe.kind] * 2, -4, (room + pipe.lip + 1) * 4, PIPE_COLOUR, PIPE_SHINE))
   }
-  for (const mark of placed.marks) shapes.push(...markShapes(mark.ch, (mark.x + 0.5) * 2, (room + mark.row + 0.5) * 4, mark.colour, now))
+  for (const layer of canvas.layers) {
+    if (layer.id !== undefined || layer.pipe === true || layer.kind !== undefined) continue
+    for (const [row, cells] of layer.cells.entries()) for (const [x, cell] of cells.entries()) if (cell !== undefined) shapes.push(...markShapes(cell.ch, (layer.x + x + 0.5) * 2, (layer.y + row + 0.5) * 4, cell.colour, now))
+  }
 
-  return { shapes, wholes, width: plan.columns * 2, height: rows * 4, still, ...(blinks < Infinity ? { blinks } : {}) }
+  return { shapes, wholes, still, ...(blinks < Infinity ? { blinks } : {}) }
 }
 
-/** The units a desktop CSS pixel is: a cell is 8 by 16 pixels, 2 by 4 units. */
+/** The desktop CSS pixels per unit: a cell is 8 by 16 pixels, 2 by 4 units. */
 const PIXELS_PER_UNIT = CELL_WIDTH / 2
 
 /**
@@ -157,22 +158,22 @@ export const smoothSvg = (frame: SmoothFrame, columns: number, rows: number, lim
   const height = Math.max(1, Math.floor(rows)) * CELL_HEIGHT
   const view = scale(PIXELS_PER_UNIT)
   const extra = ` font-family='ui-monospace,Menlo,Consolas,monospace' text-anchor='middle'`
-  const budget = limit - 400
-  let shapes: readonly Shape[] = frame.shapes
+  const budget = limit - 420
+  let drawn = shapesMarkup(frame.shapes, view)
   // Past the limit, whole mascots are left out, the last drawn first: never one drawn in part.
-  if (shapesMarkup(shapes, view).markup.length > budget) {
+  if (drawn.markup.length > budget) {
     const sizes = frame.wholes.map(([from, to]) => shapesMarkup(frame.shapes.slice(from, to), view).markup.length)
-    let over = shapesMarkup(shapes, view).markup.length - budget
+    let over = drawn.markup.length - budget
     const dropped = new Set<number>()
     for (let index = frame.wholes.length - 1; index >= 0 && over > 0; index -= 1) {
       dropped.add(index)
       over -= sizes[index] ?? 0
     }
     const gone = new Set(frame.wholes.flatMap(([from, to], index) => (dropped.has(index) ? Array.from({ length: to - from }, (_, at) => from + at) : [])))
-    shapes = frame.shapes.filter((_, index) => !gone.has(index))
+    drawn = shapesMarkup(frame.shapes.filter((_, index) => !gone.has(index)), view, budget)
   }
 
-  return { source: svgOf(shapes, width, height, view, budget, extra), width, height }
+  return { source: `<svg xmlns='http://www.w3.org/2000/svg' width='${width}' height='${height}' viewBox='0 0 ${width} ${height}' pointer-events='none'${extra}>${lightRule(drawn.used)}${drawn.markup}</svg>`, width, height }
 }
 
 /**

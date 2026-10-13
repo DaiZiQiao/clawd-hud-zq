@@ -1,4 +1,4 @@
-import { AIRBORNE, AIR_MARGIN, DEPTH_COST, DEPTH_REACH, GAP, PROPELLER_ROWS, clamp, nearDepth, roll } from './motion-rules'
+import { AIRBORNE, AIR_MARGIN, DEPTH_COST, DEPTH_REACH, GAP, PROPELLER_ROWS, clamp, compareIds, nearDepth, roll } from './motion-rules'
 import type { Mover } from './motion-types'
 
 // Room on the field (hooks/motion-rules.ts has its rules): the free runs of
@@ -7,7 +7,7 @@ import type { Mover } from './motion-types'
 // everyone else stands.
 
 /** Where everyone else on the field stood at the start of the frame: its sprite's width, and its body's. */
-export type Other = { id: string; x: number; d: number; width: number; body: number; lift: number; altitude?: number; hopping?: boolean }
+export type Other = { id: string; x: number; d: number; width: number; body: number; lift: number; altitude?: number; hopping?: boolean; landing?: true }
 
 export const gapBetween = (a: { x: number; width: number }, b: { x: number; width: number }): number =>
   a.x <= b.x ? b.x - (a.x + a.width) : a.x - (b.x + b.width)
@@ -85,7 +85,7 @@ export const clearAbove = (others: readonly Other[], x: number, x1: number, body
 /**
  * Packs a row so every gap is at least GAP and everyone is in bounds:
  * pushed right left to right, then left right to left. The movers are in
- * left-to-right order; they fit (the layout put them in the field).
+ * left-to-right order; if they cannot fit, bounds hold before gaps.
  */
 export const packLine = (xs: number[], widths: readonly number[], lo: readonly number[], hi: readonly number[]): number[] => {
   const out = xs.map((x, index) => clamp(x, lo[index] ?? 0, hi[index] ?? x))
@@ -95,7 +95,7 @@ export const packLine = (xs: number[], widths: readonly number[], lo: readonly n
   }
   for (let index = out.length - 1; index >= 0; index -= 1) {
     const max = Math.min(hi[index] ?? 0, index === out.length - 1 ? Infinity : (out[index + 1] ?? 0) - (widths[index] ?? 0) - GAP)
-    if ((out[index] ?? 0) > max) out[index] = max
+    if ((out[index] ?? 0) > max) out[index] = Math.max(lo[index] ?? 0, max)
   }
 
   return out
@@ -108,17 +108,17 @@ export const packLine = (xs: number[], widths: readonly number[], lo: readonly n
  * and the cells the lander flies counted alike (the nearest first among
  * equals); undefined when no packing keeps it there.
  */
-export const gapSpot = (others: readonly Other[], x: number, width: number, lo: number, hi: number, d = 0): number | undefined => {
-  const ground = others.filter(one => one.lift < AIRBORNE && nearDepth(one.d, d)).sort((a, b) => a.x - b.x || a.id.localeCompare(b.id))
+export const gapSpot = (others: readonly Other[], x: number, width: number, lo: number, hi: number, d = 0, range?: readonly [number, number]): number | undefined => {
+  const ground = others.filter(one => one.lift < AIRBORNE && nearDepth(one.d, d)).sort((a, b) => a.x - b.x || compareIds(a.id, b.id))
   let best: { at: number; cost: number } | undefined
-  for (let at = lo; at <= hi; at += 1) {
+  for (let at = Math.max(lo, range?.[0] ?? lo); at <= Math.min(hi, range?.[1] ?? hi); at += 1) {
     // Everyone else keeps to the field: 0 to the columns less its own width.
     const row = [...ground.map(one => ({ id: one.id, x: one.x, width: one.width, lo: 0, hi: hi + width - one.width })), { id: '\u0000lander', x: at, width, lo: at, hi: at }]
       .sort((a, b) => a.x + a.width / 2 - (b.x + b.width / 2) || (a.id === '\u0000lander' ? -1 : b.id === '\u0000lander' ? 1 : 0))
     const packed = packLine(row.map(one => one.x), row.map(one => one.width), row.map(one => one.lo), row.map(one => one.hi))
     const index = row.findIndex(one => one.id === '\u0000lander')
     if (packed[index] !== at) continue
-    if (row.some((_, i) => (packed[i] ?? 0) < 0)) continue
+    if (row.some((_, i) => i > 0 && (packed[i] ?? 0) - ((packed[i - 1] ?? 0) + row[i - 1]!.width) < GAP)) continue
     const cost = row.reduce((sum, one, i) => sum + Math.abs((packed[i] ?? one.x) - one.x), 0) + Math.abs(at - x)
     if (best === undefined || cost < best.cost || (cost === best.cost && Math.abs(at - x) < Math.abs(best.at - x))) best = { at, cost }
   }

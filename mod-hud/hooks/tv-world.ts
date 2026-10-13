@@ -3,7 +3,7 @@ import type { ClientKeyEvent, ClientPointerEvent, JsonValue } from 'claude-code'
 import { figureCells, giantOf, spriteOf } from './tv-figure'
 import type { Figure } from './tv-figure'
 import { TV_FRAMES, TV_FRAME_MS, channelOf, roomOf, scrolledBy, tvHitAt, tvKeyOf, tvLookAt } from './tv-model'
-import type { TvHit, TvInputs, TvLook, TvPhase } from './tv-model'
+import type { Glass, TvHit, TvInputs, TvLook, TvPhase } from './tv-model'
 import { shapeOf } from './tv-paint'
 import { giantCells } from './tv-smooth'
 
@@ -21,7 +21,7 @@ import { giantCells } from './tv-smooth'
 /** Frames of static after a channel change. */
 export const FLICKER_FRAMES = 3
 /** How long the channel's number shows on the glass after it opens or changes. */
-export const OSD_MS = 1500
+const OSD_MS = 1500
 /** A held ▲ or ▼: its first repeat after this long, then one every REPEAT_MS. */
 export const REPEAT_DELAY_MS = 400
 export const REPEAT_MS = 80
@@ -48,7 +48,9 @@ export type TvWorld = {
   /** The channel's number shows on the glass until then. */
   osdUntil: number
   /** The last of the pane's scrolls taken. */
-  wheel?: number
+  wheel: number
+  /** The glass when it closes while switching on, held until the next tick. */
+  hold?: Glass
   /** Where a press went down, and a ▲ or ▼ held: when it next repeats. */
   down?: TvHit
   held?: { by: number; next: number }
@@ -74,7 +76,7 @@ export const createTv = (inputs: TvInputs): TvWorld => {
     view: inputs.view,
     flicker: 0,
     osdUntil: (flies ? TV_FRAMES.travel : 0) * TV_FRAME_MS + (TV_FRAMES.grow + TV_FRAMES['power-on']) * TV_FRAME_MS + OSD_MS,
-    ...(inputs.wheel === undefined ? {} : { wheel: inputs.wheel.seq }),
+    wheel: inputs.wheel?.seq ?? 0,
     closed: false,
   }
 }
@@ -100,7 +102,7 @@ export const receiveTv = (tv: TvWorld, inputs: TvInputs): void => {
     }
   }
   if (inputs.wheel !== undefined && inputs.wheel.seq !== tv.wheel) {
-    if (tv.wheel !== undefined && tv.phase === 'on') tv.scroll = scrolledBy(inputs, tv.scroll, inputs.wheel.page === true ? Math.sign(inputs.wheel.by) * pageOf(inputs) : inputs.wheel.by)
+    if (tv.phase === 'on') tv.scroll = scrolledBy(inputs, tv.scroll, inputs.wheel.page === true ? Math.sign(inputs.wheel.by) * pageOf(inputs) : inputs.wheel.by)
     tv.wheel = inputs.wheel.seq
   }
   tv.scroll = scrolledBy(inputs, tv.scroll, 0)
@@ -114,7 +116,8 @@ const spinOf = (tv: TvWorld): number => (tv.inputs.who.cap === true ? Math.floor
 
 /** The frame's look. */
 export const lookOf = (tv: TvWorld): TvLook | undefined => {
-  const look = tvLookAt(tv.phase, tv.frame, tv.flicker, blinking(tv))
+  const frame = tvLookAt(tv.phase, tv.frame, tv.flicker, blinking(tv))
+  const look = frame?.form === 'giant' && tv.hold !== undefined ? { ...frame, glass: tv.hold } : frame
 
   return look?.form === 'giant' && tv.inputs.who.cap === true ? { ...look, spin: spinOf(tv) } : look
 }
@@ -136,6 +139,7 @@ export const tickTv = (tv: TvWorld, post: (data: TvPost) => void): boolean => {
   tv.ms += TV_FRAME_MS
   let changed = false
   if (tv.phase !== 'on' && tv.phase !== 'gone') {
+    tv.hold = undefined
     tv.frame += 1
     changed = true
     const frames = TV_FRAMES[tv.phase]
@@ -168,25 +172,76 @@ export const tickTv = (tv: TvWorld, post: (data: TvPost) => void): boolean => {
   return changed || blinking(tv) !== before.blink || osdOf(tv) !== before.osd || (tv.phase === 'on' && spinOf(tv) !== before.spin)
 }
 
+/** How open the glass is: off, a dot, a line, a picture opening, then on. */
+const glassLevel = (glass: Glass): number => {
+  switch (glass.kind) {
+    case 'off':
+      return 0
+    case 'dot':
+      return glass.fade
+    case 'line':
+      return 1 + glass.width
+    case 'open':
+      return 2 + glass.height
+    case 'on':
+    case 'static':
+      return 4
+  }
+}
+
+/** The reverse frame nearest the eased size or place it has reached. */
+const reverseFrame = (phase: 'shrink' | 'return', value: number): number => {
+  let best = 0
+  let distance = Infinity
+  for (let frame = 0; frame < TV_FRAMES[phase]; frame += 1) {
+    const look = tvLookAt(phase, frame)
+    if (look?.form !== 'sprite') continue
+    const away = Math.abs((phase === 'shrink' ? look.scale : look.travel) - value)
+    if (away <= distance) {
+      best = frame
+      distance = away
+    }
+  }
+
+  return best
+}
+
 /**
  * Closing: from on (or switching on), the glass switches off; growing, it
  * shrinks back from where it got to; flying in, it turns home. Whether the
  * drawing changes.
  */
 export const startClose = (tv: TvWorld): boolean => {
+  const look = lookOf(tv)
   switch (tv.phase) {
-    case 'power-on':
+    case 'power-on': {
+      if (look?.form !== 'giant') return false
+      tv.hold = look.glass
+      let next = TV_FRAMES['power-off']
+      for (let frame = 0; frame < TV_FRAMES['power-off']; frame += 1) {
+        const closing = tvLookAt('power-off', frame)
+        if (closing?.form === 'giant' && glassLevel(closing.glass) < glassLevel(look.glass)) {
+          next = frame
+          break
+        }
+      }
+      tv.phase = 'power-off'
+      tv.frame = next - 1
+      break
+    }
     case 'on':
       tv.phase = 'power-off'
       tv.frame = 0
       break
     case 'grow':
+      if (look?.form !== 'sprite') return false
       tv.phase = 'shrink'
-      tv.frame = Math.max(0, TV_FRAMES.shrink - 1 - tv.frame)
+      tv.frame = reverseFrame('shrink', look.scale)
       break
     case 'travel':
+      if (look?.form !== 'sprite') return false
       tv.phase = 'return'
-      tv.frame = Math.max(0, TV_FRAMES.return - 1 - tv.frame)
+      tv.frame = reverseFrame('return', look.travel)
       break
     default:
       return false

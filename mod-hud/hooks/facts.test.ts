@@ -2,7 +2,7 @@ import type { On, ProcessRunInit, SessionContextBreakdown, SessionUsage, UiPane 
 import { expect, mock, test } from 'claude-code/testing'
 import type { Engine } from 'claude-code/testing'
 
-import type { HudData, HudGitFacts, HudInventoryFacts, HudRateLimitFact, HudSessionFacts, HudTodoFacts, HudToolFacts, HudUsageFacts } from '../types'
+import type { HudData, HudGitFacts, HudInventoryFacts, HudRateLimitFact, HudSessionFacts, HudTidyGate, HudTodoFacts, HudToolFacts, HudUsageFacts } from '../types'
 import {
   CACHE_ENV,
   CACHE_TTL_MS,
@@ -541,6 +541,8 @@ test('session start gathers who, where and what was measured, then one git readi
   await started($, clock)
 
   expect(fact<HudSessionFacts>('session')).toEqual({
+    isInteractive: true,
+    compactDisabled: false,
     model: 'claude-opus-5-5[1m]',
     effort: 'xhigh',
     provider: 'gateway',
@@ -761,7 +763,7 @@ test('a session that cannot answer leaves those facts out and starts all the sam
   expect(await $.session.start(START)).toEqual({ cwd: '/work' })
   await clock.settle()
   // What the start event said still holds: the directory, and git there.
-  expect(fact<HudSessionFacts>('session')).toEqual({ cwd: '/work' })
+  expect(fact<HudSessionFacts>('session')).toEqual({ isInteractive: true, cwd: '/work' })
   expect(fact<HudGitFacts>('git').branch).toBe('main')
   expect(fact<HudUsageFacts>('usage')).toBe(undefined)
   expect(fact<HudInventoryFacts>('inventory')).toBe(undefined)
@@ -820,10 +822,8 @@ test('every response\'s tokens add up, whichever loop made the request, and a co
   const version = held.get('usage')?.version
   await step($)
   expect(held.get('usage')?.version).toBe(version)
-  // The summarizer's fork counts through turn.step; compact's repeated usage does not.
+  // The summarizer has no turn.step: its compact result books the fork.
   const summaryUsage = { input_tokens: 1000, output_tokens: 200, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 }
-  world.stepUsage = { ...summaryUsage, model: 'claude-opus-5-5' }
-  await step($, { agentId: 'compaction-fork' })
   world.compacted = { messages: [{ role: 'assistant', text: 'summary', toolUses: [] }], usage: summaryUsage }
   await compact($)
   expect(fact<HudUsageFacts>('usage').tokens).toEqual({ input: 1020, output: 210, cacheRead: 200, cacheWrite: 40 })
@@ -976,7 +976,12 @@ test('showTodos false never writes todos, including at clear', {
   const todos = { items: [{ content: 'Old task', status: 'pending' }] }
   held.set('todos', { value: todos, version: 1 })
   await callTool($, 'TodoWrite', { todos: [] })
+  expect(held.get('todos')).toEqual({ value: todos, version: 1 })
+  const open = [{ content: 'New task', status: 'pending' }]
+  await callTool($, 'TodoWrite', { todos: open })
+  expect((held.get('tidyGate')?.value as HudTidyGate).todos).toEqual(open)
   await $.session.end({ reason: 'clear', sessionId: 's1' } as Parameters<Engine['session']['end']>[0])
+  expect((held.get('tidyGate')?.value as HudTidyGate).todos).toEqual([])
   expect(held.get('todos')).toEqual({ value: todos, version: 1 })
 })
 
@@ -1247,7 +1252,7 @@ test('autoCompactOf: DISABLE_AUTO_COMPACT, DISABLE_COMPACT or the autoCompactEna
   expect(autoCompactOf({}, { autoCompactEnabled: false })).toBe(false)
   expect(autoCompactOf({}, { autoCompactEnabled: true })).toBe(undefined)
   // The breakdown says so too.
-  expect(inventoryOf({ isAutoCompactEnabled: false, autoCompactThreshold: 160_000 } as unknown as SessionContextBreakdown, NOW)).toEqual({ mcpServers: [], autoCompact: false, at: NOW })
+  expect(inventoryOf({ isAutoCompactEnabled: false, autoCompactThreshold: 160_000 } as unknown as SessionContextBreakdown, NOW)).toEqual({ mcpServers: [], autoCompact: false, isAutoCompactEnabled: false, at: NOW })
 })
 
 test('a main request restarts the cache clock and counts the turn\'s tokens; a turn\'s end keeps it as the last turn', () => {

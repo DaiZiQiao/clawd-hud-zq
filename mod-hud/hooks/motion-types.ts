@@ -48,6 +48,8 @@ export type Flight = {
   minUntil?: number
   home?: number
   homeD?: number
+  /** Brought down to give way to another flier: it lands before any signal takes it up again. */
+  gaveWay?: true
   /** The frame its next change of altitude is due. */
   turnAt?: number
   /** The frame a loop began: the renderer draws the loop's circle from it. */

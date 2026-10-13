@@ -85,9 +85,8 @@ export const phaseOf = (agent: MascotAgent, scenes = false): Phase => {
   if (agent.status === 'done' || agent.status === 'failed') {
     let at = ended ?? 0
     const pack = agent.status === 'done' ? PACK_TICKS : FAIL_PACK_TICKS
-    // A seeded agent's end with no known time skips straight to its cheer or sit.
-    if (ended !== undefined && at < pack) return { kind: 'pack', step: at }
-    at -= ended === undefined ? 0 : pack
+    if (at < pack) return { kind: 'pack', step: at }
+    at -= pack
     if (agent.status === 'done' && scenes && agent.spawner !== undefined && agent.workflow !== true) {
       if (at < DELIVER_TICKS) return { kind: 'deliver', step: at }
       at -= DELIVER_TICKS

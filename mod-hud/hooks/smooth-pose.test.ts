@@ -96,7 +96,7 @@ describe('thinking, as Claude Code\'s spinner says it', () => {
     expect(thought(targetOf(look, { ...CONTEXT, now: 19_000 }, false))?.text).toBe(verb)
     expect(USAGI_THOUGHTS as readonly string[]).toContain(thought(targetOf(look, { ...CONTEXT, character: 'usagi' }, false))?.text)
     const mini = miniLook(working('c', 'thinking', { parentId: 'p' }), { kind: 'work' }, 4)
-    expect(thought(targetOf(mini, { ...CONTEXT, mini: true }, true))?.text).toBe('')
+    expect(thought(targetOf(mini, CONTEXT, true))?.text).toBe('')
   })
 
   test('as it comes the dots spring in, then the pill, then its words (\u2731 and the word, in Claude\'s orange), all solid; it keeps when it came; the light sweeps back along the words and on', () => {

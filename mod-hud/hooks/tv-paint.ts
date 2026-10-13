@@ -1,10 +1,11 @@
 import { IDENTITY, shapesMarkup } from './clawd-vector'
 import type { Shape as VectorShape } from './clawd-vector'
-import { CELL_HEIGHT, CELL_WIDTH, escapeText, lightRule, num } from './svg-style'
+import { BASELINE, CELL_HEIGHT, CELL_WIDTH, CLASSES, FONT_SIZE, SCENE_THEMES, escapeText, isThemeKey, lightRule, num } from './svg-style'
 import type { ThemeKey } from './svg-style'
 import { textRowSvg } from './text-svg'
 import type { TextSpan } from './text-svg'
 import { displayWidth, truncate } from './text-width'
+import { BODY_X, BOX_ROWS, MINI } from './mascot-sprites'
 import { SPRITE_RES, figureCells, giantOf, scaled } from './tv-figure'
 import type { Box, Figure, Shape } from './tv-figure'
 import { cellText, isPress, panelOf, shownRows, thumbOf } from './tv-model'
@@ -37,7 +38,7 @@ export const TV_COLOURS = {
 const PHOSPHOR: Readonly<Record<string, string>> = { claude: '#FFB38A', success: '#7EE0A0', warning: '#FFD479', error: '#FF8A9A', inactive: '#9FB5B0', text: TV_COLOURS.text, permission: '#C3C9FF', suggestion: '#C3C9FF' }
 
 /** A colour on the glass: a theme key as the lit screen shows it, a raw colour as it is. */
-export const glassColour = (color: string | undefined): string => (color === undefined ? TV_COLOURS.text : color.startsWith('#') ? color : PHOSPHOR[color] ?? TV_COLOURS.text)
+const glassColour = (color: string | undefined): string => (color === undefined ? TV_COLOURS.text : color.startsWith('#') ? color : PHOSPHOR[color] ?? TV_COLOURS.text)
 
 /** One cell the TV draws on the terminal; `tail` the second cell of a wide glyph. */
 export type TvOut = { ch: string; color?: string; bg?: string; bold?: true; dim?: true; italic?: true; strike?: true } | { tail: true }
@@ -54,14 +55,18 @@ const noise = (seed: number, x: number, y: number): number => {
 }
 
 /** The sprite at a frame: its quarters `scale` of the way from its own size (its bitmap's, SPRITE_RES to a quarter) to the giant's box, and its top-left in cells, `travel` of the way from where it stood to the centre. */
-export const spriteFrame = (sprite: Figure, inputs: Pick<TvInputs, 'layout' | 'from'>, travel: number, scale: number): { figure: Figure; x: number; y: number; w: number; h: number } => {
+const spriteFrame = (sprite: Figure, inputs: Pick<TvInputs, 'layout' | 'from'>, travel: number, scale: number): { figure: Figure; x: number; y: number; w: number; h: number } => {
   const { layout } = inputs
-  const ownW = Math.max(0, ...sprite.bitmap.map(row => row.length)) / SPRITE_RES
-  const ownH = sprite.bitmap.length / SPRITE_RES
+  const width = Math.max(0, ...sprite.bitmap.map(row => row.length)) / SPRITE_RES
+  const mini = inputs.from?.mini === true
+  const ownW = mini ? MINI * 2 : width
+  const ownH = (sprite.bitmap.length / SPRITE_RES) * (mini && width > 0 ? ownW / width : 1)
   const w = Math.max(1, Math.round(ownW + (layout.width * 2 - ownW) * scale))
   const h = Math.max(1, Math.round(ownH + (layout.height * 2 - ownH) * scale))
   const centre = { x: layout.left + layout.width / 2, y: layout.top + layout.height / 2 }
-  const start = inputs.from === undefined ? centre : { x: inputs.from.x + ownW / 4, y: inputs.from.y + ownH / 4 }
+  // A mini's feet on its box's floor, with odd quarter heights kept above it on the terminal too.
+  const startH = Math.max(1, Math.round(ownH))
+  const start = inputs.from === undefined ? centre : { x: mini ? inputs.from.x - BODY_X + MINI / 2 : inputs.from.x + ownW / 4, y: inputs.from.y + (mini ? BOX_ROWS - Math.ceil(startH / 2) + startH / 4 : ownH / 4) }
   const at = { x: start.x + (centre.x - start.x) * travel, y: start.y + (centre.y - start.y) * travel }
 
   return { figure: scaled(sprite, w, h), x: at.x - w / 4, y: at.y - h / 4, w, h }
@@ -83,10 +88,12 @@ const put = (grid: Grid, x: number, y: number, cell: TvOut): void => {
 
 const isCell = (cell: TvOut | undefined): cell is Exclude<TvOut, { tail: true }> => cell !== undefined && !('tail' in cell)
 
+const GRAPHEMES = new Intl.Segmenter('en', { granularity: 'grapheme' })
+
 /** A string laid from (x, y) in one look, a wide glyph taking two cells. */
 const write = (grid: Grid, x: number, y: number, text: string, look: Omit<Exclude<TvOut, { tail: true }>, 'ch'>): void => {
   let at = x
-  for (const glyph of [...new Intl.Segmenter('en', { granularity: 'grapheme' }).segment(text)].map(one => one.segment)) {
+  for (const glyph of [...GRAPHEMES.segment(text)].map(one => one.segment)) {
     const cells = displayWidth(glyph)
     if (cells === 0) continue
     put(grid, at, y, { ch: glyph, ...look })
@@ -138,7 +145,7 @@ const panelCells = (grid: Grid, box: Box, parts: readonly PanelPart[], label: st
       case 'label':
         return centred(label, { color: TV_COLOURS.knob, bg: TV_COLOURS.panel, dim: true })
       case 'arrows':
-        return centred(box.w >= 5 ? '◀ ▶' : '◀▶', { color: TV_COLOURS.knob, bg: TV_COLOURS.panel, bold: true })
+        return centred('◀ ▶', { color: TV_COLOURS.knob, bg: TV_COLOURS.panel, bold: true })
       case 'up':
       case 'down':
         for (let x = box.x + 1; x < box.x + box.w - 1; x += 1) put(grid, x, y, { ch: ' ', bg: TV_COLOURS.button })
@@ -241,7 +248,7 @@ export const paintCells = (inputs: TvInputs, look: TvLook | undefined, scroll: n
 // --- the desktop -----------------------------------------------------------------------
 
 /** A figure's quarters as rects, a run of one key a rect, from (x, y) in pixels, each quarter `qw` by `qh`. */
-const figureRects = (figure: Figure, x: number, y: number, qw: number, qh: number): string => {
+const figureRects = (figure: Figure, x: number, y: number, qw: number, qh: number, used: Set<ThemeKey>): string => {
   const rects: string[] = []
   figure.bitmap.forEach((row, at) => {
     let from = 0
@@ -249,8 +256,13 @@ const figureRects = (figure: Figure, x: number, y: number, qw: number, qh: numbe
       const key = row[from] as string
       let to = from
       while (to < row.length && row[to] === key) to += 1
-      const fill = figure.palette[key]
-      if (key !== '.' && fill !== undefined) rects.push(`<rect x='${num(x + from * qw)}' y='${num(y + at * qh)}' width='${num((to - from) * qw)}' height='${num(qh)}' fill='${fill}'/>`)
+      const colour = figure.palette[key]
+      if (key !== '.' && colour !== undefined) {
+        const theme = colour.startsWith('#') ? undefined : isThemeKey(colour) ? colour : 'text'
+        if (theme !== undefined) used.add(theme)
+        const paint = theme === undefined ? `fill='${colour}'` : `class='${CLASSES[theme]}' fill='${SCENE_THEMES.dark[theme]}'`
+        rects.push(`<rect x='${num(x + from * qw)}' y='${num(y + at * qh)}' width='${num((to - from) * qw)}' height='${num(qh)}' ${paint}/>`)
+      }
       from = to
     }
   })
@@ -343,7 +355,7 @@ const glassSvg = (inputs: TvInputs, box: Box, glass: Glass, scroll: number, osd:
   switch (glass.kind) {
     case 'on':
       parts.push(rows())
-      if (osd !== undefined) parts.push(`<text x='${num(textX + layout.content * CW)}' y='${num(textY + 12)}' text-anchor='end' font-family='ui-monospace,Menlo,Consolas,monospace' font-size='13' font-weight='bold' fill='${TV_COLOURS.osd}'>${escapeText(osd)}</text>`)
+      if (osd !== undefined) parts.push(`<text x='${num(textX + layout.content * CW)}' y='${num(textY + BASELINE)}' text-anchor='end' font-family='ui-monospace,Menlo,Consolas,monospace' font-size='${FONT_SIZE}' font-weight='bold' fill='${TV_COLOURS.osd}'>${escapeText(osd)}</text>`)
       break
     case 'open': {
       const half = ((layout.screen * CH) / 2) * glass.height
@@ -404,13 +416,13 @@ export const paintSvg = (inputs: TvInputs, look: TvLook | undefined, scroll: num
       if (inputs.art === 'vector') smooth(spriteShapes(inputs, look.travel, look.scale, look.eyes, ms))
       else {
         const at = spriteFrame(sprite, inputs, look.travel, look.scale)
-        body.push(figureRects(at.figure, at.x * CW, at.y * CH, CW / 2, CH / 2))
+        body.push(figureRects(at.figure, at.x * CW, at.y * CH, CW / 2, CH / 2, used))
       }
     } else {
       const { layout } = inputs
       const placed = (box: Box): Box => ({ ...box, x: box.x + layout.left, y: box.y + layout.top })
       if (inputs.art === 'vector') smooth(giantShapes(inputs.who, layout, look.eyes, look.spin ?? 0, ms))
-      else body.push(figureRects(giantOf(inputs.who, shapeOf(layout), look.eyes, look.spin ?? 0), layout.left * CW, layout.top * CH, CW / 2, CH / 2))
+      else body.push(figureRects(giantOf(inputs.who, shapeOf(layout), look.eyes, look.spin ?? 0), layout.left * CW, layout.top * CH, CW / 2, CH / 2, used))
       body.push(glassSvg(inputs, placed(layout.glass), look.glass, scroll, osd))
       body.push(panelSvg(placed(layout.panel), panelOf(layout.screen), 'CH'))
       const cx = (layout.left + layout.close.x + 1.5) * CW

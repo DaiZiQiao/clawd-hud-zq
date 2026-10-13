@@ -1,4 +1,4 @@
-import { intend } from './motion-intent'
+import { intend, staysUp } from './motion-intent'
 import {
   AIRBORNE,
   AIR_MARGIN,
@@ -15,6 +15,7 @@ import {
   SMOOTH_LANDING_PATIENCE,
   TURN_MIN,
   clamp,
+  compareIds,
   hopLift,
   nearDepth,
   pairKey,
@@ -23,12 +24,11 @@ import {
 import { clearOnGround, depthsOf, gapBetween, gapSpot, nearestClear, packLine } from './motion-space'
 import type { Other } from './motion-space'
 import type { Flight, Hop, Motion, Moved, Mover, Rules } from './motion-types'
+import { SCENE_FRAME_MS } from './scene-phases'
 
 // One frame of the whole field: every mover's intent (hooks/motion-intent.ts),
 // then contact between them, on the ground and in the air.
 // State machine: docs/mascots.md ("Choreography").
-
-const FRAME_MS = 250
 
 /**
  * One frame of the field: each mover's intent, then contact. On the ground,
@@ -39,17 +39,20 @@ const FRAME_MS = 250
  * apart a cell a frame. Nobody passes anybody on the ground within a row of
  * depth; farther apart in depth they pass freely. In the air, fliers within
  * a row of each other's lift and depth hold back rather than overlap.
+ * Smooth jams turn a roaming run or land one on its far side, waiting only
+ * for a lander still coming down.
  * `contacts` gets each pair that collided this frame.
  */
 export const stepField = (movers: readonly Mover[], tick: number, rules: Rules = {}, contacts: string[] = []): Map<string, Moved> => {
   const mode = rules.collisions ?? 'off'
   const dOf = (mover: Mover): number => depthsOf(mover).d
-  const all = [...movers].sort((a, b) => a.x - b.x || dOf(a) - dOf(b) || a.id.localeCompare(b.id))
+  const all = [...movers].sort((a, b) => a.x - b.x || dOf(a) - dOf(b) || compareIds(a.id, b.id))
   const rank = new Map(movers.map((mover, index) => [mover.id, index]))
   const asOther = (one: Mover): Other => ({
     id: one.id, x: clamp(one.x, one.lo, one.hi), d: dOf(one), width: one.width, body: one.body ?? one.width, lift: one.memo?.lift ?? 0,
     ...(one.memo?.fly === undefined ? {} : { altitude: one.memo.fly.altitude }),
     ...(one.memo?.hop === undefined ? {} : { hopping: true }),
+    ...(one.memo?.fly?.stage === 'descend' ? { landing: true } : {}),
   })
   const everyone = all.map(asOther)
   const others = (self: Mover): Other[] => everyone.filter(one => one.id !== self.id)
@@ -151,8 +154,8 @@ export const stepField = (movers: readonly Mover[], tick: number, rules: Rules =
       if (wanders(right) && closer(right, index)) revert(right)
       continue
     }
-    // Nobody moved: a crowd from before, left to the walking apart below.
-    if (!moving(index) && !moving(right)) continue
+    // A crowd from before, nobody coming closer: left to the walking apart below.
+    if (!closer(index, right) && !closer(right, index)) continue
     // One arriving or leaving by the pipe is only met: the walker stops.
     if (fixed(index) || fixed(right)) {
       if (!fixed(index)) revert(index)
@@ -164,7 +167,7 @@ export const stepField = (movers: readonly Mover[], tick: number, rules: Rules =
     if (leftMover === undefined || rightMover === undefined) continue
     const key = pairKey(leftMover.id, rightMover.id)
     const last = rules.lastContact?.get(key)
-    const cooling = last !== undefined && (tick - last) * FRAME_MS < CONTACT_COOLDOWN_MS[mode]
+    const cooling = last !== undefined && (tick - last) * SCENE_FRAME_MS < CONTACT_COOLDOWN_MS[mode]
     const eligible = mode === 'normal' ? moving(index) || moving(right) : mode === 'rare' ? moving(index) && moving(right) : false
     if (eligible && !cooling && !knocked(index) && !knocked(right) && !collided.has(leftMover.id) && !collided.has(rightMover.id)) {
       revert(index)
@@ -385,18 +388,19 @@ export const stepField = (movers: readonly Mover[], tick: number, rules: Rules =
         if (!clash(one, two)) continue
         const fliers = [two, one].filter(flies)
         if (fliers.length === 0) continue
-        if (rules.smooth === true && fliers.length === 2) {
-          const opposed = Math.sign((intentOf(one).memo.target ?? one.x) - one.x) * Math.sign((intentOf(two).memo.target ?? two.x) - two.x) < 0
-          // Up over the other where its sky has room: a looper keeps its circle's rows.
-          const yielder = [one, two].sort((a, b) => a.id.localeCompare(b.id)).find(mover => {
+        const opposed = rules.smooth === true && fliers.length === 2 && Math.sign((intentOf(one).memo.target ?? one.x) - one.x) * Math.sign((intentOf(two).memo.target ?? two.x) - two.x) < 0
+        if (opposed) {
+          // Up over the other where its sky has room: never one coming down; a looper keeps its circle's rows.
+          const yielder = [one, two].sort((a, b) => compareIds(a.id, b.id)).find(mover => {
             const other = mover === one ? two : one
             const loops = intentOf(mover).memo.fly?.loop !== undefined
-            return mover.sky - PROPELLER_ROWS - (loops ? LOOP_ROWS : 0) >= liftBefore(other) + 2
+            return intentOf(mover).memo.fly?.stage !== 'descend' && mover.sky - PROPELLER_ROWS - (loops ? LOOP_ROWS : 0) >= liftBefore(other) + 2
           })
-          if (opposed && yielder !== undefined) {
+          if (yielder !== undefined) {
             const other = yielder === one ? two : one
             hold(one)
             hold(two)
+            changed = true
             const altitude = liftBefore(other) + 2
             airLift.set(yielder.id, Math.min(altitude, liftBefore(yielder) + 1))
             yields.set(yielder.id, altitude)
@@ -420,6 +424,71 @@ export const stepField = (movers: readonly Mover[], tick: number, rules: Rules =
       }
     }
     if (!changed) break
+  }
+  // A jam waits for a lander still coming down; otherwise turn the smaller
+  // roaming run with room behind, or land one on its far side, never a lander.
+  if (rules.smooth === true) {
+    const decided = new Set<string>()
+    const seen = new Set<string>()
+    const start = (mover: Mover): number => clamp(mover.x, mover.lo, mover.hi)
+    const heading = (mover: Mover): number => Math.sign(intentOf(mover).x - start(mover))
+    const descending = (mover: Mover): boolean => intentOf(mover).memo.fly?.stage === 'descend'
+    const clearBelow = (mover: Mover): boolean => clearOnGround(standing, start(mover), dOf(mover), mover.width, GAP)
+    const blockersAt = (mover: Mover, x: number): Mover[] => {
+      const before = airX.get(mover.id)
+      airX.set(mover.id, x)
+      const blocked = air.filter(other => other !== mover && clash(mover, other))
+        .sort((a, b) => Math.abs((airX.get(a.id) ?? 0) + bodyOf(a) / 2 - (x + bodyOf(mover) / 2)) - Math.abs((airX.get(b.id) ?? 0) + bodyOf(b) / 2 - (x + bodyOf(mover) / 2)) || compareIds(a.id, b.id))
+      if (before !== undefined) airX.set(mover.id, before)
+      return blocked
+    }
+    const run = (front: Mover, side: number): { line: Mover[]; clear: boolean; decided: boolean } => {
+      const line: Mover[] = []
+      let mover: Mover | undefined = front
+      while (mover !== undefined) {
+        if (decided.has(mover.id)) return { line, clear: false, decided: true }
+        const fly = intentOf(mover).memo.fly
+        const x: number = airX.get(mover.id) ?? start(mover)
+        if (!flies(mover) || fly === undefined || fly.stage === 'descend' || fly.reason === 'errand' || !staysUp(mover, fly, tick) || line.includes(mover) || x === (side < 0 ? mover.lo : mover.hi)) return { line, clear: false, decided: false }
+        line.push(mover)
+        mover = blockersAt(mover, x + side)[0]
+      }
+      return { line, clear: true, decided: false }
+    }
+    for (const mover of air) {
+      if (!flies(mover) || intentOf(mover).x === start(mover) || airX.get(mover.id) !== start(mover) || yields.has(mover.id) || decided.has(mover.id)) continue
+      const blocker = blockersAt(mover, intentOf(mover).x)[0]
+      if (blocker === undefined || !flies(blocker) || heading(blocker) === heading(mover) || yields.has(blocker.id) || decided.has(blocker.id)) continue
+      const key = pairKey(mover.id, blocker.id)
+      if (seen.has(key)) continue
+      seen.add(key)
+      if ([mover, blocker].some(member => descending(member) && liftOf(member) < liftBefore(member))) continue
+      const side = (airX.get(mover.id) ?? 0) <= (airX.get(blocker.id) ?? 0) ? -1 : 1
+      const one = run(mover, side)
+      const two = run(blocker, -side)
+      const chosen = one.clear && two.clear ? (one.line.length < two.line.length || (one.line.length === two.line.length && compareIds(mover.id, blocker.id) < 0) ? one : two) : one.clear ? one : two.clear ? two : undefined
+      if (chosen !== undefined) {
+        for (const member of chosen.line) {
+          const intent = intentOf(member)
+          intent.memo = { ...intent.memo, target: (chosen === one ? side : -side) < 0 ? member.lo : member.hi }
+          decided.add(member.id)
+        }
+        continue
+      }
+      if (one.decided || two.decided) continue
+      const yielder = [mover, blocker].filter(member => !descending(member)).map(member => {
+        const x = start(member)
+        const right = (member === mover ? side : -side) > 0
+        const { dLo, dHi } = depthsOf(member)
+        const spot = nearestClear(standing, x, dOf(member), member.width, GAP, right ? x : member.lo, right ? member.hi : x, dLo, dHi)
+        return { member, spot }
+      }).sort((a, b) => Number(clearBelow(b.member)) - Number(clearBelow(a.member)) || Number(b.spot !== undefined) - Number(a.spot !== undefined) || compareIds(a.member.id, b.member.id))[0]
+      if (yielder === undefined) continue
+      const intent = intentOf(yielder.member)
+      if (intent.memo.fly === undefined) continue
+      intent.memo = { ...intent.memo, target: yielder.spot?.x ?? start(yielder.member), targetD: yielder.spot?.d ?? dOf(yielder.member), fly: { ...intent.memo.fly, stage: 'descend', since: tick, waited: SMOOTH_LANDING_PATIENCE, gaveWay: true } }
+      decided.add(yielder.member.id)
+    }
   }
   // A low flier held back as it rose is on the ground's rows where it was: a
   // walker that came in beside it goes back where it stood, and so, in turn,

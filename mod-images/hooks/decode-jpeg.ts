@@ -47,7 +47,7 @@ export type JpegDecoder = {
 type Huffman = {
   /** A 9-bit lookahead: (length << 8) | symbol, 0 when the code is longer. */
   fast: Uint16Array
-  /** maxcode[l]: the largest code of length l (MSB first), -1 if none; [17] a sentinel. */
+  /** maxcode[l]: the largest code of length l (1 to 16, MSB first), -1 if none. */
   maxcode: Int32Array
   /** valptr[l]: where in `values` the codes of length l start, less their first code. */
   valptr: Int32Array
@@ -86,7 +86,7 @@ const ROWS_PER_CHECK = 16
 
 const buildHuffman = (counts: Uint8Array, values: Uint8Array): Huffman => {
   const fast = new Uint16Array(1 << FAST_BITS)
-  const maxcode = new Int32Array(18).fill(-1)
+  const maxcode = new Int32Array(17).fill(-1)
   const valptr = new Int32Array(17)
   let code = 0
   let k = 0
@@ -94,6 +94,7 @@ const buildHuffman = (counts: Uint8Array, values: Uint8Array): Huffman => {
     const n = counts[l - 1]!
     valptr[l] = k - code
     if (n > 0) {
+      if (code + n > 1 << l) throw new Error('JPEG: bad Huffman table')
       for (let i = 0; i < n; i += 1, k += 1, code += 1) {
         if (l > FAST_BITS) continue
         const shift = FAST_BITS - l
@@ -104,13 +105,12 @@ const buildHuffman = (counts: Uint8Array, values: Uint8Array): Huffman => {
     }
     code <<= 1
   }
-  maxcode[17] = 0x7fffffff
 
   return { fast, maxcode, valptr, values }
 }
 
 // A table no code is valid in: what a scan naming a missing table reads.
-const NO_HUFFMAN: Huffman = { fast: new Uint16Array(1 << FAST_BITS), maxcode: new Int32Array(18).fill(-1), valptr: new Int32Array(17), values: new Uint8Array(0) }
+const NO_HUFFMAN: Huffman = { fast: new Uint16Array(1 << FAST_BITS), maxcode: new Int32Array(17).fill(-1), valptr: new Int32Array(17), values: new Uint8Array(0) }
 
 /**
  * A scan's bit reader: MSB first, 0xFF00 unstuffed, zero bits past a marker
@@ -407,16 +407,22 @@ export const createJpegDecoder = (bytes: Uint8Array, sink: RowSink): JpegDecoder
   }
 
   // At a restart interval's end: drop the bits held, find RSTn, start the predictions over.
+  // RST0 to RST7 cycle: accept the expected marker or up to three ahead,
+  // skip the intervals lost before it, and ignore stale markers behind it.
   const restartMarker = (): void => {
     reader.bitBuf = 0
     reader.bitCnt = 0
     reader.padBits = 0
     reader.markerHit = false
     reader.starved = false
+    const expected = ((mcu / restart) - 1) & 7
     for (let p = reader.pos; p + 1 < b.length; p += 1) {
       if (b[p] !== 0xff) continue
       const next = b[p + 1]!
       if (next >= 0xd0 && next <= 0xd7) {
+        const ahead = (next - 0xd0 - expected) & 7
+        if (ahead > 3) continue
+        mcu = min(mcuTotal, mcu + ahead * restart)
         reader.pos = p + 2
         for (const c of scan) c.pred = 0
 
@@ -557,12 +563,20 @@ export const createJpegDecoder = (bytes: Uint8Array, sink: RowSink): JpegDecoder
       if (marker === 0xd8 || (marker >= 0xd0 && marker <= 0xd7) || marker === 0x01) continue
       const length = (b[at + 1]! << 8) | b[at + 2]!
       const start = at + 3
-      const end = min(at + 1 + length, b.length)
+      const end = at + 1 + length
+      if (end > b.length) {
+        if (marker === 0xc0 || marker === 0xc1 || marker === 0xc2) frame(start, b.length)
+        phase = 'convert'
+
+        return
+      }
       reader.pos = at + 1 + max(2, length)
       if (marker === 0xc0 || marker === 0xc1 || marker === 0xc2) frame(start, end)
       else if (isFrameMarker(marker)) throw new Error('JPEG: a second frame')
-      else if (marker === 0xc4) huffmanTables(start, end)
-      else if (marker === 0xdb) quantTables(start, end)
+      else if (marker === 0xc4) {
+        huffmanTables(start, end)
+        if (performance.now() >= deadline) return
+      } else if (marker === 0xdb) quantTables(start, end)
       else if (marker === 0xdd) restart = end - start >= 2 ? (b[start]! << 8) | b[start + 1]! : 0
       else if (marker === 0xe0 && end - start >= 5 && b[start] === 0x4a && b[start + 1] === 0x46 && b[start + 2] === 0x49 && b[start + 3] === 0x46 && b[start + 4] === 0) sawJfif = true
       else if (marker === 0xee && end - start >= 12 && b[start] === 0x41 && b[start + 1] === 0x64 && b[start + 2] === 0x6f && b[start + 3] === 0x62 && b[start + 4] === 0x65) adobeTransform = b[start + 11]!
@@ -578,7 +592,7 @@ export const createJpegDecoder = (bytes: Uint8Array, sink: RowSink): JpegDecoder
     while (mcu < mcuTotal) {
       if (restart > 0 && mcu > 0 && mcu % restart === 0) {
         restartMarker()
-        if (scanOver) break
+        if (scanOver || mcu >= mcuTotal) break
       }
       if (single) {
         const c = scan[0]!

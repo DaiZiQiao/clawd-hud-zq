@@ -39,7 +39,7 @@ export const WEBP_SIDE_CAP = 2048
  * 2048x2048): this keeps it to a few tenths of a second (1280x854 fits).
  */
 export const WEBP_PIXEL_CAP = 1_100_000
-/** Every format: the longest side decoded, JPEG's and GIF's own limit (a PNG row's buffers grow with its width). */
+/** PNG, JPEG and GIF: the longest side decoded, JPEG's and GIF's own limit (a PNG row's buffers grow with its width). */
 export const SIDE_CAP = 65_535
 
 /** `runSliced`'s defaults for a slice and the CPU summed over slices, and its cap on the slices. */
@@ -58,7 +58,7 @@ type ImageHeader = {
 /** Why a file has no master: `no preview` (a kind no decoder here draws), `too big` (over a cap), `can't read` (not a picture, or its header is bad). */
 type DecodeFailure = 'no preview' | 'too big' | "can't read"
 
-/** No job, and why: `detail` names the format and the reason (`PNG: bad IHDR`), for /mod-images. */
+/** No job, and why: `detail` names the format and the reason (`PNG: bad IHDR`), for the debug log. */
 export type MasterFailure = { failure: DecodeFailure; detail: string }
 
 /**

@@ -63,8 +63,10 @@ visible to a plugin: choose `pictures: text` there.
 ## Room
 
 The band gets about half the terminal's rows, less the prompt: 7 rows in an
-80x24 terminal, 10 in 120x30, 15 in 120x40 (fullscreen, a one-line prompt). The
-strip takes thumbnails of at most `height` rows (8 unless set) plus a label row,
+80x24 terminal, 10 in 120x30, 15 in 120x40 (fullscreen, a one-line prompt).
+That is at most 6 thumbnail rows plus 1 label row at 80x24; at 120x30 the
+default is 8 plus 1, or at most 9 plus 1 with `height` raised. The strip
+takes thumbnails of at most `height` rows (8 unless set) plus a label row,
 and shrinks to fit:
 
 - Thumbnails keep their shape: at 8 rows a 16:9 screenshot is 28 columns wide,
@@ -76,8 +78,12 @@ and shrinks to fit:
   any is left out; those left out are named at the end of the label row, `+2: #6 #7`.
 - Typing does not make the strip flicker: it shrinks only when the growing
   prompt needs the room, and grows again only when an image comes or goes.
-- In a short terminal, under a survey, or when another plugin also draws in the
-  band, the strip is one row: a small swatch, `#N` and the size of each image.
+- In a short terminal, under a survey, or when mod-images runs first and another
+  plugin draws, the strip is one row: a small swatch, `#N` and the size of each
+  image, under the other plugin's rows. When the HUD's hook runs first, the
+  HUD's own rows sit above the image strip; the strip can keep its full height
+  nearest the prompt. Neither plugin controls the hook order. The combined rows
+  can exceed the band's room and scroll.
 
 ## Which images
 
@@ -97,9 +103,13 @@ The strip shows the images that will be sent with the prompt, in `#` order:
   the images, but the strip still shows them.
 - Pictures it cannot show get a framed tile with the reason: `no preview` (a lossy
   or animated WebP, or a CMYK, 12-bit, arithmetic-coded or lossless JPEG), `too big`
-  (over 4 MiB, a lossless WebP over about a megapixel, or more pixels than the
-  decoders take), `not found` (Claude Code's image folder was not found, or a
-  pasted picture's file went missing), `can't read`, `too slow`.
+  (over 4 MiB, a lossless WebP over 2048 pixels a side or 1,100,000 pixels
+  in all, or more pixels than the decoders take), `not found` (no project
+  folder found or remembered, or a pasted picture's file went missing),
+  `can't read`, `too slow`. With a known project folder but no session folder,
+  a chip not seen pasted becomes `not attached` after its pending wait: it
+  stays pending while the picture's `.tmp.` file is being written, or for
+  about three seconds after the chip appears.
 
 ## Where the pictures come from
 
@@ -117,8 +127,18 @@ turned into `-`. A plugin has no way to ask for this folder, so mod-images looks
 for it: it lists the temporary folders for `claude-*` folders and checks for
 this session's. This is not a documented interface. It was read from Claude Code
 2.1.295 and checked there on Linux; the Windows and macOS spellings follow the
-same code. If a later Claude Code moves the folder, tiles read `not found` and
+same code. If a later Claude Code moves the folder, tiles read `not found`
+when no project folder is known, or `not attached` for a chip not seen pasted
+when the project folder is known but this session's folder is absent;
 `/mod-images` says where the plugin looked.
+
+When no project folder has the project's name, a deeper search checks every
+project folder for this session's folder. Any project folder found is remembered
+across `/clear` and resume. With a recalled chip in a session that pasted
+nothing, and no image folder for that session in the remembered project, the
+plugin can keep listing `/tmp` (or the configured temporary folders) about once
+a second while the chip stays. The deeper search stops after ten seconds for the
+same chip set; these temporary-folder listings can continue.
 
 No folder is kept, and so no thumbnail can be read, when Claude Code runs with
 `CLAUDE_CODE_SKIP_PROMPT_HISTORY` or as a nested session: each tile reads
@@ -142,11 +162,11 @@ plugins never wait on it long. Claude Code keeps a pasted image at most 2000
 pixels on its long side; a 2000x1250 PNG screenshot takes about 0.1 s in all, a
 1200x800 JPEG a few hundredths of a second. Lossless WebP is the exception: the
 library decodes it in one call that cannot pause, about 0.1 s for a plain
-1280x854 screenshot and up to half a second for a photo, so a lossless WebP
-over 1,100,000 pixels (larger than about 1280x854) gets a `too big` tile rather
-than hold every plugin up longer. Each image is decoded once, to
-a copy at most 256 pixels on its long side; every thumbnail size is cut from
-that copy.
+1280x854 screenshot and up to half a second for a photo, so a lossless WebP over
+1,100,000 pixels in all (larger than about 1280x854), or over 2048 pixels on
+either side, gets a `too big` tile rather than hold every plugin up longer. Each
+image is decoded once, to a copy at most 256 pixels on its long side; every
+thumbnail size is cut from that copy.
 
 ## `/mod-images`
 
@@ -157,7 +177,7 @@ checked without pasting anything.
 
 ```
 > /mod-images
-  mod-images: version 1.0.0 on Claude Code 2.1.295.
+  mod-images: version 1.0.1 on Claude Code 2.1.295.
   Pictures: half-block cells in 256 colours (macOS Terminal, no COLORTERM).
     Tip: If your Terminal draws 24-bit colour (macOS 26 or newer), add `export COLORTERM=truecolor` to your shell profile.
     Real pixels need kitty 0.28 or newer, or Ghostty, outside tmux.

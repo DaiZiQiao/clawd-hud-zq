@@ -33,7 +33,7 @@ import {
   tickOf,
 } from './register.fixtures'
 import type { Held } from './register.fixtures'
-import { rowSource, textRowOf, textRuns } from './text-svg.fixtures'
+import { rowSource, textLine, textRowOf, textRuns } from './text-svg.fixtures'
 
 // The HUD in the pane and the status line: above the agents with one blank
 // row between, its switches, /clear, /mod-hud facts, its clock, the motto.
@@ -71,6 +71,26 @@ const sketchAt = (now: number, motto?: string): HudData => ({ ...full, usage: { 
 
 const layoutOf = (columns: number, rows: number | undefined = BODY_ROWS) => ({ columns, rows, isNarrow: columns < NARROW_BELOW })
 
+// SVG text leaves native button cells blank. Read the actual toggle as well,
+// so the same assertions cover all of the rendered row on both surfaces.
+const paneWithTidy = async (ui: Parameters<typeof paneOf>[0]) => {
+  const pane = await paneOf(ui)
+  const tidy = await ui.find({ key: 'hud:context.tidy' })
+  if (tidy === undefined) return pane
+  const toggle = await ui.find({ type: 'Button', key: 'hud:tidy:auto' })
+  expect(toggle?.props.label).toBe('Turn auto off')
+  const source = rowSource(tidy)
+  if (source === undefined) return pane
+  const text = textLine(source)
+  const complete = textRowOf(tidy)!
+  expect(complete).toBe(`${text} ${toggle!.props.label}`)
+  return {
+    ...pane,
+    hud: pane.hud.map(row => row === text ? complete : row),
+    rows: pane.rows.map(row => row === text ? complete : row),
+  }
+}
+
 // The HUD's facts written, then a session in progress: one agent running, one done.
 const sketched = async ($: Engine, on: On) => {
   const arranged = arrange(on, true, SKETCH_NOW)
@@ -93,7 +113,7 @@ test('the pane draws the HUD above the agents with one blank row between, on eve
   for (const surface of SURFACES) {
     for (const columns of [100, 56, 48]) {
       const ui = await mountPane($, surface, columns)
-      const pane = await paneOf(ui)
+      const pane = await paneWithTidy(ui)
       const expected = hudLines(sketchAt(clock.now(), MOTTO), layoutOf(columns))
       // Twenty rows: the HUD takes ten, the least needed rows (the motto among them) left out.
       expect(expected).toHaveLength(10)
@@ -123,7 +143,7 @@ test('fifty agents leave the HUD whole: the list keeps its cap and counts the re
   for (const surface of SURFACES) {
     for (const columns of [100, 48]) {
       const ui = await mountPane($, surface, columns)
-      alone.set(`${surface}:${columns}`, (await paneOf(ui)).hud)
+      alone.set(`${surface}:${columns}`, (await paneWithTidy(ui)).hud)
       await ui.unmount()
     }
   }
@@ -132,7 +152,7 @@ test('fifty agents leave the HUD whole: the list keeps its cap and counts the re
   for (const surface of SURFACES) {
     for (const columns of [100, 48]) {
       const ui = await mountPane($, surface, columns)
-      const pane = await paneOf(ui)
+      const pane = await paneWithTidy(ui)
       expect(pane.hud).toEqual(alone.get(`${surface}:${columns}`))
       expect(pane.hud).toEqual(hudLines(sketchAt(clock.now()), layoutOf(columns)))
       expect(pane.hud.length).toBeGreaterThan(0)
@@ -160,7 +180,7 @@ test('docked and inline, the HUD leaves an agent visible within eight rows', asy
         requestId: PANE,
         viewport: VIEWPORT,
       })
-      const pane = await paneOf(ui)
+      const pane = await paneWithTidy(ui)
       expect(pane.hud).toEqual(hudLines(sketchAt(clock.now()), layoutOf(100, 8)))
       expect(pane.hud).toHaveLength(4)
       expect(pane.rows.slice(0, 8).some(row => row.includes('Find the bug'))).toBe(true)
@@ -169,16 +189,18 @@ test('docked and inline, the HUD leaves an agent visible within eight rows', asy
   }
 })
 
-test('with nothing known the HUD and its blank row are left out, and the board stands alone', async ($, on) => {
+test('with nothing known the tidy control and its blank row stay above the board', async ($, on) => {
   arrange(on)
   await $.session.start({ ...START, cwd: '' })
   for (const surface of SURFACES) {
     const ui = await mountPane($, surface)
-    const pane = await paneOf(ui)
+    const pane = await paneWithTidy(ui)
     // The session's mascot sleeps in the spare rows under the board.
-    expect(pane.order).toEqual(['agents', 'scene-region'])
+    expect(pane.order).toEqual(['hud', 'agents', 'scene-region'])
     expect((await ui.find({ type: 'Client', key: 'mascots' }))?.props.height).toBeGreaterThanOrEqual(4)
-    expect(pane.rows).toEqual([SESSION_ROW, '▾ Agents', 'No agents yet.'])
+    expect(pane.hud).toEqual([' context  tidy    auto · nothing due Turn auto off'])
+    expect(pane.gap).toBe(1)
+    expect(pane.rows).toEqual([...pane.hud, '', SESSION_ROW, '▾ Agents', 'No agents yet.'])
     await ui.unmount()
   }
 })
@@ -229,7 +251,7 @@ test('switches leave git, tools, todos and the inventory out of the pane and the
   for (const surface of SURFACES) {
     for (const columns of [100, 48]) {
       const ui = await mountPane($, surface, columns, 40)
-      const pane = await paneOf(ui)
+      const pane = await paneWithTidy(ui)
       expect(pane.hud).toEqual(hudLines(shown, layoutOf(columns, 40)))
       expect(pane.hud.at(-1)).toBe('  keep going')
       expect(pane.hud.some(row => /main|mcp|skills|tools|todo/.test(row))).toBe(false)
@@ -259,16 +281,17 @@ test('a /clear starts the HUD\'s conversation over and keeps who, where, git and
   expect(fact('inventory')).toEqual(full.inventory)
 
   const ui = await mountPane($)
-  const pane = await paneOf(ui)
+  const pane = await paneWithTidy(ui)
   expect((await ui.findAll({ type: 'Box' })).filter(box => box.key?.startsWith('hud:') === true).map(box => box.key))
-    .toEqual(['hud:header', 'hud:alerts', 'hud:gap', 'hud:session.repo', 'hud:session.branch', 'hud:context.used', 'hud:limits.5h', 'hud:limits.7d', 'hud:usage.cost'])
+    .toEqual(['hud:header', 'hud:alerts', 'hud:gap', 'hud:session.repo', 'hud:session.branch', 'hud:context.used', 'hud:context.tidy', 'hud:limits.5h', 'hud:limits.7d', 'hud:usage.cost'])
   // The context starts over (its runway, its cache clock and the last turn with it); the 5h
   // window's burn, kept with the window, still runs out before it resets.
   expect(pane.hud[1]).toMatch(/^ {2}⚠ 5h out ~\d\d:\d\d, before ↻\d\d:\d\d$/)
   expect(pane.hud[2]).toBe('')
   expect(pane.hud[5]).toBe(' context  used    —')
   // The engine still reports the old conversation's cost: unknown until a fresh one, the clock from the clear.
-  expect(pane.hud[8]).toBe(' usage    cost    —                  00:00')
+  expect(pane.hud[6]).toBe('          tidy    auto · nothing due Turn auto off')
+  expect(pane.hud[9]).toBe(' usage    cost    —                  00:00')
   expect(pane.board).toEqual([SESSION_ROW, '▾ Agents', 'No agents yet.'])
   await ui.unmount()
 })
@@ -285,7 +308,9 @@ test('/mod-hud facts shows what the HUD draws from, and whether the last measure
 
   // Before any measurement: the facts as held, pretty-printed, and no limits seen.
   const before = await factsOf()
-  expect(before.data).toEqual(JSON.parse(JSON.stringify(sketchAt(clock.now()))))
+  const { tidy, ...beforeHud } = before.data as HudData & { tidy: { decision: string } }
+  expect(beforeHud).toEqual(JSON.parse(JSON.stringify(sketchAt(clock.now()))))
+  expect(tidy.decision).toBe('nothing due')
   expect(before.text).toStartWith('{\n  "session": {\n')
   expect(before.last).toBe('No session.measure has arrived since mod-hud loaded, so no rateLimits have been seen.')
 
@@ -324,7 +349,7 @@ test('an open HUD with no agents advances its clock and running-tool row after s
   const { clock, world, held } = await sketched($, on)
   await $.command.run(TOGGLE)
   const ui = await mountPane($)
-  const before = await paneOf(ui)
+  const before = await paneWithTidy(ui)
   expect(before.hud.some(row => / cost {4}\$4\.21 +\$3\.51 \/ h · 1h 12m$/.test(row))).toBe(true)
   expect(before.hud.some(row => / now {5}Bash · npm test -- hud +00:04$/.test(row))).toBe(true)
   const ticks = world.writes.filter(key => key === TICK).length
@@ -333,7 +358,7 @@ test('an open HUD with no agents advances its clock and running-tool row after s
   expect(entriesOf(held)).toEqual({})
   expect(tickOf(held)).toBe(clock.now())
   expect(world.writes.filter(key => key === TICK).length - ticks).toBe(60)
-  const after = await paneOf(ui)
+  const after = await paneWithTidy(ui)
   // A minute on, the rate an hour eases as the clock runs.
   expect(after.hud.some(row => / cost {4}\$4\.21 +\$3\.46 \/ h · 1h 13m$/.test(row))).toBe(true)
   expect(after.hud.some(row => / now {5}Bash · npm test -- hud +01:04$/.test(row))).toBe(true)
@@ -440,7 +465,7 @@ test('a HUD renderer throw leaves the agent rows intact', async ($, on) => {
       plugin: 'mod-hud', surface, component: 'Pane',
       props: PANE_PROPS, requestId: 'broken-hud', viewport: VIEWPORT,
     })
-    const pane = await paneOf(ui)
+    const pane = await paneWithTidy(ui)
     expect(throws).toBeGreaterThan(0)
     // The TODO section and the scene still stand: neither reads the rate limits.
     expect(pane.order).toEqual(['todos', 'agents', 'mascots'])
@@ -460,7 +485,7 @@ test('a pane without a known height caps the HUD at five rows', async ($, on) =>
       props: { ...PANE_PROPS, placement: 'inline', scroll: { offset: 0 } } as unknown as typeof PANE_PROPS,
       requestId: PANE, viewport: VIEWPORT,
     })
-    const pane = await paneOf(ui)
+    const pane = await paneWithTidy(ui)
     expect(pane.hud).toHaveLength(5)
     expect(pane.board.some(row => row.includes('Find the bug'))).toBe(true)
     await ui.unmount()
@@ -473,7 +498,7 @@ test('the motto left unset draws none: the default is empty since 1.2.0', async 
     for (const columns of [100, 48]) {
       const ui = await mountPane($, surface, columns, 40)
       expect(await ui.find({ key: 'hud:motto' })).toBe(undefined)
-      expect((await paneOf(ui)).hud.at(-1)).toMatch(/^ +cache +\d+% hit$/)
+      expect((await paneWithTidy(ui)).hud.at(-1)).toMatch(/^ +cache +\d+% hit$/)
       await ui.unmount()
     }
   }
@@ -485,7 +510,7 @@ test('a motto set is the HUD\'s last row, dim and italic', { options: { motto: O
     for (const columns of [100, 48]) {
       // Forty rows: the HUD has room for every row, the motto the last.
       const ui = await mountPane($, surface, columns, 40)
-      expect((await paneOf(ui)).hud.at(-1)).toBe(`  ${OLD_MOTTO}`)
+      expect((await paneWithTidy(ui)).hud.at(-1)).toBe(`  ${OLD_MOTTO}`)
       const motto = surface === 'terminal'
         ? (await ui.findAll({ type: 'Text' })).find(one => one.text === OLD_MOTTO)
         : textRuns(rowSource(await ui.find({ key: 'hud:motto' })) ?? '').find(one => one.text === OLD_MOTTO)
@@ -502,12 +527,14 @@ test('an empty motto draws none; with nothing else known the motto is no HUD of 
   await ui.unmount()
 })
 
-test('with nothing known, a motto alone draws no HUD', { options: { motto: OLD_MOTTO } }, async ($, on) => {
+test('with nothing known, the tidy control still draws above a configured motto', { options: { motto: OLD_MOTTO } }, async ($, on) => {
   arrange(on)
   await $.session.start({ ...START, cwd: '' })
   const ui = await mountPane($)
-  expect(await ui.find({ key: 'hud' })).toBe(undefined)
-  expect((await paneOf(ui)).rows).toEqual([SESSION_ROW, '▾ Agents', 'No agents yet.'])
+  expect(await ui.find({ key: 'hud' })).toBeDefined()
+  const pane = await paneWithTidy(ui)
+  expect(pane.hud).toEqual([' context  tidy    auto · nothing due Turn auto off', `  ${OLD_MOTTO}`])
+  expect(pane.rows).toEqual([...pane.hud, '', SESSION_ROW, '▾ Agents', 'No agents yet.'])
   await ui.unmount()
 })
 
@@ -552,7 +579,7 @@ test('the alert strip counts asks and stalls from the board and failed calls fro
   held.set('ledger', { value: { ...ledger, failures: { denied: 1, error: 1, recent: [clock.now() - 1000, clock.now()] } }, version: (held.get('ledger')?.version ?? 0) + 1 })
 
   const ui = await mountPane($, 'terminal', 130)
-  const alerts = (await paneOf(ui)).hud[1] ?? ''
+  const alerts = (await paneWithTidy(ui)).hud[1] ?? ''
   expect(alerts).toStartWith('  ⚠ 1 agent waiting for permission · 5h out ~')
   await ui.unmount()
   const wide = await mountPane($, 'terminal', 100)
@@ -673,4 +700,36 @@ test('the status line\'s timer runs for the earlier of the cache\'s minute and t
   const writes = world.statuses.length
   await clock.advance(60 * 60_000)
   expect(world.statuses.length).toBe(writes)
+})
+
+test('a resume resets the board and the HUD as /clear does', async ($, on) => {
+  const { clock, held } = await sketched($, on)
+  const fact = (key: string): unknown => held.get(key)?.value
+  await spawn($)
+
+  await $.session.end({ reason: 'resume', sessionId: 's1' } as Parameters<Engine['session']['end']>[0])
+  expect(entriesOf(held)).toEqual({})
+  expect(fact('main')).toEqual({})
+  expect(fact('tools')).toEqual({ counts: {} })
+  expect(fact('todos')).toEqual({ items: [] })
+  // The limits' samples stay with their windows; the context's start over.
+  expect(fact('usage')).toEqual({ window: 1_000_000, rateLimits: full.usage?.rateLimits, limitSamples: full.usage?.limitSamples, compactions: 0 })
+  expect(fact('session')).toEqual({ ...full.session, cacheTtl: full.cache?.ttl, startedAt: clock.now() })
+  expect(fact('git')).toEqual(full.git)
+  expect(fact('inventory')).toEqual(full.inventory)
+
+  const ui = await mountPane($)
+  const pane = await paneWithTidy(ui)
+  expect((await ui.findAll({ type: 'Box' })).filter(box => box.key?.startsWith('hud:') === true).map(box => box.key))
+    .toEqual(['hud:header', 'hud:alerts', 'hud:gap', 'hud:session.repo', 'hud:session.branch', 'hud:context.used', 'hud:context.tidy', 'hud:limits.5h', 'hud:limits.7d', 'hud:usage.cost'])
+  // The context starts over (its runway, its cache clock and the last turn with it); the 5h
+  // window's burn, kept with the window, still runs out before it resets.
+  expect(pane.hud[1]).toMatch(/^ {2}⚠ 5h out ~\d\d:\d\d, before ↻\d\d:\d\d$/)
+  expect(pane.hud[2]).toBe('')
+  expect(pane.hud[5]).toBe(' context  used    —')
+  // The engine still reports the old conversation's cost: unknown until a fresh one, the clock from the resume.
+  expect(pane.hud[6]).toBe('          tidy    auto · nothing due Turn auto off')
+  expect(pane.hud[9]).toBe(' usage    cost    —                  00:00')
+  expect(pane.board).toEqual([SESSION_ROW, '▾ Agents', 'No agents yet.'])
+  await ui.unmount()
 })

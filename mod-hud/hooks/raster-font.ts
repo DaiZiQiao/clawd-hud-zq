@@ -114,7 +114,6 @@ const runsOf = (rows: readonly string[]): { x: number; y: number; w: number; h: 
       const before = open.get(key)
       if (before !== undefined && before.y + before.h === y) before.h += 1
       else {
-        if (before !== undefined) done.push(before)
         open.set(key, { x, y, w: end - x, h: 1 })
       }
       here.add(key)

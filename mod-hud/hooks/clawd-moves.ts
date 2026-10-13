@@ -1,5 +1,6 @@
-import { chain, multiply, rotate, scale, translate, wave } from './clawd-vector'
+import { chain, multiply, noise, rotate, scale, translate, wave } from './clawd-vector'
 import type { Shape } from './clawd-vector'
+import { clamp } from './motion-rules'
 
 // The smooth Clawd's session moves: where its body, eyes and arms are at a
 // moment of tidying up and of its stretch after a compaction, eased frame by
@@ -44,28 +45,21 @@ export const CLAWD = {
 
 // --- easing ------------------------------------------------------------------
 
-const clamp01 = (v: number): number => Math.min(1, Math.max(0, v))
 /** How far `t` is through `from` to `to`, 0 to 1. */
-const span = (t: number, from: number, to: number): number => clamp01((t - from) / (to - from))
+const span = (t: number, from: number, to: number): number => clamp((t - from) / (to - from), 0, 1)
 const mix = (a: number, b: number, u: number): number => a + (b - a) * u
 const easeIn = (u: number): number => u * u * u
 const easeOut = (u: number): number => 1 - (1 - u) ** 3
 const easeInOut = (u: number): number => (u < 0.5 ? 4 * u * u * u : 1 - (-2 * u + 2) ** 3 / 2)
 /** Past the mark and back: a settle with a little overshoot. */
 const easeBack = (u: number): number => 1 + 2.70158 * (u - 1) ** 3 + 1.70158 * (u - 1) ** 2
-/** A pseudo-random 0 to 1, the same for the same `n`. */
-const hash01 = (n: number, salt = 0): number => {
-  const x = Math.sin(n * 127.1 + salt * 311.7) * 43758.5453
-
-  return x - Math.floor(x)
-}
 
 // --- the things it does --------------------------------------------------------
 
 const REST: Pose = { x: 0, sx: 1, sy: 1, tilt: 0, eyes: { dx: 0, dy: 0, open: 1 }, arms: { left: 0, right: 0 }, props: [] }
 
 /** Tidying up: one squash of the pages every TIDY_LOOP_MS, while a compaction runs. */
-export const TIDY_LOOP_MS = 1800
+const TIDY_LOOP_MS = 2000
 /** Where the stack of pages stands, right of it. */
 const STACK_X = 11
 
@@ -93,7 +87,7 @@ export const tidyPose = (t: number): Pose => {
     const fall = span(p, 1350 + one * 100, 1350 + one * 100 + 260)
     if (fall <= 0 || fall >= 1) continue
     // Into its place on the stack (a page's centre, as `pages` lays them).
-    props.push({ kind: 'page', x: STACK_X + 0.6 * wave(p + one * 90, 520) * (1 - fall), y: mix(-17, -(one + 0.5), easeIn(fall)), angle: (one % 2 === 0 ? 0.55 : -0.5) * (1 - fall), alpha: clamp01(fall * 3) })
+    props.push({ kind: 'page', x: STACK_X + 0.6 * wave(p + one * 90, 520) * (1 - fall), y: mix(-17, -(one + 0.5), easeIn(fall)), angle: (one % 2 === 0 ? 0.55 : -0.5) * (1 - fall), alpha: clamp(fall * 3, 0, 1) })
   }
   // The bundle: pops up as the stack goes, glints, hops off right and fades.
   if (p >= 560 && p < 1500) {
@@ -186,7 +180,7 @@ export const propShapes = (prop: Prop): Shape[] => {
     case 'pages': {
       const pitch = mix(1, 0.2, prop.squash)
 
-      return Array.from({ length: prop.count }, (_, one) => pageShapes(prop.x + 0.3 * (hash01(one, 9) - 0.5), -(one + 0.5) * pitch, 0, 1, mix(1, 0.4, prop.squash))).flat()
+      return Array.from({ length: prop.count }, (_, one) => pageShapes(prop.x + 0.3 * (noise(one, 9) - 0.5), -(one + 0.5) * pitch, 0, 1, mix(1, 0.4, prop.squash))).flat()
     }
     case 'page':
       return pageShapes(prop.x, prop.y, prop.angle, prop.alpha)

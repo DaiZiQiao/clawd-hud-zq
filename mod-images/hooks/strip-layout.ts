@@ -98,8 +98,8 @@ export const rowsCapOf = (maxRows: number, viewportRows: number | undefined): nu
 
 // --- words -----------------------------------------------------------------
 
-// ASCII cut to `width` cells, ending in `…` when cut.
-const cut = (text: string, width: number): string =>
+/** ASCII cut to `width` cells, ending in `…` when cut. */
+export const cut = (text: string, width: number): string =>
   text.length <= width ? text : width <= 0 ? '' : `${text.slice(0, width - 1)}…`
 
 const sizeOf = (tile: ImagesTile): { width: number; height: number } | undefined =>
@@ -254,8 +254,7 @@ const placedTileOf = (tile: ImagesTile, columns: number, rows: number): PlacedTi
 
 const stripOf = (input: LayoutInput, rowsCap: number, columns: number): Layout => {
   const { tiles, mode, previous } = input
-  const height = Number.isFinite(input.height) ? Math.floor(input.height) : ROWS_MIN
-  const most = Math.min(Math.max(ROWS_MIN, height), rowsCap - 1)
+  const most = Math.min(input.height, rowsCap - 1)
   // The same count as last time: never grow, only shrink when it no longer fits.
   const isSameCount = previous !== undefined && previous.count === tiles.length && Number.isFinite(previous.rows) && previous.rows >= ROWS_MIN
   const start = isSameCount ? Math.min(Math.floor(previous.rows), most) : most

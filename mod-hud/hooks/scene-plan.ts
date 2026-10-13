@@ -1,6 +1,6 @@
 import { BOX, LAPTOP_X, SLOT } from './mascot-sprites'
 import { stepField } from './motion-arbitrate'
-import { AIRBORNE, CATCH_UP, CROWD_OBSTACLES, FAR_CELLS, FLY_SKY, GAP, READING_STREAK_MS, clamp, isKnocked } from './motion-rules'
+import { AIRBORNE, CATCH_UP, CONTACT_COOLDOWN_MS, CROWD_OBSTACLES, FAR_CELLS, FLY_SKY, GAP, READING_STREAK_MS, clamp, isKnocked } from './motion-rules'
 import type { CollisionMode, Memo, Motion, Mover } from './motion-types'
 import { clearOf, depthsFor, dottedOf, fieldLayout, fieldOf, stripText } from './scene-layout'
 import { ACCENT } from './scene-model'
@@ -21,6 +21,8 @@ const STANDING_BITS: ReadonlySet<IdleBit> = new Set(['look', 'puff'])
 export const SETTLED: ReadonlySet<Phase['kind']> = new Set(['work', 'stalled', 'take', 'setup', 'pack', 'deliver', 'hand', 'baton', 'cheer', 'sit'])
 /** Done or failed, before the pipe: it stays where it stands (but for its walk back to its spawner). */
 const FINISHING: ReadonlySet<Phase['kind']> = new Set(['pack', 'hand', 'baton', 'cheer', 'sit'])
+/** Set down short of its slot, stuck for five seconds: it works where it stands instead. */
+const HOME_PATIENCE = 5000 / SCENE_FRAME_MS
 
 /**
  * Where everything stands at this tick: the field as deep as `rows` holds;
@@ -86,6 +88,8 @@ export const mascotPlan = (scene: MascotScene, layout: MascotLayout, previous?: 
   // Arriving or leaving by the pipe: standing obstacles, never moved.
   const fixedOnes = placements.filter(one => !held.has(one.id) && one.kind !== 'main' && one.kind !== 'strip' && one.phase !== undefined && !SETTLED.has(one.phase.kind))
   const homing = new Set([...(previous?.homing ?? [])].filter(id => placed.has(id) && !held.has(id)))
+  const homeWait = new Map([...previous?.homeWait ?? []].filter(([id]) => homing.has(id)))
+  const parked = new Set([...(previous?.parked ?? [])].filter(id => placed.has(id) && !held.has(id)))
   const isChild = (one: Placement): boolean => {
     const parent = byId.get(one.id)?.parentId
     return parent !== undefined && placed.has(parent)
@@ -172,8 +176,9 @@ export const mascotPlan = (scene: MascotScene, layout: MascotLayout, previous?: 
   }
   // Done or failed: it stays where it is until the pipe takes it.
   const finishing = (one: Placement): boolean => one.phase !== undefined && FINISHING.has(one.phase.kind)
-  // Set down away from its place: one that does not wander walks back to its slot, errands first.
-  const errandOf = (one: Placement): { x: number; d: number } | undefined => goalOf(one) ?? (homing.has(one.id) && !isFree(one) ? { x: one.x, d: one.slotD } : undefined)
+  // Set down away from its place: one that does not wander walks back to its slot, errands first;
+  // five seconds of grounded frames stuck with the slot as its goal exhaust its patience.
+  const errandOf = (one: Placement, goal: { x: number; d: number } | undefined): { x: number; d: number } | undefined => goal ?? (homing.has(one.id) && !isFree(one) ? { x: one.x, d: one.slotD } : undefined)
 
   // The smooth scene asks a flight of a mover where the sky over its floor
   // has room: a fetch while it runs, an Explore or researcher agent at work,
@@ -208,7 +213,7 @@ export const mascotPlan = (scene: MascotScene, layout: MascotLayout, previous?: 
   const lifts = new Map<string, number>()
   const facings = new Map<string, 'left' | 'right'>()
   const contacts = new Map<string, number>()
-  for (const [pair, at] of previous?.contacts ?? []) if ((tick - at) * SCENE_FRAME_MS < 30_000) contacts.set(pair, at)
+  for (const [pair, at] of previous?.contacts ?? []) if ((tick - at) * SCENE_FRAME_MS < CONTACT_COOLDOWN_MS.rare) contacts.set(pair, at)
   const steps = previous === undefined ? 0 : Math.min(tick - previous.tick, CATCH_UP)
   if (steps === 0) {
     for (const one of settled) {
@@ -222,9 +227,10 @@ export const mascotPlan = (scene: MascotScene, layout: MascotLayout, previous?: 
     const now = tick - frame
     motions.clear()
     lifts.clear()
+    const goals = new Map(settled.map(one => [one.id, goalOf(one)]))
     const movers: Mover[] = [
       ...settled.map((one): Mover => {
-        const goal = errandOf(one)
+        const goal = errandOf(one, goals.get(one.id))
         const ask = askOf(one, goal, settled)
         const at = posOf(one)
         const [dLo, dHi] = rangeOf(one)
@@ -240,12 +246,12 @@ export const mascotPlan = (scene: MascotScene, layout: MascotLayout, previous?: 
           dLo,
           dHi,
           free: isFree(one),
-          ...(goal !== undefined ? { goal: goal.x, goalD: goal.d } : wander || finishing(one) ? {} : { goal: one.x, goalD: one.slotD }),
+          ...(goal !== undefined ? { goal: goal.x, goalD: goal.d } : wander || finishing(one) ? {} : { goal: parked.has(one.id) ? at.x : one.x, goalD: parked.has(one.id) ? at.d : one.slotD }),
           // The smooth scene's flights take the sky with wandering off too.
           sky: wander || smooth ? headroom + at.d : 0,
           ...(memo.has(one.id) ? { memo: memo.get(one.id) } : {}),
           ...(ask === undefined ? {} : { ask }),
-          // Usagi dashes everywhere: twice the pace on foot, shorter rests, more leaps.
+          // Usagi strolls at Clawd's pace; its bounds come more often, reach further and stay longer in the air.
           ...(scene.character === 'usagi' ? { springy: true as const } : {}),
         }
       }),
@@ -257,7 +263,14 @@ export const mascotPlan = (scene: MascotScene, layout: MascotLayout, previous?: 
     for (const one of settled) {
       const result = results.get(one.id)
       if (result === undefined) continue
-      const from = pos.get(one.id)?.x ?? result.x
+      const at = posOf(one)
+      const from = at.x
+      if (homing.has(one.id)) {
+        const home = goals.get(one.id) === undefined && !isFree(one) && result.lift === 0 && (memo.get(one.id)?.lift ?? 0) === 0
+        const waited = home && result.x === at.x && result.d === at.d ? (homeWait.get(one.id) ?? 0) + 1 : 0
+        homeWait.set(one.id, waited)
+        if (waited >= HOME_PATIENCE && (result.x !== one.x || result.d !== one.slotD)) { homing.delete(one.id); homeWait.delete(one.id); parked.add(one.id) }
+      }
       if (result.x !== from) facings.set(one.id, result.x < from ? 'left' : 'right')
       pos.set(one.id, { x: result.x, d: result.d })
       memo.set(one.id, { ...result.memo, x: result.x, d: result.d })
@@ -280,7 +293,7 @@ export const mascotPlan = (scene: MascotScene, layout: MascotLayout, previous?: 
     if (fly?.reason !== undefined && motion?.kind === 'fly') one.flight = fly.reason
     if (fly?.loop !== undefined && motion?.kind === 'fly') one.loop = fly.loop
     // Home again: it stops walking back.
-    if (homing.has(one.id) && (isFree(one) || (one.drawnX === one.x && one.d === one.slotD))) homing.delete(one.id)
+    if (homing.has(one.id) && (isFree(one) || (one.drawnX === one.x && one.d === one.slotD))) { homing.delete(one.id); homeWait.delete(one.id) }
   }
 
   // Scene gestures and marks at this frame.
@@ -350,6 +363,6 @@ export const mascotPlan = (scene: MascotScene, layout: MascotLayout, previous?: 
     scenes,
     collisions,
     contacts,
-    ...(smooth ? { smooth, homing } : {}),
+    ...(smooth ? { smooth, homing, homeWait, parked } : {}),
   }
 }

@@ -58,7 +58,7 @@ declare module 'claude-code' {
       strip: ImagesStrip
       provenance: ImagesProvenance
       demo: ImagesDemo
-      /** Bumped when a picture finishes decoding, so the band draws it. */
+      /** Bumped for module-memory changes: placeholder age, drawing mode, the end of a sample strip, or session.start after a reload. */
       pictures: number
     }
   }

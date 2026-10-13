@@ -23,7 +23,7 @@ export type MascotLink = { kind: 'review' | 'fix'; target: string }
 export type MascotAgent = {
   id: string
   colour: string
-  /** Its parent's id, when the parent is in the scene too: it then stands beside it, smaller. */
+  /** Its parent's id, when the parent is known on the board: it stands beside it when both are placed. */
   parentId?: string
   role?: MascotRole
   /** Its type as the board names it (`worker`, `reviewer`, ...). */
@@ -35,7 +35,7 @@ export type MascotAgent = {
   /** What it wears on its air row (`accessoryOf`), and at which end (`sideOf`). */
   accessory?: Accessory
   side?: 'left' | 'right'
-  /** Quiet this long with no tool running, or stalled: it does idle bits. */
+  /** Quiet this long once stalled and not asking: it does idle bits. */
   idleMs?: number
   /** Since its spawn; absent when that is unknown (an agent seeded from the engine's list). */
   ageMs?: number
@@ -83,7 +83,6 @@ export type MascotMain = {
 /** A message between two mascots: a bubble that travels from one to the other. */
 export type SceneEvent = { kind: 'message'; from: string; to: string; tick: number }
 
-/** Everything the scene draws: the session's mascot and the subagents', in spawn order. */
 /** Who the mascots are: Clawd (the default), or Usagi (the `character` option). */
 export type Character = 'clawd' | 'usagi'
 
@@ -140,6 +139,8 @@ export type SceneOptions = {
   events?: readonly SceneEvent[]
   /** What the agents left out of the smooth scene's props settled (`SceneHistory`): read in place of working it out again. */
   history?: SceneHistory
+  /** Accessories already chosen for the session, by id: those agents keep what they wore. */
+  pinned?: Readonly<Record<string, Accessory>>
   /** Who the mascots are: Usagi, else Clawd. */
   character?: Character
   /** The session's mascot alone, or the agents' alone (SceneCast); absent, all of them. */
@@ -330,6 +331,10 @@ export type MascotPlan = {
   smooth?: boolean
   /** Set down by the person away from its place: walking back to its slot (a mascot that does not wander). */
   homing?: ReadonlySet<string>
+  /** Consecutive frames a homing mascot has stayed in the same place, grounded before and after, with its slot as the goal and no errand: five seconds exhaust its patience. */
+  homeWait?: ReadonlyMap<string, number>
+  /** Out of homing patience: its current place is its goal between errands, until the person picks it up again. */
+  parked?: ReadonlySet<string>
 }
 
 /** The pipe over a mascot this frame: its left column, its kind (a full mascot's or a mini's) and its lip's row (from the back row's box top, to the fraction). */
@@ -391,9 +396,10 @@ export type PlacedSprite = {
 
 /**
  * How the smooth scene shows one mascot between the plan's frames: where it
- * is (its left column, depth and lift, fractional: drawn at the nearest
- * cell), how it moves and faces, and the person's touches (held, thrown, a
- * wobble, scanning).
+ * is (its left column, depth and lift, fractional: rounded to the nearest
+ * cell in text rows), how it moves and faces, and the person's touches
+ * (held, thrown, a wobble, scanning). Surfaces drawing pixels keep its exact
+ * place.
  */
 export type SpriteView = {
   x?: number
@@ -405,8 +411,6 @@ export type SpriteView = {
   kick?: number
   nudge?: -1 | 1
   scanning?: boolean
-  /** Not drawn this frame (gone). */
-  hidden?: boolean
 }
 
 /** The smooth scene's frame: the overrides by id over the plan's placements. */

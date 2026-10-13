@@ -2,48 +2,25 @@ import type { ModelUsage } from 'claude-code'
 
 import type { HudLedger, HudLedgerEntry, HudTokenFacts } from '../types'
 import { counted, shortModel } from './facts'
+import { pricesAt } from './prices'
 import { defined } from './state-json'
 
 // What each loop spent, by model (`mod-hud.ledger`): pure helpers with no
 // `$`. The hooks in register.tsx book every request's tokens to the loop and
 // model that made it, end its run and count failed calls; these fold the
 // bookings in, compact old loops, and price the ledger for the Session tab's
-// Cost tree and `/mod-hud facts`. Prices are estimates (`PRICES`).
+// Cost tree and `/mod-hud facts`. Prices are estimates (hooks/prices.ts).
 
 /** USD per million tokens: fresh input, output, cache reads, cache writes (five-minute). */
 export type Price = { input: number; output: number; cacheRead: number; cacheWrite: number }
 
-const price = (input: number, output: number, cacheRead: number): Price => ({ input, output, cacheRead, cacheWrite: input * 1.25 })
+// Aggregated tokens have no per-request prompt sizes, so tiered models stay
+// unpriced. Unknown versions never borrow a family's latest rate.
+export const priceOf = (model: string): Price | undefined => {
+  const rate = pricesAt(model)
 
-/**
- * Approximate list prices, USD per million tokens, by short model id. They are
- * an estimate for splitting the spend by model and agent only: Anthropic's
- * first-party rates as of late 2026, cache writes taken at 1.25× input; a
- * gateway, a partner cloud, fast mode or a discount prices differently.
- * `costUsd` from `$.session.usage()` stays the session's real total.
- */
-export const PRICES: Readonly<Record<string, Price>> = {
-  'fable-5-1': price(10, 50, 0.25),
-  'fable-5': price(10, 50, 1),
-  'mythos-5-1': price(10, 50, 0.25),
-  'opus-5-5': price(4, 20, 0.2),
-  'opus-5': price(5, 25, 0.5),
-  'opus-4-8': price(5, 25, 0.5),
-  'opus-4-7': price(5, 25, 0.5),
-  'opus-4-6': price(5, 25, 0.5),
-  'opus-4-5': price(5, 25, 0.5),
-  'sonnet-5-5': price(2, 10, 0.2),
-  'sonnet-5': price(2, 10, 0.2),
-  'sonnet-4-6': price(3, 15, 0.3),
-  'sonnet-4-5': price(3, 15, 0.3),
-  'sonnet-4': price(3, 15, 0.3),
-  '3-7-sonnet': price(3, 15, 0.3),
-  'opus-4-1': price(15, 75, 1.5),
-  'haiku-4-5': price(1, 5, 0.1),
+  return rate === undefined ? undefined : { input: rate.input, output: rate.output, cacheRead: rate.read, cacheWrite: rate.write5m }
 }
-
-// Unknown versions stay unpriced rather than borrowing a family's latest rate.
-export const priceOf = (model: string): Price | undefined => PRICES[shortModel(model) ?? '']
 
 export const costOf = (model: string, tokens: HudTokenFacts): number | undefined => {
   const rate = priceOf(model)

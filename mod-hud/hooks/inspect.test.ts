@@ -193,8 +193,8 @@ describe('trails', () => {
     expect(held.has('ledger')).toBe(false)
     for (const surface of SURFACES) {
       const ui = await mount($, surface, 100)
-      // The group header's minimise Button alone.
-      expect((await ui.findAll({ type: 'Button' })).map(one => one.key)).toEqual(['group:agents'])
+      // The permanent tidy toggle and the group header's minimise Button.
+      expect((await ui.findAll({ type: 'Button' })).map(one => one.key)).toEqual(['hud:tidy:auto', 'group:agents'])
       expect(await ui.find({ key: 'session' })).toBe(undefined)
       await ui.unmount()
     }
@@ -909,12 +909,11 @@ test('a tool ending after its trail was evicted makes no trail write', { options
   expect(world.writes.filter(key => key === 'trails')).toHaveLength(writes)
 })
 
-test('a compaction fork request counts once, from turn.step, even when session.compact repeats its usage', { options: { inspectView: 'pane' } }, async ($, on) => {
+test('a compaction fork request counts once, from session.compact usage without a turn.step', { options: { inspectView: 'pane' } }, async ($, on) => {
   const { held, world, clock } = arrange(on)
+  on('session.model', () => ({ value: 'claude-opus-5-5' }))
   world.stepUsage = { input_tokens: 1000, output_tokens: 100, cache_read_input_tokens: 20, cache_creation_input_tokens: 30, model: 'claude-opus-5-5' }
   on('session.compact', async () => {
-    await stepAs($, 'compact-fork')
-    await complete($, 'compact-fork')
     return { messages: [{ role: 'assistant', text: 'summary', toolUses: [] }], usage: world.stepUsage as never }
   })
   await $.session.start(START)
@@ -924,8 +923,8 @@ test('a compaction fork request counts once, from turn.step, even when session.c
   await $.session.compact({ trigger: 'manual', messages: [{ role: 'user', text: 'the plan', toolUses: [] }], instructions: 'keep the plan' })
   expect((held.get('usage')?.value as HudUsageFacts).tokens?.input).toBe(before + 1000)
   const ledger = held.get('ledger')?.value as HudLedger
-  expect(Object.keys(ledger.entries)).toEqual(['compact-fork'])
-  expect(ledger.entries['compact-fork']?.models['claude-opus-5-5']?.input).toBe(1000)
+  expect(Object.keys(ledger.entries)).toEqual(['compact'])
+  expect(ledger.entries['compact']?.models['claude-opus-5-5']?.input).toBe(1000)
   expect((held.get('usage')?.value as HudUsageFacts).compactions).toBe(4)
 })
 

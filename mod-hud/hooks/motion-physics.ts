@@ -1,3 +1,4 @@
+import { BOX_ROWS } from './mascot-sprites'
 import { clamp } from './motion-rules'
 
 // The mascot scene's physics, for what the person does with the pointer and
@@ -12,23 +13,23 @@ import { clamp } from './motion-rules'
 /** Downward pull, rows per second per second. */
 export const GRAVITY = 30
 /** Air drag: the share of its speed a body keeps after a second in the air (a little lost). */
-export const AIR_KEEP = 0.85
+const AIR_KEEP = 0.85
 /** A bounce keeps this share of the speed into the floor, a wall or the ceiling. */
 export const RESTITUTION = 0.4
 /** On a bounce off the floor a body keeps this share of its speed across (friction). */
-export const BOUNCE_FRICTION = 0.7
+const BOUNCE_FRICTION = 0.7
 /** Sliding on the floor slows a body by this many cells per second each second. */
-export const SLIDE_FRICTION = 40
+const SLIDE_FRICTION = 40
 /** Below this speed into the floor, a landing is soft (a squash, no bounce). */
 export const SOFT_SPEED = 8
 /** At this speed or more against a wall or the floor, a body is knocked out (down, dizzy, up). */
 export const KNOCKOUT_SPEED = 16
-/** A drop from fewer rows than this is set down gently, however it lands. */
-export const GENTLE_DROP_ROWS = 3
+/** After the knockout check, a drop from fewer rows than this is set down gently. */
+const GENTLE_DROP_ROWS = 3
 /** No throw is faster than this, cells (rows) per second. */
 export const MAX_SPEED = 60
 /** A release's velocity is measured over the pointer's last ~100 ms. */
-export const SAMPLE_MS = 100
+const SAMPLE_MS = 100
 /** A press is a click when it comes up within 300 ms and less than a cell from where it went down. */
 export const CLICK_MS = 300
 export const CLICK_CELLS = 1
@@ -57,7 +58,7 @@ export type Body = {
 }
 
 /** What one step did: hit a wall, the ceiling, or the floor (and how hard), or came to rest. */
-export type Impact = { kind: 'wall' | 'ceiling' | 'floor'; speed: number }
+type Impact = { kind: 'wall' | 'ceiling' | 'floor'; speed: number }
 
 /** How a landing ends: set down (soft), a bounce with a wobble after, or knocked out. */
 export type Landing = 'soft' | 'bounce' | 'knockout'
@@ -209,7 +210,7 @@ export const swept = (from: Rect, to: Rect): Rect => {
 }
 
 /** One target a moving body may hit: its id and its rect. */
-export type Target = { id: string; rect: Rect }
+type Target = { id: string; rect: Rect }
 
 /** Every target the body's sweep meets this step (within a row), bowling-pin style, in the order given. */
 export const hitsAlong = (from: Rect, to: Rect, targets: readonly Target[], slack = 1): string[] => {
@@ -219,10 +220,7 @@ export const hitsAlong = (from: Rect, to: Rect, targets: readonly Target[], slac
 }
 
 /** A body in the air as the contact rules see it: its body's columns, its lift (feet) and which way it moves up or down. */
-export type Airborne = { x: number; width: number; lift: number; vy: number }
-
-/** A full mascot's box is four rows from its feet to its air row; the flying cap's blade one more. */
-export const BOX_TALL = 4
+type Airborne = { x: number; width: number; lift: number; vy: number }
 
 /**
  * A hop meeting a flier: `bonk` rising into it from below (the hopper's head
@@ -231,9 +229,9 @@ export const BOX_TALL = 4
  */
 export const airContact = (hopper: Airborne, flier: Airborne): 'bonk' | 'ride' | undefined => {
   if (!(hopper.x < flier.x + flier.width && flier.x < hopper.x + hopper.width)) return undefined
-  const head = hopper.lift + BOX_TALL - 1
+  const head = hopper.lift + BOX_ROWS - 1
   if (hopper.vy > 0 && hopper.lift < flier.lift && head >= flier.lift) return 'bonk'
-  if (hopper.vy <= 0 && hopper.lift >= flier.lift + 2 && hopper.lift <= flier.lift + BOX_TALL) return 'ride'
+  if (hopper.vy <= 0 && hopper.lift >= flier.lift + 2 && hopper.lift <= flier.lift + BOX_ROWS) return 'ride'
 
   return undefined
 }

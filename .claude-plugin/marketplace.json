@@ -4,14 +4,14 @@
     "name": "Dai Zi Qiao",
     "url": "https://github.com/DaiZiQiao"
   },
-  "description": "clawd-hud-zq: two Claude Code mods, each installed on its own: a HUD side pane with session facts, subagents and animated mascots (the session's mascot walks above the prompt and tidies the conversation up when its context has grown; smooth vector mascots in the desktop app, Ghostty and kitty), and a strip above the prompt with thumbnails of the images pasted into it.",
-  "version": "1.10.1",
+  "description": "clawd-hud-zq: two Claude Code mods, each installed on its own: a HUD side pane with session facts, subagents and animated mascots (the session's mascot walks above the prompt and offers cost-aware auto-tidy, on by default, at a safe point; smooth vector mascots in the desktop app, Ghostty and kitty), and a strip above the prompt with thumbnails of the images pasted into it.",
+  "version": "1.11.0",
   "plugins": [
     {
       "name": "mod-hud",
       "source": "./mod-hud",
-      "description": "A side pane, toggled by /mod-hud: a HUD of the session (header, alerts, then session, context and prompt cache, limits, usage and todos in labelled sections) above every subagent in it (type, model, status, elapsed time, tool calls, current tool, result), with an opt-in status line; the session's own mascot walks the band above the prompt and tidies the conversation up (compacts it) when its context has grown; in the desktop app and in Ghostty or kitty the mascots are smooth vector art.",
-      "version": "1.10.1",
+      "description": "A side pane, toggled by /mod-hud: a HUD of the session (header, alerts, then session, context and prompt cache, limits, usage and todos in labelled sections) above every subagent in it (type, model, status, elapsed time, tool calls, current tool, result), with an opt-in status line; the session's own mascot walks the band above the prompt and offers cost-aware auto-tidy (on by default) at a safe point; in the desktop app and in Ghostty or kitty the mascots are smooth vector art.",
+      "version": "1.11.0",
       "author": {
         "name": "Dai Zi Qiao",
         "url": "https://github.com/DaiZiQiao"
@@ -26,7 +26,7 @@
       "name": "mod-images",
       "source": "./mod-images",
       "description": "Thumbnails of the images pasted into the prompt, in a strip just above it before you send: real pixels in kitty and Ghostty, coloured half-block cells in other terminals, and /mod-images to see what it sees.",
-      "version": "1.0.0",
+      "version": "1.0.1",
       "author": {
         "name": "Dai Zi Qiao",
         "url": "https://github.com/DaiZiQiao"

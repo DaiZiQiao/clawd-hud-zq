@@ -10,7 +10,7 @@ import type { Cell, Grid, MascotLayout, MascotPlan, MascotScene, SceneLayer, Sce
 // unrounded place (the pixels), whose sprite shows in each cell (the
 // pointer) and each agent's pick.
 
-type Painted = { grid: Grid; sky: number; picks: { id: string; x: number; row: number }[]; owners: (string | undefined)[][]; layers: SceneLayer[] }
+type Painted = { grid: Grid; placed: NonNullable<ReturnType<typeof placedSprites>>; picks: { id: string; x: number; row: number }[]; owners: (string | undefined)[][]; layers: SceneLayer[] }
 
 /**
  * The scene painted cell by cell at this tick: what `renderMascots` draws, row
@@ -108,7 +108,7 @@ export const paint = (scene: MascotScene, layout: MascotLayout, plan = mascotPla
     picks.push({ id: one.id, x: one.pick.x, row: sky + one.pick.row })
   }
 
-  return { grid, sky, picks, owners: owners.slice(room - sky), layers }
+  return { grid, placed, picks, owners: owners.slice(room - sky), layers }
 }
 
 /**
@@ -117,8 +117,8 @@ export const paint = (scene: MascotScene, layout: MascotLayout, plan = mascotPla
  * `layers`, the same sprites and marks at their unrounded places, for a
  * surface drawing pixels. Undefined when nothing fits.
  */
-export const sceneCanvas = (scene: MascotScene, layout: MascotLayout, plan: MascotPlan | undefined, view?: SceneView): { grid: (Cell | undefined)[][]; owners: (string | undefined)[][]; layers: SceneLayer[] } | undefined => {
+export const sceneCanvas = (scene: MascotScene, layout: MascotLayout, plan: MascotPlan | undefined, view?: SceneView): Omit<Painted, 'picks'> | undefined => {
   const painted = paint(scene, layout, plan, view, true)
 
-  return painted === undefined ? undefined : { grid: painted.grid, owners: painted.owners, layers: painted.layers }
+  return painted === undefined ? undefined : { grid: painted.grid, placed: painted.placed, owners: painted.owners, layers: painted.layers }
 }

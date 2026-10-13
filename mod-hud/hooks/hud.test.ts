@@ -389,6 +389,7 @@ const SKETCH_72 = [
   ' context  used    ━━━━━━━━────────┃───  41%   412k / 1.0M',
   '          growth  +65k / turn        compact in ~6 turns',
   '          cache   ━━━━━━━━━━━━━━──────  warm · 42m left (1h)',
+  '          tidy    auto · nothing due Turn auto off',
   ` limits   5h      ━━━━━━──────────────  31%   ${AT_5H}   out ~${AT_OUT_5H}`,
   `          7d      ━━──────────────────  12%   ${AT_7D}`,
   ' usage    cost    $4.21              $3.51 / h · 1h 12m',
@@ -400,7 +401,7 @@ const SKETCH_72 = [
 const SKETCH_IDS = [
   'header', 'alerts', 'gap',
   'session.repo', 'session.branch', 'session.now',
-  'context.used', 'context.growth', 'context.cache',
+  'context.used', 'context.growth', 'context.cache', 'context.tidy',
   'limits.5h', 'limits.7d',
   'usage.cost', 'usage.last', 'usage.cache',
 ]
@@ -412,7 +413,7 @@ describe('the HUD', () => {
       const lines = linesFor(surface, hudLines(scene.data, { columns, isNarrow: columns < NARROW_BELOW }))
       expect(rows.map(row => row.text), `${name} @${columns}`).toEqual(lines)
       expect(rows.map(row => row.id), `${name} @${columns}`).toEqual(hudRowIds(scene.data, { columns, isNarrow: columns < NARROW_BELOW }))
-      if (name === 'empty') expect(rows).toHaveLength(0)
+      if (name === 'empty') expect(rows.map(row => row.id)).toEqual(['context.tidy'])
       else expect(rows.length, `${name} @${columns}`).toBeGreaterThan(0)
     })
   })
@@ -431,15 +432,16 @@ describe('the HUD', () => {
       '',
       ...SKETCH_72.slice(3, 8),
       `          cache   ${'─'.repeat(20)}  cold · next turn rewrites 412k`,
+      SKETCH_72[9],
       ` limits   5h      ━━━━━━──────────────  31%   ${AT_5H}`,
-      ...SKETCH_72.slice(10),
+      ...SKETCH_72.slice(11),
     ])
   })
 
   test('narrow at 48 columns: the same rows, the short labels, 10-cell bars', () => {
     expect(hudLines(full, { columns: 48, isNarrow: true })).toEqual([
       '◆ opus 5.5 · xhigh · gateway   ● working 00:42',
-      '  ⚠ 2 agents waiting for permission · 5h out ~1…',
+      truncate(`  ⚠ 2 agents waiting for permission · ${OUT_ALERT}`, 48),
       '',
       ' sess repo   ~/.claude/mods',
       '      branch main* ↑2  +142 −37 lines',
@@ -447,6 +449,7 @@ describe('the HUD', () => {
       ' ctx  used   ━━━━────┃─  41%  412k/1.0M',
       '      growth +65k/turn  compact in ~6 turns',
       '      cache  ━━━━━━━───  warm · 42m left (1h)',
+      '      tidy   auto · nothing due Turn auto off',
       ` lim  5h     ━━━───────  31%  ${AT_5H}`,
       `      7d     ━─────────  12%  ${AT_7D}`,
       ' use  cost   $4.21  $3.51 / h · 1h 12m',
@@ -470,6 +473,7 @@ describe('the HUD', () => {
       ' ctx  used   ━━━───┃─  41%  412k/1.0M',
       '      growth +65k/turn',
       '      cache  ━━━━━━──  warm · 42m left',
+      '      tidy   auto · noth… Turn auto off',
       ` lim  5h     ━━──────  31%  ${AT_5H}`,
       `      7d     ━───────  12%  ${AT_7D}`,
       ' use  cost   $4.21  $3.51 / h · 1h 12m',
@@ -631,7 +635,7 @@ describe('the HUD', () => {
       const wide = await mount($, surface, 100)
       const wideIds = (await rowsOf(wide)).map(row => row.id)
       await wide.unmount()
-      expect(wideIds).toEqual(['header', 'alerts', 'gap', 'session.repo', 'session.branch', 'session.now', 'context.used', 'context.cache', 'limits.5h', 'limits.7d', 'limits.spend', 'usage.cost', 'usage.last', 'usage.cache', 'motto'])
+      expect(wideIds).toEqual(['header', 'alerts', 'gap', 'session.repo', 'session.branch', 'session.now', 'context.used', 'context.cache', 'context.tidy', 'limits.5h', 'limits.7d', 'limits.spend', 'usage.cost', 'usage.last', 'usage.cache', 'motto'])
 
       for (const columns of [59, 56, 48, 44, 43, 40, 37]) {
         const ui = await mount($, surface, columns)
@@ -664,11 +668,12 @@ describe('the HUD', () => {
         const lines = hudLines(data, { columns, isNarrow: columns < NARROW_BELOW })
         if (lines.length === 0) continue
         const first = lines[0] ?? ''
-        if (data !== placeOnly) expect(first, `@${columns}`).toStartWith('◆')
+        if (data !== placeOnly && data !== empty) expect(first, `@${columns}`).toStartWith('◆')
+        if (data === empty) expect(first, `@${columns}`).toStartWith(columns < NARROW_BELOW ? ' ctx  tidy ' : ' context  tidy ')
         expect(displayWidth(first), `@${columns}: ${first}`).toBeLessThanOrEqual(columns - CLOSE_RESERVE)
       }
     }
-    expect(hudLines(placeOnly, { columns: 40, isNarrow: true })).toEqual([' sess repo   …/pane/it/is/drawn/into', '      branch main*'])
+    expect(hudLines(placeOnly, { columns: 40, isNarrow: true })).toEqual([' sess repo   …/pane/it/is/drawn/into', '      branch main*', ' ctx  tidy   auto · noth… Turn auto off'])
     // The working cell is never under the close button.
     for (const columns of [40, 48, 56, 60, 72]) {
       const first = hudLines(full, { columns, isNarrow: columns < NARROW_BELOW })[0] ?? ''
@@ -692,7 +697,7 @@ describe('the HUD', () => {
       for (const columns of [100, 48]) {
         const ui = await mount($, surface, columns)
         const rows = await rowsOf(ui)
-        expect(rows.map(row => row.id)).toEqual(['header', 'gap', 'context.used', 'usage.cost'])
+        expect(rows.map(row => row.id)).toEqual(['header', 'gap', 'context.used', 'context.tidy', 'usage.cost'])
         expect(rowOf(rows, 'context.used')?.text).toBe(columns < NARROW_BELOW ? ' ctx  used   —' : ' context  used    —')
         expect(rowOf(rows, 'usage.cost')?.text).toBe(columns < NARROW_BELOW ? ' use  cost   $0.00  00:12' : ' usage    cost    $0.00              00:12')
         await ui.unmount()
@@ -700,7 +705,8 @@ describe('the HUD', () => {
 
       scene.data = empty
       const none = await mount($, surface, 100)
-      expect(await rowsOf(none)).toHaveLength(0)
+      expect((await rowsOf(none)).map(row => row.id)).toEqual(['context.tidy'])
+      expect(rowOf(await rowsOf(none), 'context.tidy')?.text).toBe(' context  tidy    auto · nothing due Turn auto off')
       await none.unmount()
 
       // No limits, no git, no inventory, no tools, no cache, no last turn, nothing alarming: those rows go, the rest stay.
@@ -715,7 +721,7 @@ describe('the HUD', () => {
       }
       const bare = await mount($, surface, 100)
       const left = await rowsOf(bare)
-      expect(left.map(row => row.id)).toEqual(['header', 'gap', 'session.repo', 'context.used', 'context.growth', 'usage.cost', 'motto'])
+      expect(left.map(row => row.id)).toEqual(['header', 'gap', 'session.repo', 'context.used', 'context.growth', 'context.tidy', 'usage.cost', 'motto'])
       // Without the threshold the runway runs to the window.
       expect(rowOf(left, 'context.growth')?.text).toEndWith('compact in ~10 turns')
       expect(rowOf(left, 'session.repo')?.text).toBe(' session  repo    ~/.claude/mods')
@@ -863,15 +869,15 @@ describe('the HUD', () => {
     }
   })
 
-  test('a short pane gives the HUD half its rows, dropping by rank: alerts, header, used, limits, now, cache, cost, then the rest', () => {
+  test('a short pane reserves the tidy row, then gives the remaining HUD rows to the highest ranks', () => {
     // Most needed first; the blank row goes before anything with words in it.
-    const order = ['alerts', 'header', 'context.used', 'limits.5h', 'limits.7d', 'session.now', 'context.cache', 'usage.cost', 'session.branch', 'session.repo', 'context.growth', 'usage.last', 'usage.cache', 'motto', 'gap']
+    const order = ['alerts', 'header', 'context.used', 'limits.5h', 'limits.7d', 'session.now', 'context.cache', 'context.tidy', 'usage.cost', 'session.branch', 'session.repo', 'context.growth', 'usage.last', 'usage.cache', 'motto', 'gap']
     expect([...order].sort((a, b) => (RANKS[b as keyof typeof RANKS] ?? 0) - (RANKS[a as keyof typeof RANKS] ?? 0)).filter(id => id in RANKS)).toEqual(order.filter(id => id in RANKS))
     for (const [columns, isNarrow] of [[100, false], [72, false], [48, true], [40, true]] as const) {
       expect(hudLines(full, { columns, isNarrow })).toHaveLength(order.length)
       for (let rows = 4; rows <= 34; rows += 2) {
         const budget = Math.max(4, rows / 2)
-        const kept = order.slice(0, budget)
+        const kept = ['context.tidy', ...order.filter(id => id !== 'context.tidy').slice(0, budget - 1)]
         const ids = hudRowIds(full, { columns, rows, isNarrow })
         expect(ids, `@${columns} rows ${rows}`).toEqual(SKETCH_IDS.concat('motto').filter(id => kept.includes(id)))
       }
@@ -909,7 +915,7 @@ describe('the alert strip', () => {
     expect(lines[1]).toEndWith('…')
     expect(displayWidth(lines[1] ?? '')).toBeLessThanOrEqual(72)
     // Narrow, the same row cut to the pane.
-    expect(hudLines(alarmed, { columns: 48, isNarrow: true })[1]).toBe('  ⚠ 2 agents waiting for permission · 5h out ~1…')
+    expect(hudLines(alarmed, { columns: 48, isNarrow: true })[1]).toBe(truncate(`  ⚠ 2 agents waiting for permission · ${OUT_ALERT}`, 48))
     // The cache cooling sits after the compaction, before the failures.
     expect(alertsOf({ ...alarmed, cache: coolingCache.cache }).map(alert => alert.id)).toEqual(['asks', 'limit:five_hour', 'stalled', 'compact', 'cache', 'failures', 'behind'])
   })
@@ -1318,7 +1324,7 @@ describe('the TODO section', () => {
 
 test('the motto is the HUD\'s last row and never a HUD of its own', () => {
   const layout = { columns: 72, isNarrow: false }
-  expect(hudLines({ ...empty, motto: 'keep going' }, layout)).toEqual([])
+  expect(hudLines({ ...empty, motto: 'keep going' }, layout)).toEqual([' context  tidy    auto · nothing due Turn auto off', '  keep going'])
   expect(hudLines({ ...sparse, motto: 'keep going' }, layout).at(-1)).toBe('  keep going')
   expect(hudLines({ ...sparse, motto: 'keep going' }, layout)).toHaveLength(hudLines(sparse, layout).length + 1)
 })

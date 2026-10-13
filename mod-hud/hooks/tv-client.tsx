@@ -17,7 +17,7 @@ import type { TvWorld } from './tv-world'
 type State = { tv: TvWorld; frame: number }
 
 /** What the module draws with: its table's Box and Text, and `Svg` where the table has it. */
-export type TvElements = Pick<ClientElements, 'Box' | 'Text'> & { Svg?: ElementConstructor<SvgProps> }
+type TvElements = Pick<ClientElements, 'Box' | 'Text'> & { Svg?: ElementConstructor<SvgProps> }
 
 const svgOf = (elements: TvElements): ElementConstructor<SvgProps> => elements.Svg ?? (props => h('Svg', props) as RenderElement)
 
@@ -33,7 +33,7 @@ const lookOfCell = (cell: Exclude<TvOut, { tail: true }>): Look => ({
 })
 
 /** A row's runs of cells the TV draws: where each starts, its cells across, and its spans of one look. */
-export const runsOf = (row: readonly (TvOut | undefined)[]): { x: number; width: number; spans: { text: string; look: Look }[] }[] => {
+const runsOf = (row: readonly (TvOut | undefined)[]): { x: number; width: number; spans: { text: string; look: Look }[] }[] => {
   const runs: { x: number; width: number; spans: { text: string; look: Look }[] }[] = []
   let current: (typeof runs)[number] | undefined
   row.forEach((cell, x) => {
@@ -62,7 +62,7 @@ export const runsOf = (row: readonly (TvOut | undefined)[]): { x: number; width:
  * through); on the desktop one `Svg` the region's size and over it a box as
  * big with nothing in it, which the press lands on (an `Svg` is an image).
  */
-export const drawTv = (tv: TvWorld, elements: TvElements): RenderElement => {
+const drawTv = (tv: TvWorld, elements: TvElements): RenderElement => {
   const { Box, Text } = elements
   const { inputs } = tv
   const look = lookOf(tv)

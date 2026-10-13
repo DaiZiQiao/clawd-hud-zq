@@ -5,15 +5,17 @@ import { CLICK_CELLS, CLICK_MS, airContact, cooled, descentContact, hitsAlong, i
 import type { Body, Landing, Rect, Sample } from './motion-physics'
 import { AIRBORNE, CONTACT_COOLDOWN_MS, KNOCKED_TICKS, PAUSE_MIN, PROPELLER_ROWS, clamp, nearDepth, pairKey } from './motion-rules'
 import type { Memo } from './motion-types'
+import { SCENE_FRAME_MS } from './scene-phases'
 import type { MascotPlan, Placement, SceneInputs, SpriteView } from './scene-types'
-import { CHOREO_MS, floorTop, planAt, rectAt, rememberContacts, viewOf } from './scene-view'
+import { floorTop, planAt, rectAt, rememberContacts, viewOf } from './scene-view'
 import type { Seen } from './scene-view'
 
 // The smooth scene's world: everything that moves, in the surface module's
 // local state, and what the frame clock and the person's pointer do to it.
 // The choreography's plans step in its 250 ms frames (hooks/scene-view.ts
 // glides between them); the person's bodies (hooks/motion-physics.ts) step at
-// FRAME_MS. docs/mascots.md, "Physics and controls".
+// FRAME_MS for cell art, VECTOR_FRAME_MS (33 ms) for vector art in pixels.
+// docs/mascots.md, "Physics and controls".
 
 /**
  * The frame clock: 50 ms, 20 frames a second. Inside 20 to 30, a third under
@@ -30,10 +32,10 @@ export const MOST_STEP_MS = 250
 export const clockMs = (): number | undefined => (globalThis as { performance?: { now?: () => number } }).performance?.now?.()
 
 /** A landing's squash, a wobble after a bounce, a flier's wobble after a bonk, a ride on a flier. */
-export const SQUASH_MS = 150
+const SQUASH_MS = 150
 export const WOBBLE_MS = 700
-export const BUMP_MS = 800
-export const RIDE_MS = 1000
+const BUMP_MS = 800
+const RIDE_MS = 1000
 /** A grip with no pointer move for this long is released on the existing frame clock. */
 const GRIP_IDLE_MS = 10_000
 
@@ -52,7 +54,7 @@ type Grip = {
 }
 
 /** A mascot out of the choreography: in the person's hand, thrown, falling, or riding a flier. */
-export type Carried = {
+type Carried = {
   id: string
   mode: 'held' | 'thrown' | 'tumble' | 'ride'
   body: Body
@@ -116,9 +118,9 @@ export const createWorld = (props: SceneInputs): World => {
 }
 
 /** The choreography caught up with the scene's time: `cur` at its frame, `next` the frame after. */
-export const advance = (world: World): void => {
+const advance = (world: World): void => {
   rememberContacts(world)
-  const tick = Math.floor(world.sceneNow / CHOREO_MS)
+  const tick = Math.floor(world.sceneNow / SCENE_FRAME_MS)
   const cur = world.cur
   if (cur === undefined || cur.tick > tick) {
     world.cur = planAt(world, tick, undefined)
@@ -150,7 +152,7 @@ export const receive = (world: World, props: SceneInputs): void => {
   }
   heardStartled(world, props)
   rememberContacts(world)
-  world.cur = planAt(world, Math.floor(world.sceneNow / CHOREO_MS), world.cur)
+  world.cur = planAt(world, Math.floor(world.sceneNow / SCENE_FRAME_MS), world.cur)
   world.next = world.cur === undefined ? undefined : planAt(world, world.cur.tick + 1, world.cur)
   refreshCarried(world)
   world.view = undefined
@@ -170,8 +172,10 @@ export const inject = (world: World, id: string, memo: Memo, patch?: Partial<Pla
     return next
   })
   const homing = new Set(cur.homing ?? [])
-  if (home) homing.add(id)
-  world.cur = { ...cur, memo: memos, placements, homing }
+  const homeWait = new Map(cur.homeWait)
+  const parked = new Set(cur.parked ?? [])
+  if (home) { homing.add(id); homeWait.delete(id); parked.delete(id) }
+  world.cur = { ...cur, memo: memos, placements, homing, homeWait, parked }
   world.next = planAt(world, cur.tick + 1, world.cur)
   world.view = undefined
 }
@@ -211,7 +215,7 @@ const knockDown = (world: World, id: string): void => {
 }
 
 /** A body comes to rest: back into the choreography where it landed, knocked out, wobbling, or just set down; it walks home. */
-export const settle = (world: World, carried: Carried, how: Landing): void => {
+const settle = (world: World, carried: Carried, how: Landing): void => {
   const plan = world.cur
   world.carried.delete(carried.id)
   if (plan === undefined) return
@@ -237,7 +241,7 @@ const meet = (world: World, a: string, b: string): boolean => {
   world.contacts.set(key, world.sceneNow)
   if (world.cur !== undefined) {
     const contacts = new Map(world.cur.contacts)
-    contacts.set(key, world.sceneNow / CHOREO_MS)
+    contacts.set(key, world.sceneNow / SCENE_FRAME_MS)
     world.cur = { ...world.cur, contacts }
     world.next = planAt(world, world.cur.tick + 1, world.cur)
   }

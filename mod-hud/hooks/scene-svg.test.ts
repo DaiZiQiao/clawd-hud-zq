@@ -262,7 +262,7 @@ describe('the desktop draws it in pixels', () => {
       shapes.push(...figureShapes(NEUTRAL, { character: 'usagi', colour: USAGI.body, role: roles[index % roles.length], energy: 1 }, translate(14 + 28 * (index % 8), 30 + 24 * Math.floor(index / 8)), 0))
       wholes.push([from, shapes.length])
     }
-    const { source } = smoothSvg({ shapes, wholes, width: 230, height: 90, still: true }, 115, 23, SVG_MAX)
+    const { source } = smoothSvg({ shapes, wholes, still: true }, 115, 23, SVG_MAX)
     expect(source.length).toBeLessThanOrEqual(SVG_MAX)
     expect(wellFormed(source)).toBe(true)
     // Each mascot's markup is there whole, or not a shape of it is.
@@ -346,7 +346,8 @@ describe('the desktop draws it in pixels', () => {
   // Wandering off: recorded with the session standing still through the 2.2 s it covers.
   test('the terminal\'s rows are as they were: the same tree, frame for frame', { options: { wander: false } }, async ($, on) => {
     arrange(on, [TYPIST, entry('r', { type: 'reviewer', currentTool: 'Read', effort: 'xhigh', startedAt: NOW - 50_000 })])
-    const ui = await mount($, 'terminal')
+    // The always-drawn tidy row and its gap take two rows above the recorded field.
+    const ui = await mount($, 'terminal', 72, 26)
     const hex = async (text: string): Promise<string> =>
       [...new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text)))].map(byte => byte.toString(16).padStart(2, '0')).join('')
     // Recorded from the field: the agents at depths of their own, the session front-left; the near hand off the keys at 350 ms.

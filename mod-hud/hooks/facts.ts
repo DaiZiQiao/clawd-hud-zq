@@ -7,6 +7,7 @@ import type {
   HudMainFacts,
   HudRateLimitFact,
   HudSessionFacts,
+  HudTidyGate,
   HudTodoFacts,
   HudTodoItemFact,
   HudTokenFacts,
@@ -240,6 +241,14 @@ export const effortFromSettings = (settings: Settings | undefined, model: string
 /** The prompt cache's lifetimes, in milliseconds. */
 export const CACHE_TTL_MS: Readonly<Record<'5m' | '1h', number>> = { '5m': 5 * 60_000, '1h': 60 * 60_000 }
 
+/** The cache cools (the alert strip says so, the row turns `warning`) inside this much of its TTL... */
+const CACHE_COOL_MS = 2 * 60_000
+/** ...or this share of it, whichever is less: two minutes of an hour, one of five minutes. */
+const CACHE_COOL_SHARE = 0.2
+
+/** How close to cold the cache counts as cooling: CACHE_COOL_MS, or CACHE_COOL_SHARE of a shorter TTL. */
+export const cacheCoolAt = (ttlMs: number): number => Math.min(CACHE_COOL_MS, ttlMs * CACHE_COOL_SHARE)
+
 const isOn = (value: string | undefined): boolean => value !== undefined && /^(?:1|true|yes|on)$/i.test(value.trim())
 const isSet = (value: string | undefined): boolean => value !== undefined && value.trim() !== ''
 const ttlIn = (value: unknown): '5m' | '1h' | undefined => (value === '5m' || value === '1h' ? value : undefined)
@@ -352,6 +361,10 @@ export const COMPACT_ENV = ['DISABLE_AUTO_COMPACT', 'DISABLE_COMPACT'] as const
 /** False when the environment or the `autoCompactEnabled` setting switch auto-compaction off; undefined otherwise. */
 export const autoCompactOf = (env: Readonly<Record<string, string | undefined>> | undefined, stored?: { autoCompactEnabled?: unknown }): false | undefined =>
   COMPACT_ENV.some(name => isOn(env?.[name])) || stored?.autoCompactEnabled === false ? false : undefined
+
+/** Whether all compaction is disabled, separate from the auto-compact toggle. */
+export const compactDisabledOf = (env: Readonly<Record<string, string | undefined>> | undefined): boolean | undefined =>
+  env === undefined ? undefined : isOn(env.DISABLE_COMPACT)
 
 // --- usage -------------------------------------------------------------------
 
@@ -636,7 +649,7 @@ export const toolStarted = (tools: HudToolFacts, name: string, id: string | unde
     counts: { ...tools.counts, [name]: (tools.counts[name] ?? 0) + 1 },
   })
 
-/** The tools whose calls edit a file: their `file_path` (or `notebook_path`) counts for the `now` row's `N files edited`. */
+/** The tools whose calls edit a file: their `file_path` (or `notebook_path`) counts for `N files edited` in the Session tab's Overview. */
 export const EDIT_TOOLS: ReadonlySet<string> = new Set(['Edit', 'Write', 'MultiEdit', 'NotebookEdit'])
 
 /** The edited files kept: past this many, the oldest go (the count stays honest up to it). */
@@ -695,6 +708,10 @@ export const parseTodos = (value: unknown): HudTodoItemFact[] | undefined => {
 export const todoFactsOf = (held: HudTodoFacts, items: HudTodoItemFact[], now: number): HudTodoFacts =>
   sameFacts(held.items, items) ? held : { items, at: now }
 
+/** Open tasks count only for main or a creator loop the caller knows alive. */
+export const tidyOpenTasksOf = (items: HudTidyGate['tasks'], alive: ReadonlySet<string>): number =>
+  items.filter(item => (item.status === 'pending' || item.status === 'in_progress') && (item.creator === 'main' || alive.has(item.creator))).length
+
 // --- inventory ---------------------------------------------------------------
 
 /** The MCP servers (sorted, once each) and the skill count a breakdown names. */
@@ -709,6 +726,8 @@ export const inventoryOf = (breakdown: SessionContextBreakdown | undefined, now:
     skills: finite(breakdown.skills?.totalSkills),
     compactAt: breakdown.isAutoCompactEnabled === false ? undefined : finite(breakdown.autoCompactThreshold),
     autoCompact: breakdown.isAutoCompactEnabled === false ? false as const : undefined,
+    isAutoCompactEnabled: breakdown.isAutoCompactEnabled,
+    autocompactSource: breakdown.autocompactSource,
     at: now,
   })
 }

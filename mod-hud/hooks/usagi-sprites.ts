@@ -41,13 +41,12 @@ export const FIGURE_H = 8
 
 // --- the figure's parts, figure quarters (column 0 is box column 2's left half) ---
 
-/** The ears, rows 0 to 2, close together as Chiikawa draws them: standing; lowered, sitting or asleep; their tips trailing a walk; drooping, slumped. */
+/** The ears, rows 0 to 2, close together as Chiikawa draws them: standing; lowered, sitting or asleep; their tips trailing a walk. */
 export const EARS = {
   up: ['......##..##......', '......##..##......', '......##..##......'],
   short: ['..................', '......##..##......', '......##..##......'],
   trailLeft: ['.....##..##.......', '......##..##......', '......##..##......'],
   trailRight: ['.......##..##.....', '......##..##......', '......##..##......'],
-  droop: ['..................', '..................', '.####........####.'],
 } as const
 
 export type Ears = keyof typeof EARS
@@ -57,8 +56,6 @@ export const TOP = '...############...'
 export const FACE = '..##############..'
 export const BASE = '....##########....'
 export const SEAT = ['..##############..', '.################.'] as const
-/** Drooping ears' tips hang beside the head's top. */
-export const DROOP_TOP = '#..############..#'
 
 /** The eyes' columns by the head's look (row 4; `down` on row 5). */
 export const EYES = {

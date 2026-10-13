@@ -432,6 +432,25 @@ describe('what is attached', () => {
     expect(strip.tiles).toMatchObject([{ id: 2, state: 'ready', width: 4, height: 4 }])
   })
 
+  test("/clear finds the new session's folder under the project folder a deep scan found", async ($, on) => {
+    mock.env(on, { TERM: 'xterm-256color' })
+    const { clock, paste, wipe, world, stateOf } = arrange(on)
+    await $.session.start(START)
+    paste(1, PNG_HALF, { dir: `${USER_DIR}/-elsewhere/${SID}/images` })
+    await autocomplete($, world.draft)
+    await runFor(clock, 600)
+    expect(stripOf(stateOf).tiles).toMatchObject([{ id: 1, state: 'ready' }])
+    await $.session.end({ reason: 'clear', sessionId: SID, resume: { id: SID } } as never)
+    wipe()
+    paste(2, PNG_HALF, { dir: `${USER_DIR}/-elsewhere/${NEXT_SID}/images` })
+    world.listed.length = 0
+    await autocomplete($, world.draft)
+    await runFor(clock, 600)
+    expect(stripOf(stateOf).sessionId).toBe(NEXT_SID)
+    expect(stripOf(stateOf).tiles).toMatchObject([{ id: 2, state: 'ready' }])
+    expect(world.listed.filter(path => path === '/tmp' || path === USER_DIR)).toEqual([])
+  })
+
   test('a session nobody types in draws nothing and never looks at the draft', async ($, on) => {
     mock.env(on, { TERM: 'xterm-256color' })
     const { clock, paste, world } = arrange(on)
@@ -446,19 +465,23 @@ describe('what is attached', () => {
 })
 
 describe('memory and reloads', () => {
-  test('more pictures than it keeps decoded: one dropped from memory is decoded again when it shows', async ($, on) => {
+  test('current chips keep their decoded pictures; only pictures outside the draft can be dropped and decoded again', async ($, on) => {
     mock.env(on, { TERM: 'xterm-256color' })
     const { clock, world, paste } = arrange(on)
     await $.session.start(START)
     for (let id = 1; id <= 34; id += 1) paste(id, PNG_HALF)
     await autocomplete($, world.draft)
     await runFor(clock, 3000)
+    // 33 pictures now outside the draft: the oldest alone is dropped.
+    world.draft = '[Image #3]'
+    await runFor(clock, 600)
     world.draft = '[Image #1] [Image #2] [Image #3]'
     await runFor(clock, 600)
     const ui = await mountBand($)
     await runFor(clock, 1000)
     await ui.redraw()
     expect(await ui.find({ type: 'Raster', key: 'img:1' })).toBeDefined()
+    expect(world.reads.filter(path => path.endsWith('.png'))).toHaveLength(35)
     await ui.unmount()
   })
 

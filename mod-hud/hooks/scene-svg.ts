@@ -59,7 +59,7 @@ const themed = (key: ThemeKey): Paint => ({ fill: SCENE_THEMES.dark[key], theme:
 const colourPaint = (colour: string): Paint => (colour.startsWith('#') ? { fill: colour } : themed(isThemeKey(colour) ? colour : 'text'))
 
 /** A cell's paint, by its ink, as the text rows colour it (`styleOf`). */
-export const paintOf = (cell: Cell): Paint => {
+const paintOf = (cell: Cell): Paint => {
   const paint = ((): Paint => {
     switch (cell.ink) {
       case 'b':

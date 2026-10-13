@@ -1,11 +1,11 @@
 {
   "name": "mod-hud",
-  "version": "1.10.1",
+  "version": "1.11.0",
   "author": {
     "name": "Dai Zi Qiao",
     "url": "https://github.com/DaiZiQiao"
   },
-  "description": "A side pane, toggled by /mod-hud: a HUD of the session (header, alerts, then session, context and prompt cache, limits, usage and todos in labelled sections) above every subagent in it (type, model, status, elapsed time, tool calls, current tool, result), with an opt-in status line; the session's own mascot walks the band above the prompt and tidies the conversation up (compacts it) when its context has grown; in the desktop app and in Ghostty or kitty the mascots are smooth vector art.",
+  "description": "A side pane, toggled by /mod-hud: a HUD of the session (header, alerts, then session, context and prompt cache, limits, usage and todos in labelled sections) above every subagent in it (type, model, status, elapsed time, tool calls, current tool, result), with an opt-in status line; the session's own mascot walks the band above the prompt and offers cost-aware auto-tidy (on by default) at a safe point; in the desktop app and in Ghostty or kitty the mascots are smooth vector art.",
   "types": "./types/index.d.ts",
   "userConfig": {
     "stalledAfterSec": {
@@ -137,13 +137,14 @@
     "tidy": {
       "type": "string",
       "title": "Tidy up",
-      "description": "Compacting the main conversation once its context passes Tidy up at. ask (default): the band offers it while the main loop is idle, with how many requests it takes to pay for itself; Tidy up runs it (the same call /compact makes, told to keep the plan and the todos), Not now puts it off until the context grows 50k more. auto: after a main turn ends with no subagent running, the band counts down ten seconds, then tidies up; Not now or a new prompt stops it. off: never offered. Whatever this says, the session's mascot squashes a pile of pages while any compaction of the main conversation runs, and the band shows its size before and after.",
-      "default": "ask"
+      "description": "auto (default): tidy the main conversation when the cost calculator says it saves money, only at a safe point, after a 30 s countdown with Cancel; offers only where automatic tidies are not allowed. Before the first would-be automatic tidy, an offer introduces auto-tidy in place of a countdown. Turn auto off and /mod-hud tidy off save ask mode permanently. ask: offer a tidy with the estimated saving; Tidy up keeps the plan and the todos, Not now puts it off. off: never offer a tidy. Any main compaction still shows its progress and result.",
+      "default": "auto",
+      "options": ["auto", "ask", "off"]
     },
     "tidyAt": {
       "type": "number",
       "title": "Tidy up at (k tokens)",
-      "description": "The context, in thousands of tokens, past which a tidy is offered (or, with tidy auto, started). Never under 40. Roughly 100 to 200 costs least for most long sessions: earlier and the summaries cost more than they save, later and every request re-reads a large context.",
+      "description": "The minimum context, in thousands of tokens, for the calculator to consider a tidy, never under 40. Reaching it alone neither offers nor starts a tidy: the cost estimate and, in auto mode, the safe point decide.",
       "default": 150
     }
   }

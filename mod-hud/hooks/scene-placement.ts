@@ -1,3 +1,4 @@
+import { CLAWD } from './clawd-moves'
 import { bobOf, drawLook, drawMini, wearOfAgent, wearOfMain } from './mascot-glyphs'
 import { agentLook, mainLook, miniLook } from './mascot-poses'
 import type { Look, LookContext } from './mascot-poses'
@@ -15,9 +16,6 @@ import { quirkAt, quirkLook, quirkPlaceOf } from './usagi-quirks'
 // The plan's frame as placed sprites, renderer-agnostic: each mascot's look
 // drawn into cells (hooks/mascot-poses.ts, hooks/mascot-glyphs.ts) where it
 // stands, the pipes over those arriving and leaving, and the scenes' marks.
-
-/** The session's Clawd drawn as shapes (hooks/scene-smooth.ts): the accent's own orange. */
-const CLAWD_COLOUR = '#D77757'
 
 // --- the pipe ----------------------------------------------------------------
 
@@ -65,7 +63,7 @@ const pipedOf = (one: Placement, agent: MascotAgent, plan: MascotPlan, anchors: 
     return { stage: 'fall', x: from + (one.x - from) * u, d: anchor.slotD + (one.slotD - anchor.slotD) * u, lift: fall.lift, ...(mouth === undefined ? {} : { lip: anchor.slotD - mouth }) }
   }
   if (one.phase?.kind === 'leave') {
-    const ms = agent.endedMs === undefined ? one.phase.step * SCENE_FRAME_MS : agent.endedMs - holdTicks(agent, plan.scenes) * SCENE_FRAME_MS
+    const ms = (agent.endedMs ?? 0) - holdTicks(agent, plan.scenes) * SCENE_FRAME_MS
     const sky = plan.headroom + one.d
     const frame = farewellAt(ms, sky)
     const stage = frame.inside ? 'inside' : ms < PIPE_SLIDE_MS ? 'lower' : 'suck'
@@ -147,7 +145,7 @@ export const placedSprites = (scene: MascotScene, layout: MascotLayout, plan = m
   const sprites: PlacedSprite[] = []
   for (const placement of plan.placements) {
     const seen = view?.get(placement.id)
-    if (seen?.hidden === true || placement.id === layout.away) continue
+    if (placement.id === layout.away) continue
     const one: Placement = seen === undefined ? placement : {
       ...placement,
       drawnX: seen.x === undefined ? placement.drawnX : Math.round(seen.x),
@@ -221,7 +219,7 @@ export const placedSprites = (scene: MascotScene, layout: MascotLayout, plan = m
       lift = look.lift
       figure = {
         look,
-        info: { character, colour: CLAWD_COLOUR, crown: true, energy: scene.main.energy ?? 0 },
+        info: { character, colour: CLAWD.body, crown: true, energy: scene.main.energy ?? 0 },
         context,
         ...(scene.main.tidyMs === undefined ? {} : { tidyMs: scene.main.tidyMs }),
         ...(scene.main.stretchMs === undefined ? {} : { stretchMs: scene.main.stretchMs }),

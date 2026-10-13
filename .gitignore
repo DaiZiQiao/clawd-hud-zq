@@ -4,3 +4,4 @@ mod-images/.claude-plugin/types/
 node_modules/
 .DS_Store
 *.log
+.playwright-mcp/

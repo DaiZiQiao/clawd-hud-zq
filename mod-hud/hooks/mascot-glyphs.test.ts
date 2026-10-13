@@ -4,7 +4,7 @@ import { boxed, cellOf, drawnAlone, figureIn, placementOf, rowsOf, spriteOf, win
 import { spriteSheet } from './mascot-sheet.fixtures'
 import type { SheetEntry } from './mascot-sheet.fixtures'
 import { ACCESSORIES, ACCESSORY_NAMES, BLANKET, CROWN, HAT_X, HEADS, LAPTOP_COLOUR, ROLE_LETTERS, SLOT, SQUASHED, THOUGHTS, TORSOS } from './mascot-sprites'
-import { CLASHES, PALETTE, accessoryOf, energyOf, roleOf, sceneOf, sideOf } from './scene-model'
+import { CLASHES, PALETTE, accessoryOf, energyOf, isMakerType, roleOf, sceneOf, sideOf } from './scene-model'
 import { KIT_COLOURS, NOW, SCENE_COLOURS, crowd, entry, idleHud, oneAgent, working } from './scene-model.fixtures'
 import { SCENE_FRAME_MS } from './scene-phases'
 import { placedSprites } from './scene-placement'
@@ -298,8 +298,8 @@ describe('energy', () => {
 
 describe('role letters', () => {
   test('types map to roles; one letter centred above the head in the foreground, the head itself untouched; none for any other type', () => {
-    expect(['reviewer', 'mod-review-gates:reviewer', 'debugger', 'Plan', 'worker', 'frontend', 'Explore', 'researcher', 'general-purpose'].map(roleOf))
-      .toEqual(['reviewer', 'reviewer', 'debugger', 'planner', 'worker', 'frontend', 'explorer', 'explorer', undefined])
+    expect(['reviewer', 'mod-review-gates:reviewer', 'debugger', 'Plan', 'worker', 'coder', 'aaai-research-writer', 'frontend', 'Explore', 'researcher', 'researcher-sol', 'general-purpose', 'dl-data-analyst', 'pdf-reader-synthesizer'].map(roleOf))
+      .toEqual(['reviewer', 'reviewer', 'debugger', 'planner', 'worker', 'worker', 'worker', 'frontend', 'explorer', 'explorer', 'explorer', undefined, undefined, undefined])
     for (const [role, letter] of Object.entries(ROLE_LETTERS)) {
       for (const activity of ['thinking', 'typing'] as const) {
         const cell = drawnAlone(oneAgent(working('a', activity, { role: role as keyof typeof ROLE_LETTERS })), 'a')
@@ -311,5 +311,10 @@ describe('role letters', () => {
       expect(sprite.cells[2]?.slice(3, 10).every(cell => cell?.ink === 'b')).toBe(true)
     }
     expect(drawnAlone(oneAgent(working('a', 'typing')), 'a')[0]?.trim()).toBe('')
+  })
+
+  test('reviewers visit makers, including coders and research writers', () => {
+    for (const type of ['worker', 'frontend', 'debugger', 'coder', 'aaai-research-writer', 'Coder', 'AAAI-Research-Writer']) expect(isMakerType(type), type).toBe(true)
+    for (const type of [undefined, '', 'reviewer', 'Plan', 'Explore', 'researcher', 'researcher-sol', 'general-purpose', 'dl-data-analyst', 'pdf-reader-synthesizer']) expect(isMakerType(type), String(type)).toBe(false)
   })
 })

@@ -1,4 +1,4 @@
-import { IDENTITY, applyTo, chain, coverOf, rasterOf, rotate, scale, translate } from './clawd-vector'
+import { IDENTITY, about, applyTo, chain, coverOf, rasterOf, rotate, scale, translate } from './clawd-vector'
 import type { Shape } from './clawd-vector'
 import { BODY_WIDTH, BODY_X, BOX_ROWS, HAT_X, MINI, MINI_SCALE } from './mascot-sprites'
 import type { MascotRole } from './scene-types'
@@ -6,7 +6,8 @@ import { EYE, accessoryShapes, browLine, crownShapes, figureShapes, propellerSha
 import type { FigureInfo } from './smooth-art'
 import { base64Of, pngOf } from './png'
 import { NEUTRAL } from './smooth-pose'
-import { capOf, clawdEyesOf, usagiEyesOf } from './tv-figure'
+import { CELL_HEIGHT, CELL_WIDTH } from './svg-style'
+import { CLAWD_EYES, CLAWD_LEGS, USAGI_CHEEKS, USAGI_EYES, capOf, clawdEyesOf, usagiEyesOf, wornBy } from './tv-figure'
 import type { Eyes, Who } from './tv-figure'
 import type { TvInputs, TvLayout } from './tv-model'
 import { ROLE_HATS, USAGI } from './usagi-sprites'
@@ -21,8 +22,8 @@ import type { HatName } from './usagi-sprites'
 // pictures the hooks draw the giant alone as pictures (`giantWindows`), the
 // TV's module drawing its glass over them.
 
-const CW = 8
-const CH = 16
+const CW = CELL_WIDTH
+const CH = CELL_HEIGHT
 
 /** Each role by the hat it wears: what the scene's figure needs to wear it. */
 const ROLE_OF_HAT: ReadonlyMap<HatName, MascotRole> = new Map((Object.entries(ROLE_HATS) as [MascotRole, HatName][]).map(([role, hat]) => [hat, role]))
@@ -103,7 +104,7 @@ const clawdEyes = (layout: TvLayout, x: number, w: number, y: number, eyes: Eyes
   const ew = size.w * (CW / 2)
   const eh = size.h * (CH / 2)
 
-  return [0.27, 0.73].map((at): Shape => {
+  return CLAWD_EYES.map((at): Shape => {
     const cx = x + w * at
 
     return eyes === 'shut'
@@ -127,7 +128,7 @@ const giantClawd = (who: Who, layout: TvLayout, eyes: Eyes, spin: number, t: num
   const legW = layout.body.w >= 40 ? 2 * CW : CW
   const arm = { y: body.y + body.h - 2 * CH, h: CH }
   const shapes: Shape[] = [
-    ...[1 / 12, 3 / 12, 8 / 12, 10 / 12].map((share): Shape => ({ kind: 'rect', x: body.x + body.w * share, y: body.y + body.h - 6, w: legW, h: at.bottom - body.y - body.h + 6, r: legW * 0.4, fill: deep })),
+    ...CLAWD_LEGS.map((share): Shape => ({ kind: 'rect', x: body.x + body.w * share, y: body.y + body.h - 6, w: legW, h: at.bottom - body.y - body.h + 6, r: legW * 0.4, fill: deep })),
     { kind: 'rect', x: at.left, y: arm.y, w: body.x - at.left + 12, h: arm.h, r: arm.h * 0.45, fill: who.colour },
     { kind: 'rect', x: body.x + body.w - 12, y: arm.y, w: at.right - body.x - body.w + 12, h: arm.h, r: arm.h * 0.45, fill: who.colour },
     { kind: 'rect', x: body.x, y: body.y, w: body.w, h: body.h, r: 14, fill: who.colour },
@@ -138,7 +139,7 @@ const giantClawd = (who: Who, layout: TvLayout, eyes: Eyes, spin: number, t: num
   // What it wears over the corner of its head it is worn at, blown up from the scene's (its head 12 units across the body's
   // width, as tall as the rows over its head allow), no bigger than its box holds it; its side its own (a cap's peak to the
   // side it is worn at).
-  const side = who.crown === true ? 'centre' : who.accessory === undefined ? 'left' : who.side ?? 'left'
+  const side = wornBy(who, spin)?.side ?? 'left'
   const across = side === 'centre' ? 0 : ((HAT_X[side] - HAT_X.centre) * 2 * body.w) / 12
   const anchor = { x: body.x + body.w / 2 + across, y: body.y }
   const worn = (k: number): Shape[] => {
@@ -169,9 +170,6 @@ const outlined = (shapes: readonly Shape[]): Shape[] => [
   ...shapes,
 ]
 
-/** A shape turned `a` radians about (`x`, `y`). */
-const turned = (a: number, x: number, y: number) => [Math.cos(a), Math.sin(a), -Math.sin(a), Math.cos(a), x - x * Math.cos(a) + y * Math.sin(a), y - x * Math.sin(a) - y * Math.cos(a)] as const
-
 /**
  * Usagi's face under the TV, as Chiikawa draws it: its dot eyes with a small
  * glint in their top right under brows arched high over them (wide, bigger,
@@ -180,16 +178,16 @@ const turned = (a: number, x: number, y: number) => [Math.cos(a), Math.sin(a), -
  */
 const usagiFace = (x: number, w: number, y: number, eyes: Eyes): Shape[] => {
   const size = usagiEyesOf(eyes)
-  const ew = size.w * (CW / 2) * 1.0
+  const ew = size.w * (CW / 2)
   const eh = Math.max(ew * 1.22, size.h * (CH / 2))
   const shapes: Shape[] = []
-  for (const at of [0.2, 0.8]) {
+  for (const at of USAGI_CHEEKS) {
     const cx = x + w * at
     const cy = y + CH * 0.9
     shapes.push({ kind: 'ellipse', x: cx - 17, y: cy - 9, w: 34, h: 18, fill: USAGI.blush, alpha: 0.95 })
-    for (const dx of [-8, 0, 8]) shapes.push({ kind: 'rect', x: cx + dx - 1.6, y: cy - 5, w: 3.2, h: 10, r: 1.6, fill: USAGI.line, m: turned(0.3, cx + dx, cy) })
+    for (const dx of [-8, 0, 8]) shapes.push({ kind: 'rect', x: cx + dx - 1.6, y: cy - 5, w: 3.2, h: 10, r: 1.6, fill: USAGI.line, m: about(cx + dx, cy, rotate(0.3)) })
   }
-  for (const at of [0.34, 0.66] as const) {
+  for (const at of USAGI_EYES) {
     const cx = x + w * at
     const cy = y + CH / 2 - (eyes === 'wide' ? CH / 4 : 0)
     if (eyes === 'shut') shapes.push({ kind: 'rect', x: cx - ew / 2, y: cy - 2.5, w: ew, h: 5, r: 2.5, fill: USAGI.eye })
@@ -231,7 +229,7 @@ const giantUsagi = (who: Who, layout: TvLayout, eyes: Eyes, spin: number): Shape
     // About the ear's root on the head's top: together, the two a V.
     const root = { x: middle + side * earW * 0.8, y: body.y + CH }
     const turn = side * 0.16
-    const m = [Math.cos(turn), Math.sin(turn), -Math.sin(turn), Math.cos(turn), root.x - root.x * Math.cos(turn) + root.y * Math.sin(turn), root.y - root.x * Math.sin(turn) - root.y * Math.cos(turn)] as const
+    const m = about(root.x, root.y, rotate(turn))
     silhouette.push({ kind: 'rect', x: root.x - earW / 2, y: root.y - earLength, w: earW, h: earLength, r: earW / 2, fill: USAGI.cream, m })
     inside.push({ kind: 'rect', x: root.x - earW * 0.19, y: root.y - earLength + earW * 0.45, w: earW * 0.38, h: Math.max(0, earLength - earW * 0.45 - CH * 1.6), r: earW * 0.19, fill: USAGI.ear, m })
   }
@@ -278,7 +276,7 @@ export const giantShapes = (who: Who, layout: TvLayout, eyes: Eyes = 'open', spi
 /**
  * The scene's figure on its way, as the vector art draws it: its middle
  * `travel` of the way from where it stood (its body's left at `from`, its
- * sprite's top row) to the giant's, blown up `scale` of the way from its
+ * box's top row) to the giant's, blown up `scale` of the way from its
  * scene size to as big as the giant's box holds it, its proportions kept;
  * eyes wide; in flight, its propeller cap turning.
  */
@@ -386,7 +384,7 @@ const inkedCells = (frames: readonly Uint8Array[], width: number, height: number
  * while a cut leaves out `LEAST_FREED` or more, up to `MOST_PIECES`. Each
  * window holds all of its inked cells and none of another's.
  */
-export const giantPieces = (inked: Uint8Array, width: number, height: number): GiantPiece[] => {
+const giantPieces = (inked: Uint8Array, width: number, height: number): GiantPiece[] => {
   // The inked cells a row (and a column) has before each cell: whether a run of it has any, one subtraction.
   const rows = new Int32Array(height * (width + 1))
   const columns = new Int32Array(width * (height + 1))

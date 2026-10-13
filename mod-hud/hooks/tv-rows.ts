@@ -6,6 +6,7 @@ import type { MascotScene } from './scene-types'
 import { displayWidth, truncate } from './text-width'
 import { whoOfAgent, whoOfMain } from './tv-figure'
 import type { Who } from './tv-figure'
+import { tvCellOf } from './tv-model'
 import type { TvCell, TvRow, TvSpan } from './tv-model'
 
 // What the hooks hand the TV to show (hooks/tv-model.ts): the inspect view's
@@ -14,7 +15,7 @@ import type { TvCell, TvRow, TvSpan } from './tv-model'
 // the hooks, by its key, for the TV's post to name.
 
 /** The channel's number on the glass takes the title row's last cells: `CH 2` and a blank. */
-export const OSD_ROOM = 5
+const OSD_ROOM = 5
 
 /** Spans cut to `width` cells, the cut one ending in `…`. */
 const cut = (spans: readonly TvSpan[], width: number): TvSpan[] => {
@@ -66,19 +67,11 @@ export const tvRowOfInspect = (row: InspectRow, onAction: (action: InspectAction
   key: row.key,
   cells: row.cells.map((cell): TvCell => {
     if ('button' in cell) {
-      const { key, label, primary, dimColor, cover, action } = cell.button
+      const { key, action } = cell.button
       presses.set(key, () => onAction(action))
-
-      return { press: key, label, ...(primary === true ? { primary: true as const } : {}), ...(dimColor === true ? { dim: true as const } : {}), ...(cover === undefined ? {} : { cover }) }
     }
 
-    return {
-      text: cell.text,
-      ...(cell.color === undefined ? {} : { color: cell.color }),
-      ...(cell.bold === true ? { bold: true as const } : {}),
-      ...(cell.dimColor === true ? { dim: true as const } : {}),
-      ...(cell.italic === true ? { italic: true as const } : {}),
-    }
+    return tvCellOf(cell)
   }),
 })
 

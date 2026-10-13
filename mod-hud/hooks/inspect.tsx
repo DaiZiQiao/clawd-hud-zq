@@ -2,8 +2,8 @@ import type { ButtonProps, ElementConstructor, RenderElement } from 'claude-code
 
 import type { HudDetailFacts, HudSelection, HudTab, HudTokenFacts, HudTrailStep } from '../types'
 import type { CostModel, RunCounts } from './hud-ledger'
-import { formatCost, formatTokens } from './hud'
-import { displayWidth, pad2, padEnd, truncate } from './text-width'
+import { NARROW_BELOW, formatCost, formatTokens } from './hud'
+import { displayWidth, pad2, padEnd, printable, truncate } from './text-width'
 import type { HudElements } from './hud'
 import { renderTextRow } from './text-svg'
 import type { TextCell } from './text-svg'
@@ -25,9 +25,7 @@ export const SAID_MAX = 10
 /** Each message is kept to this many characters. */
 export const SAID_CHARS = 2000
 /** The prompt is kept to this many characters. */
-export const PROMPT_CHARS = 8000
-/** Below this many columns the header is stacked. */
-export const DETAIL_NARROW_BELOW = 60
+const PROMPT_CHARS = 8000
 
 export type Trails = Record<string, HudTrailStep[]>
 
@@ -35,12 +33,6 @@ export type Trails = Record<string, HudTrailStep[]>
 const ACCENT = 'claude'
 const WARN = 'warning'
 const HOT = 'error'
-
-// Text from the world is one line of printable text.
-const isControl = (cp: number): boolean => cp < 0x20 || (cp >= 0x7f && cp <= 0x9f) || cp === 0x2028 || cp === 0x2029
-
-const flat = (text: string): string =>
-  [...text].map(char => (isControl(char.codePointAt(0) ?? 0) ? ' ' : char)).join('').split(' ').filter(word => word !== '').join(' ')
 
 /** `…` and the end of a text longer than `max` characters: a path's file name stays. */
 const keepEnd = (text: string, max: number): string => ([...text].length <= max ? text : `…${[...text].slice(-(max - 1)).join('')}`)
@@ -57,14 +49,11 @@ const WORDS = ['command', 'pattern', 'url', 'query', 'to', 'skill', 'description
  * description (its start kept), one line of at most ARG_MAX characters.
  */
 export const mainArgOf = (input: Readonly<Record<string, unknown>>): string | undefined => {
-  if ((input.tool === 'Grep' || input.tool === 'Glob') && typeof input.pattern === 'string' && flat(input.pattern) !== '') return keepStart(flat(input.pattern), ARG_MAX)
-  for (const key of PATHS) {
+  const keys = input.tool === 'Grep' || input.tool === 'Glob' ? ['pattern', ...PATHS, ...WORDS] : [...PATHS, ...WORDS]
+  for (const key of new Set(keys)) {
     const value = input[key]
-    if (typeof value === 'string' && flat(value) !== '') return keepEnd(flat(value), ARG_MAX)
-  }
-  for (const key of WORDS) {
-    const value = input[key]
-    if (typeof value === 'string' && flat(value) !== '') return keepStart(flat(value), ARG_MAX)
+    const text = typeof value === 'string' ? printable(value) : ''
+    if (text !== '') return PATHS.some(path => path === key) ? keepEnd(text, ARG_MAX) : keepStart(text, ARG_MAX)
   }
 
   return undefined
@@ -126,17 +115,20 @@ export const trailsPruned = (trails: Readonly<Trails>, keep: (id: string) => boo
 }
 
 /** `Read src/a.ts`: a trail step as the views list it. */
-export const stepText = (step: Pick<HudTrailStep, 'tool' | 'arg'>): string => (step.arg === undefined ? step.tool : `${step.tool} ${step.arg}`)
+const stepText = (step: Pick<HudTrailStep, 'tool' | 'arg'>): string => (step.arg === undefined ? step.tool : `${step.tool} ${step.arg}`)
 
 type MessageRow = { role: string; text: string }
 
 /** The last `max` assistant messages with text, oldest first, each at most SAID_CHARS characters. */
 export const assistantTexts = (messages: readonly MessageRow[], max = SAID_MAX): string[] =>
-  messages.filter(one => one.role === 'assistant' && one.text.trim() !== '').slice(-max).map(one => one.text.trim().slice(0, SAID_CHARS))
+  messages.filter(one => one.role === 'assistant' && one.text.trim() !== '').slice(-max).map(one => [...one.text.trim()].slice(0, SAID_CHARS).join(''))
 
 /** The first user message with text: the agent's prompt, at most PROMPT_CHARS characters. */
-export const promptOf = (messages: readonly MessageRow[]): string | undefined =>
-  messages.find(one => one.role === 'user' && one.text.trim() !== '')?.text.trim().slice(0, PROMPT_CHARS)
+export const promptOf = (messages: readonly MessageRow[]): string | undefined => {
+  const text = messages.find(one => one.role === 'user' && one.text.trim() !== '')?.text.trim()
+
+  return text === undefined ? undefined : [...text].slice(0, PROMPT_CHARS).join('')
+}
 
 // --- rows --------------------------------------------------------------------
 
@@ -179,11 +171,11 @@ const pieces = (word: string, width: number): string[] => {
 }
 
 /** One line's words wrapped to `width` cells, nothing cut: a long word breaks across rows. */
-export const wrapLine = (text: string, width: number): string[] => {
+const wrapLine = (text: string, width: number): string[] => {
   const room = Math.max(1, width)
   const out: string[] = []
   let line = ''
-  for (const word of flat(text).split(' ').filter(one => one !== '').flatMap(one => pieces(one, room))) {
+  for (const word of printable(text).split(' ').filter(one => one !== '').flatMap(one => pieces(one, room))) {
     const candidate = line === '' ? word : `${line} ${word}`
     if (displayWidth(candidate) <= room) line = candidate
     else {
@@ -217,15 +209,15 @@ const gap = (key: string): InspectRow => ({ key, cells: [{ text: '' }] })
 
 // --- header and tabs ----------------------------------------------------------
 
-export const BACK = '◂ Back'
+const BACK = '◂ Back'
 export const WORKFLOW_NOTE = 'conversation not exposed for workflow agents'
 
 /** Who the view shows, for its header: the glyph, the name in its colour, then its facts. */
 export type InspectHeader = { glyph: string; glyphColour: string; name: string; colour?: string; facts: readonly string[] }
 
 /** The tabs of an agent's view and of the session's. */
-export const AGENT_TABS: readonly HudTab[] = ['task', 'trail', 'said', 'agents']
-export const SESSION_TABS: readonly HudTab[] = ['overview', 'cost', 'agents']
+const AGENT_TABS: readonly HudTab[] = ['task', 'trail', 'said', 'agents']
+const SESSION_TABS: readonly HudTab[] = ['overview', 'cost', 'agents']
 
 export const TAB_LABELS: Readonly<Record<HudTab, string>> = { task: 'Task', trail: 'Trail', said: 'Said', agents: 'Agents', overview: 'Overview', cost: 'Cost' }
 
@@ -241,7 +233,7 @@ export const tabOf = (selection: HudSelection): HudTab => {
 
 /**
  * The header: Back, then the glyph, the name (bold, in its colour) and its
- * facts joined by ` · `, cut to the pane; below DETAIL_NARROW_BELOW the facts
+ * facts joined by ` · `, cut to the pane; below NARROW_BELOW the facts
  * take rows of their own, two cells in.
  */
 export const headerRows = (header: InspectHeader, columns: number): InspectRow[] => {
@@ -250,7 +242,7 @@ export const headerRows = (header: InspectHeader, columns: number): InspectRow[]
   const name: Part = { text: header.name, bold: true, ...(header.colour === undefined ? {} : { color: header.colour }) }
   const glyph: Part = { text: `${header.glyph} `, color: header.glyphColour }
   const facts = header.facts.filter(one => one !== '')
-  if (columns >= DETAIL_NARROW_BELOW) {
+  if (columns >= NARROW_BELOW) {
     const room = Math.max(1, columns - displayWidth(lead) - 2 - displayWidth(header.name))
 
     return [{ key: 'title', cells: [back, { text: '   ' }, glyph, name, ...(facts.length === 0 ? [] : [dim(truncate(` · ${facts.join(' · ')}`, room))])] }]
@@ -293,7 +285,7 @@ export const taskRows = (body: AgentBody, columns: number): InspectRow[] => {
   if (body.kind === 'shadow') return note('task:note', 'a workflow agent has no task description, and its prompt is not exposed', columns)
   const prompt = body.detail?.prompt?.trim()
   const rows = description === '' ? [] : textRows('task:description', wrapAll(description, columns), { bold: true })
-  const more = prompt !== undefined && prompt !== '' && flat(prompt) !== flat(description)
+  const more = prompt !== undefined && prompt !== '' && printable(prompt) !== printable(description)
     ? textRows('task:prompt', wrapAll(prompt, columns))
     : body.detail === undefined
       ? note('task:reading', 'reading the prompt…', columns)
@@ -326,7 +318,7 @@ const TIME_WIDTH = 8
 const SPAN_WIDTH = 5
 const OUTCOME_WIDTH = 6
 /** Time, two blanks, the span, a blank, the outcome, a blank: where the call's text starts. */
-export const TRAIL_LEAD = TIME_WIDTH + 2 + SPAN_WIDTH + 1 + OUTCOME_WIDTH + 1
+const TRAIL_LEAD = TIME_WIDTH + 2 + SPAN_WIDTH + 1 + OUTCOME_WIDTH + 1
 const OUTCOME_COLOURS: Readonly<Record<string, string>> = { denied: WARN, error: HOT }
 
 /**
@@ -334,13 +326,13 @@ const OUTCOME_COLOURS: Readonly<Record<string, string>> = { denied: WARN, error:
  * time, how long it took and how it ended, then the tool and its argument
  * wrapped under it. An open call of a running agent is the current one,
  * drawn in the accent with `now`; one whose end was never seen reads `?`.
- * Below DETAIL_NARROW_BELOW a call that does not fit its row puts its
+ * Below NARROW_BELOW a call that does not fit its row puts its
  * argument on rows of its own, two cells in.
  */
 export const trailRows = (body: AgentBody, columns: number, now: number): InspectRow[] => {
   if (body.trail.length === 0) return note('trail:none', 'no calls yet', columns)
   const room = columns - TRAIL_LEAD
-  const narrow = columns < DETAIL_NARROW_BELOW
+  const narrow = columns < NARROW_BELOW
 
   return body.trail.flatMap((step, index): InspectRow[] => {
     const open = step.ms === undefined
@@ -543,7 +535,7 @@ export const costRows = (view: CostView, columns: number, expanded: ReadonlySet<
 
     return [line, ...model.users.map((user): InspectRow => {
       const name = user.count === undefined ? user.label : `${user.label} ×${user.count}`
-      const detail = user.detail === undefined || user.detail.trim() === '' ? '' : `  ${flat(user.detail)}`
+      const detail = user.detail === undefined || user.detail.trim() === '' ? '' : `  ${printable(user.detail)}`
       const text = truncate(`${name}${detail}`, userWidth)
       const shownName = text.startsWith(name) ? name : text
       const rest = text.slice(shownName.length)

@@ -27,7 +27,7 @@ export const SCENE_THEMES: Readonly<Record<'dark' | 'light', Readonly<Record<The
 /** Each theme key's class in the document, for the light scheme's rule. */
 export const CLASSES: Readonly<Record<ThemeKey, string>> = { claude: 'a', shimmer: 'h', bubble: 'b', success: 'g', warning: 'y', error: 'r', text: 'f', inactive: 'd' }
 
-export const isThemeKey = (value: string): value is ThemeKey => value in CLASSES
+export const isThemeKey = (value: string): value is ThemeKey => Object.prototype.hasOwnProperty.call(CLASSES, value)
 
 /** A number for an attribute: at most two decimals, no `-0`. */
 export const num = (value: number): string => {

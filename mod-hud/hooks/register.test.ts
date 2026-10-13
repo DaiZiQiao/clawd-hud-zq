@@ -184,7 +184,8 @@ test('turn.complete settles the entry, freezes its elapsed time and updates the 
   const writes = boardWrites(world)
   await complete($, 'ghost')
   await $.turn.complete({ answer: 'ok', durationMs: 1, isAborted: false, turnId: 't9', reason: 'answer' })
-  expect(boardWrites(world)).toBe(writes)
+  // The main turn's reason and idle time are now an always-on HUD fact.
+  expect(boardWrites(world)).toBe(writes + 1)
 
   for (const surface of SURFACES) {
     const ui = await mountPane($, surface)
@@ -645,7 +646,7 @@ test('the status line option switches the summary off, and /mod-hud clear drops 
   expect(Object.keys(entriesOf(held))).toEqual(['sub-2'])
 
   const usage = await $.command.run({ ...TOGGLE, command: 'mod-hud', args: 'later' })
-  expect(usage.text).toBe('Usage: /mod-hud [clear|facts]')
+  expect(usage.text).toBe('Usage: /mod-hud [clear|facts|tidy [on|off|now|cancel]]') // Follow-up 12 row 17.
   expect(world.panes).toEqual([])
 })
 

@@ -1,5 +1,7 @@
 import type { PluginOptions } from 'claude-code'
 
+import { ROWS_MIN } from './strip-layout'
+
 // The mod's options (`userConfig` in plugin.json) as the hooks use them: how
 // tall the thumbnails may get, a whole number of rows from 3 to 20, and how
 // the pictures are drawn. A value Claude Code would not store (out of range,
@@ -23,7 +25,7 @@ export type ImagesSettings = {
 /** Thumbnail rows when the option is left as it is. */
 export const HEIGHT_DEFAULT = 8
 /** Fewer rows than this and a thumbnail no longer reads as a picture. */
-export const HEIGHT_MIN = 3
+export const HEIGHT_MIN = ROWS_MIN
 export const HEIGHT_MAX = 20
 
 /** The options as the hooks use them: `height` rounded and kept within 3..20, an unknown `pictures` read as `auto`. */

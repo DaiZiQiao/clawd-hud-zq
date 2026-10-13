@@ -9,8 +9,9 @@
 // A Huffman code is read through one flat table indexed by the next
 // `maxBits` bits of a little-endian bit buffer, each entry `symbol << 4 |
 // length`. The Adler-32 at the end is not checked: a picture with a bad
-// checksum still shows, as it does in a browser. A stream cut short hands out
-// every byte decoded from real data and stops at the first bit past its end.
+// checksum still shows, as it does in a browser. A Huffman-coded block cut
+// short hands out every byte decoded from real data and stops at the first
+// bit past its end; a stored block cut short hands out none of that block.
 
 const { min } = Math
 

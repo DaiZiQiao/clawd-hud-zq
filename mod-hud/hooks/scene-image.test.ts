@@ -328,6 +328,7 @@ describe('in a terminal that shows pictures', () => {
 
   test('the band\'s yard too: the session\'s mascot an Image on the band\'s floor, the hit layer under the band\'s key', { timeoutMs: 20_000 }, async ($, on) => {
     arrange(on, [])
+    on('ui.render', { component: 'AbovePrompt' }, ($, e) => $.ui.resolve(e).Box({ key: 'engine' }))
     mock.env(on, GHOSTTY)
     blits(on)
     const ui = await $.ui.mount({ plugin: 'mod-hud', surface: 'terminal', component: 'AbovePrompt', props: { hasSurvey: false, isWorking: false, maxRows: 12, bodyColumns: 100, scroll: { offset: 0, bodyRows: 12 }, view: {} }, requestId: 'band', viewport: { columns: 160, rows: 40, isFullscreen: true } })

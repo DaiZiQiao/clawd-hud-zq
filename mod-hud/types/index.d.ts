@@ -64,6 +64,8 @@ declare module 'claude-code' {
       ledger: HudLedger
       /** Tidying up: a compaction running and the last one, Not now, the auto countdown, a failed ask. */
       tidy: HudTidyFacts
+      /** Safe-point evidence and calibration, written by events only. */
+      tidyGate: HudTidyGate
       /** The band's one-second clock, written only while the band draws a tidy running, counting down or its result. */
       bandTick: number
       /** Claude Code's spinner word for the main conversation (`Noodling`), sampled per turn: written as it changes, with mascots on; the session's mascot thinks it. */
@@ -192,12 +194,14 @@ export type ShadowAgentEntry = {
 /**
  * The main loop's activity, for the HUD header's working/idle cell and the
  * mascot scene (hooks/scene-model.ts): busy and idle written once when a main
- * turn starts its first request and once when it ends, whatever the options;
- * the compaction (with mascots on) at each main compaction; nothing per tick.
+ * turn starts and once when it ends, whatever the options;
+ * the compaction at each main compaction, whatever the options; nothing per tick.
  */
 export type HudMainFacts = {
   /** When the main loop started working; absent while it is idle. */
   busySince?: number
+  /** The last main turn.complete reason, including unknown engine reasons. */
+  lastTurnReason?: string
   /** When it last stopped working. */
   idleSince?: number
   /** When the main conversation was last compacted. */
@@ -220,14 +224,79 @@ export type HudTidied = {
  * context's tokens when the person last said Not now (offered again past
  * TIDY_AGAIN more), the countdown an `auto` tidy runs before it starts, and
  * why the last tidy the mod asked for did not run. Written as a compaction
- * starts and ends, on a press and on a main turn's end only.
+ * starts and ends, on a press and when an event changes the pending decision.
  */
 export type HudTidyFacts = {
   runningSince?: number
   last?: HudTidied
   dismissedAt?: number
   countdownSince?: number
+  pending?: {
+    state: 'offer' | 'waiting' | 'countdown'
+    rule: 'D1' | 'D2' | 'D3' | 'advisory'
+    why?: 'unpriced' | 'cache'
+    saving?: number
+    costs?: { K: number; s: number; coldCost: number; coldCostAtTtl: number; cold: boolean; payback?: number }
+    automatic: boolean
+    /** The one-time auto-tidy introduction, held for this due episode. */
+    intro?: true
+    reasons: string[]
+    firstReason?: string
+    otherReasons: number
+    countdownSince?: number
+    endsAt?: number
+    /** Absolute expiry; TTL left is derived at draw time, not written each tick. */
+    cacheExpiresAt?: number
+    availabilityReason?: string
+  }
+  /** Cancel/Not now suppress D2 and D3 until a newer main request. */
+  coolingDismissedAt?: number
+  backoff?: { tokens: number; requestAt?: number }
   failed?: { at: number; reason: string }
+  /** Short-lived feedback from a permanent toggle, drawn on the band's second row. */
+  toggle?: { at: number; reason: string }
+}
+
+/** Event evidence survives reloads; calibration also survives our clear/resume handlers. */
+export type HudTidyGate = {
+  stop?: {
+    at: number
+    requestAt?: number
+    tasks: { id: string; type: string; status: string; kind: 'agent' | 'workflow' | 'job' | 'ignored' | 'unknown' }[]
+    previousTaskIds: string[]
+    oneShotCrons: number
+  }
+  queuedAt?: number
+  queuedTurnId?: string
+  queuedWait?: true
+  todos: HudTodoItemFact[]
+  tasks: { id: string; subject: string; status: string; creator: string }[]
+  precomputeSeen: boolean
+  teammate: boolean
+  requestsSinceCompaction: number
+  /** Resume/fork seeds N_past at the first main turn start. */
+  seedPending?: true
+  /** All main requests in this conversation: cache health needs at least five. */
+  mainRequests: number
+  mainInput: number
+  mainCacheRead: number
+  /** The next main response measures A+F, never tokensAfter. */
+  awaitingAfter?: true
+  calibration?: {
+    after?: number
+    summary?: number
+    summarizerInput?: number
+    summarizerCacheRead?: number
+    usage?: { input_tokens: number; output_tokens: number; cache_read_input_tokens?: number; cache_creation_input_tokens?: number }
+  }
+  resumeCacheExpired?: boolean
+  engineIdleCompactionAt?: number
+  /** The intro episode's start and context baseline, retained through reloads. */
+  introSince?: number
+  introTokens?: number
+  pendingToggle?: 'auto' | 'ask'
+  /** The tidy row's value when the pending toggle was deferred. */
+  pendingToggleFrom?: string
 }
 
 // The HUD's facts as `$.state` holds them (hooks/facts.ts assembles them into
@@ -265,6 +334,14 @@ export type HudSessionFacts = {
   account?: 'subscription' | 'api'
   /** False when the environment (DISABLE_AUTO_COMPACT, DISABLE_COMPACT) or the `autoCompactEnabled` setting switch auto-compaction off, read at start. */
   autoCompact?: false
+  /** The built-in /config row, read without changing it. */
+  autoCompactRow?: boolean
+  /** DISABLE_COMPACT alone, not DISABLE_AUTO_COMPACT. */
+  compactDisabled?: boolean
+  surfaces?: string[]
+  isInteractive?: boolean
+  /** TodoWrite or any of the Task work-list tools, as tool.list reported. */
+  workListTools?: string[]
 }
 
 /** One rate-limit window, of a kind the HUD knows. */
@@ -304,11 +381,11 @@ export type HudUsageFacts = {
    */
   rateLimits: HudRateLimitFact[]
   costUsd?: number
-  /** Absent before the first response that reported usage; starts over at /clear. */
+  /** Absent before the first response that reported usage; starts over at /clear or resume. */
   tokens?: HudTokenFacts
   /** Main-loop compactions that took place (the last one's time is `main.compactedAt`). */
   compactions: number
-  /** Main-loop turns ended (`turn.complete` without an agent); starts over at /clear. */
+  /** Main-loop turns ended (`turn.complete` without an agent); starts over at /clear or resume. */
   turns?: number
   /** Those turns' wall-clock time summed (`turn.complete`'s `durationMs`): the main loop's busy time. */
   busyMs?: number
@@ -319,13 +396,13 @@ export type HudUsageFacts = {
    * changes and the one before them (at most 32), for its burn rate.
    */
   limitSamples?: { [K in HudRateLimitFact['kind']]?: { at: number; percent: number }[] }
-  /** When the main loop's last request answered (`turn.step` without an agent): the prompt cache's TTL counts from it. Starts over at /clear. */
+  /** When the main loop's last request was sent (`turn.step` without an agent), written after its response reports usage; the prompt cache's TTL counts from it. Starts over at /clear or resume. */
   mainRequestAt?: number
   /** The tokens the main loop's requests in the turn running now sent fresh, wrote to the cache or generated (cache reads left out). */
   turnTokens?: number
   /** The session's cost as the last main turn ended: the next turn's cost is measured from it. */
   costAtTurnEnd?: number
-  /** The last main turn that ended: what the session spent during it, how long it ran, and its main-loop tokens (as `turnTokens`). Starts over at /clear. */
+  /** The last main turn that ended: what the session spent during it, how long it ran, and its main-loop tokens (as `turnTokens`). Starts over at /clear or resume. */
   lastTurn?: HudLastTurn
 }
 
@@ -370,7 +447,7 @@ export type HudToolFacts = {
   /**
    * The distinct files the main loop's Edit, Write, MultiEdit and NotebookEdit
    * calls changed (each call that ended ok), oldest first, at most 500; starts
-   * over at /clear.
+   * over at /clear or resume.
    */
   edited?: string[]
 }
@@ -397,6 +474,8 @@ export type HudInventoryFacts = {
   compactAt?: number
   /** False when the breakdown says auto-compaction is off. */
   autoCompact?: false
+  isAutoCompactEnabled?: boolean
+  autocompactSource?: string
   /** When the breakdown was read. */
   at?: number
 }
@@ -455,7 +534,7 @@ export type HudUsage = {
   agentShare?: number
 }
 
-/** The main conversation's prompt cache: its TTL, and when the main loop's last request answered. */
+/** The main conversation's prompt cache: its TTL, and when the main loop's last request was sent. */
 export type HudCache = {
   ttl: '5m' | '1h'
   /** When the main loop's last request was sent. */
@@ -540,6 +619,8 @@ export type HudData = {
   main?: HudMain
   /** The context section's `cache` row and the alert strip's `cache cools in`. */
   cache?: HudCache
+  /** The permanent auto-tidy control and its current, scheduler-built state. */
+  tidy?: { mode: 'auto' | 'ask' | 'off'; pendingToggle?: 'auto' | 'ask'; facts: HudTidyFacts }
   alerts?: HudAlerts
   /** One dim line under the HUD. */
   motto?: string

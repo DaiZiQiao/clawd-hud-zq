@@ -51,6 +51,7 @@ export const arrange = (on: On, { kitState = false }: { kitState?: boolean } = {
     blits: [] as UiBlitArgs[],
     blit: (_args: UiBlitArgs): UiBlitResult => ({}),
     writes: [] as string[],
+    reads: [] as string[],
     logs: [] as string[],
     /** Every folder listed, in order. */
     listed: [] as string[],
@@ -98,6 +99,7 @@ export const arrange = (on: On, { kitState = false }: { kitState?: boolean } = {
     return { value: entries }
   })
   on('fs.read', (_$, e) => {
+    world.reads.push(e.path)
     if (e.path.endsWith('plugin.json')) return { value: JSON.stringify({ name: 'mod-images', version: '1.0.0' }) }
     const file = world.files.get(e.path)
     if (file === undefined) return { deny: `${e.path}: no such file` }
@@ -121,8 +123,8 @@ export const arrange = (on: On, { kitState = false }: { kitState?: boolean } = {
   on('ui.render', { component: 'PromptHint' }, () => ({ type: 'engine' as const, ref: 0 }))
 
   // Claude Code storing a pasted image and putting its chip in the draft.
-  const paste = (id: number, base64 = PNG_GRADIENT, options: { ext?: string; mtimeMs?: number; sid?: string; chip?: boolean } = {}): void => {
-    const dir = imagesDirOf(options.sid ?? world.sid)
+  const paste = (id: number, base64 = PNG_GRADIENT, options: { ext?: string; mtimeMs?: number; sid?: string; chip?: boolean; dir?: string } = {}): void => {
+    const dir = options.dir ?? imagesDirOf(options.sid ?? world.sid)
     for (let at = dir; at !== '/' && !world.dirs.has(at); at = parentOf(at)) world.dirs.add(at)
     world.files.set(`${dir}/${id}.${options.ext ?? 'png'}`, { base64, size: sizeOf(base64), mtimeMs: options.mtimeMs ?? clock.now() })
     if (options.chip !== false) world.draft = `${world.draft}${world.draft === '' || world.draft.endsWith(' ') ? '' : ' '}[Image #${id}]`

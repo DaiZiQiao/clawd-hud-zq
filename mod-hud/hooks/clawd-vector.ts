@@ -214,11 +214,6 @@ const rgbOf = (hex: string): [number, number, number] => {
   return Number.isFinite(n) ? [(n >> 16) & 255, (n >> 8) & 255, n & 255] : [255, 255, 255]
 }
 
-/**
- * The stretches between points (round to the first again when `closed`),
- * packed five numbers each for the pixel loops: where each starts, its run
- * across and down, and one over its length squared (0 for none).
- */
 /** A polygon's contours: its points, then its rings. */
 const ringsOf = (shape: Shape): readonly (readonly (readonly [number, number])[])[] => [shape.points ?? [], ...(shape.rings ?? [])]
 

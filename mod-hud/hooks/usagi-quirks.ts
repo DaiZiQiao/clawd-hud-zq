@@ -21,7 +21,7 @@ export const QUIRK_MS: Readonly<Record<QuirkKind, number>> = { yaha: 2000, ura: 
 export const QUIRK_SAYS: Readonly<Record<QuirkKind, string>> = { yaha: 'Yaha!', ura: 'Ura!', huh: 'Haa?', fuun: 'Fuun', twirl: 'Purya', flip: 'Iyaha!', shake: 'Pururu!', bash: 'Ura!' }
 
 /** Where it is when one comes over it: standing free (anything goes), or at its laptop (what it can do there). */
-export type QuirkPlace = 'free' | 'desk'
+type QuirkPlace = 'free' | 'desk'
 
 /** Each place's quirks and how likely each is. */
 const KINDS: Readonly<Record<QuirkPlace, readonly (readonly [QuirkKind, number])[]>> = {

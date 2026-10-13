@@ -16,11 +16,11 @@ import { DAZED, SHOUTS, STARTLED, USAGI_THOUGHTS } from './usagi-sprites'
 // (blinking, breathing, a walk's legs, a dangle's kicks, a propeller's turn)
 // and what is beside it as props drawn by time, not stepped by frame.
 
-/** The eyes' kind: their offset and openness are the pose's numbers; Usagi's squeezed shut (`> <`) and its smug half lids too. */
+/** The eyes' kind: their offset and openness are the pose's numbers; Usagi's squeeze drawn as spirals and its smug half lids too. */
 export type EyeKind = 'normal' | 'wide' | 'spiral' | 'happy' | 'down' | 'squeeze' | 'half'
 
-/** Usagi's mouth: its small open one, wide open screaming, a round `o`, a smirk. */
-export type MouthShape = 'dot' | 'scream' | 'o' | 'smirk'
+/** Usagi's mouth: wide open screaming, a round `o`, a smirk. */
+export type MouthShape = 'scream' | 'o' | 'smirk'
 
 /** What sits beside a mascot or in its hand, drawn smooth (hooks/smooth-art.ts). */
 export type Beside =
@@ -59,6 +59,8 @@ export type FigurePose = {
   tilt: number
   flat: number
   spin: number
+  /** Thrown: the smoother starts its turn from the angle it has. */
+  tumbling?: true
   eyeX: number
   eyeY: number
   eyeOpen: number
@@ -76,9 +78,8 @@ export type FigurePose = {
   /** Typing at its laptop: its seed, so no two type in step; absent, its hands are its own. */
   typing?: number
   blanket: number
-  /** Usagi's ears: lowered (1), drooping (1), trailing a walk (−1 to 1, past it streaming); each turned outward a twitch or a quirk's worth (radians). */
+  /** Usagi's ears: lowered (1), trailing a walk (−1 to 1, past it streaming); each turned outward a twitch or a quirk's worth (radians). */
   earsDown: number
-  droop: number
   trail: number
   earL: number
   earR: number
@@ -93,7 +94,7 @@ export type FigurePose = {
 
 export const NEUTRAL: FigurePose = {
   dx: 0, drop: 0, sx: 1, sy: 1, tilt: 0, flat: 0, spin: 0, eyeX: 0, eyeY: 0, eyeOpen: 1, mouth: 0, armL: 0, armR: 0, reach: 0,
-  legs: [0, 0, 0, 0], tuck: 0, hideLegs: 0, laptop: 0, blanket: 0, earsDown: 0, droop: 0, trail: 0, earL: 0, earR: 0, eyes: 'normal', hatOff: false, beside: [],
+  legs: [0, 0, 0, 0], tuck: 0, hideLegs: 0, laptop: 0, blanket: 0, earsDown: 0, trail: 0, earL: 0, earR: 0, eyes: 'normal', hatOff: false, beside: [],
 }
 
 // --- what each overlay is ---------------------------------------------------------
@@ -186,7 +187,6 @@ export type PoseContext = {
   /** The session's tidy-up running this long, or its stretch after a compaction. */
   tidyMs?: number
   stretchMs?: number
-  mini?: boolean
   /** Drawn for a picture of few frames: no breath, a blink shut whole while it lasts. */
   calm?: boolean
   /** The session's: Claude Code's spinner word for the turn, its thought's words. */
@@ -201,7 +201,7 @@ const BLINK_LASTS = 230
 const blinkStart = (k: number, seed: number): number => k * BLINK_CYCLE + 600 + noise(k, seed) * 2600 - seed * 997
 
 /** A blink every three to five seconds, its own times by `seed`. */
-export const blinkAt = (t: number, seed: number): number => {
+const blinkAt = (t: number, seed: number): number => {
   const d = t - blinkStart(Math.floor((t + seed * 997) / BLINK_CYCLE), seed)
   if (d < 0 || d > BLINK_LASTS) return 1
   if (d < 70) return 1 - 0.92 * (d / 70) ** 3
@@ -343,8 +343,6 @@ export const fullTarget = (look: Look, context: PoseContext): FigurePose => {
     case 'stand':
       break
   }
-  // Usagi slumped under its cross: its ears droop, where no hat or crown holds them up (hooks/smooth-art.ts); unimpressed (`hmph`), they stay up.
-  if (usagi && look.pose === 'sit' && look.lids !== 'hmph' && beside.some(one => one.kind === 'cross')) pose.droop = 1
   // Usagi's lids half down: bored, drowsy (eyes low), or unimpressed, `hmph`, a smug smile with them.
   if (usagi && look.lids !== undefined) Object.assign(pose, { eyes: 'half', eyeOpen: 1, eyeX: 0, eyeY: look.lids === 'drowsy' ? 0.2 : 0, ...(look.lids === 'hmph' ? { mouthShape: 'smirk', mouth: 0 } : {}) })
   if (tidy && context.tidyMs === undefined) pose.beside = [...pose.beside, { kind: 'props', props: tidyPose(0).props }]
@@ -353,7 +351,7 @@ export const fullTarget = (look: Look, context: PoseContext): FigurePose => {
 }
 
 /** A mini's look as its pose's target. */
-export const miniTarget = (look: MiniLook, context: PoseContext): FigurePose => {
+const miniTarget = (look: MiniLook, context: PoseContext): FigurePose => {
   const eyes = HEAD_EYES[look.head === 'shut' ? 'shut' : look.head === 'left' ? 'left' : look.head === 'right' ? 'right' : 'open']
   const { beside, laptop } = besideOf(look.overlays, context, false)
 
@@ -400,7 +398,7 @@ const sessionMoves = (pose: FigurePose, context: PoseContext): FigurePose => {
   }
 }
 
-/** The look's target with what only time draws: the session's moves, a walk's legs, a dangle's kicks, a throw's spin, the propeller. */
+/** The look's target with what only time draws: the session's moves, a walk's legs, a dangle's kicks, the propeller; a throw's spin is drawn by the smoother. */
 export const targetOf = (look: Look | MiniLook, context: PoseContext, mini: boolean): FigurePose => {
   let pose = mini ? miniTarget(look as MiniLook, context) : fullTarget(look as Look, context)
   pose = sessionMoves(pose, context)
@@ -415,7 +413,7 @@ export const targetOf = (look: Look | MiniLook, context: PoseContext, mini: bool
     pose = { ...pose, legs: [0.75 * Math.max(0, step), 0.75 * Math.max(0, -step), 0.75 * Math.max(0, step), 0.75 * Math.max(0, -step)], tilt: pose.tilt + 0.05 * dir, armL: pose.armL + 0.25 * step, armR: pose.armR - 0.25 * step, trail: context.character === 'usagi' ? -dir : 0 }
   }
   if (context.pose === 'dangle') pose = { ...pose, legs: [0.9 * Math.max(0, wave(t, 240)), 0.9 * Math.max(0, -wave(t, 240)), 0.9 * Math.max(0, wave(t, 240)), 0.9 * Math.max(0, -wave(t, 240))], tilt: 0.12 * wave(t, 900) }
-  if (context.pose === 'tumble') pose = { ...pose, spin: (t / 1000) * 7 }
+  if (context.pose === 'tumble') pose = { ...pose, tumbling: true }
   if (pose.cap !== undefined) pose = { ...pose, cap: (t / 1000) * 30 }
 
   return pose
@@ -425,11 +423,11 @@ export const targetOf = (look: Look | MiniLook, context: PoseContext, mini: bool
 
 /** The numbers a spring eases (overshooting, so a squash bounces back), and those that simply glide. */
 const SPRUNG = ['dx', 'drop', 'sx', 'sy', 'tilt', 'flat'] as const
-const GLIDING = { eyeX: 45, eyeY: 45, eyeOpen: 35, mouth: 60, armL: 70, armR: 70, reach: 80, tuck: 70, hideLegs: 90, laptop: 140, blanket: 220, earsDown: 90, droop: 160, trail: 120, earL: 50, earR: 50 } as const
+const GLIDING = { spin: 80, eyeX: 45, eyeY: 45, eyeOpen: 35, mouth: 60, armL: 70, armR: 70, reach: 80, tuck: 70, hideLegs: 90, laptop: 140, blanket: 220, earsDown: 90, trail: 120, earL: 50, earR: 50 } as const
 /** Each spring's frequency (Hz) and damping. */
 const SPRINGS: Readonly<Record<(typeof SPRUNG)[number], [number, number]>> = { dx: [7, 0.8], drop: [5, 0.55], sx: [6, 0.38], sy: [6, 0.38], tilt: [4, 0.5], flat: [2.6, 0.7] }
 
-type Held = { pose: FigurePose; v: Record<(typeof SPRUNG)[number], number>; at: number }
+type Held = { pose: FigurePose; v: Record<(typeof SPRUNG)[number], number>; at: number; turn?: { at: number; spin: number } }
 
 /** One mascot's pose eased toward each frame's target: what a smooth scene keeps from frame to frame, by id. */
 export type Smoother = { ease: (id: string, target: FigurePose, now: number) => FigurePose; keep: (ids: ReadonlySet<string>) => void }
@@ -445,10 +443,12 @@ export const createSmoother = (): Smoother => {
       // A thought keeps when it came while it stays; a new one comes now.
       const came = before?.pose.beside.find(one => one.kind === 'thought')
       const since = came?.kind === 'thought' ? came.since ?? now : now
-      const target: FigurePose = aim.beside.some(one => one.kind === 'thought') ? { ...aim, beside: aim.beside.map(one => (one.kind === 'thought' ? { ...one, since } : one)) } : aim
+      let target: FigurePose = aim.beside.some(one => one.kind === 'thought') ? { ...aim, beside: aim.beside.map(one => (one.kind === 'thought' ? { ...one, since } : one)) } : aim
+      const turn = aim.tumbling === true ? before?.turn ?? { at: now, spin: before?.pose.spin ?? aim.spin } : undefined
+      if (turn !== undefined) target = { ...target, spin: turn.spin + ((now - turn.at) / 1000) * 7 }
       // New, or a jump in time (back, a pause, a reload): straight to the target.
-      if (before === undefined || now < before.at || now - before.at > 500) {
-        held.set(id, { pose: target, v: { dx: 0, drop: 0, sx: 0, sy: 0, tilt: 0, flat: 0 }, at: now })
+      if (before === undefined || now < before.at || now - before.at > 1000) {
+        held.set(id, { pose: target, v: { dx: 0, drop: 0, sx: 0, sy: 0, tilt: 0, flat: 0 }, at: now, ...(turn === undefined ? {} : { turn }) })
 
         return target
       }
@@ -472,11 +472,12 @@ export const createSmoother = (): Smoother => {
       }
       for (const [key, tau] of Object.entries(GLIDING) as [keyof typeof GLIDING, number][]) {
         const a = 1 - Math.exp(-dt / tau)
-        pose[key] = before.pose[key] + (target[key] - before.pose[key]) * a
+        const aim = key === 'spin' ? target[key] + 2 * Math.PI * Math.round((before.pose[key] - target[key]) / (2 * Math.PI)) : target[key]
+        pose[key] = before.pose[key] + (aim - before.pose[key]) * a
       }
       const a = 1 - Math.exp(-dt / 40)
       pose.legs = target.legs.map((one, index) => (before.pose.legs[index] ?? 0) + (one - (before.pose.legs[index] ?? 0)) * a) as unknown as FigurePose['legs']
-      held.set(id, { pose, v, at: now })
+      held.set(id, { pose, v, at: now, ...(turn === undefined ? {} : { turn }) })
 
       return pose
     },

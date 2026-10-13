@@ -155,6 +155,17 @@ describe('what it does not decode', () => {
 })
 
 describe('data cut short or corrupt', () => {
+  test('an over-subscribed Huffman table is refused', () => {
+    const bytes = fixtureBytesOf(JPEGS.grey!.file).slice()
+    const at = bytes.findIndex((byte, i) => byte === 0xff && bytes[i + 1] === 0xc4) + 5
+    const counts = bytes.subarray(at, at + 16)
+    const total = counts.reduce((sum, count) => sum + count, 0)
+    expect(total).toBeGreaterThan(2)
+    counts.fill(0)
+    counts[0] = total
+    expect(() => decodedOf(bytes)).toThrow('JPEG: bad Huffman table')
+  })
+
   test('a baseline JPEG cut short keeps the blocks before the cut, the rest transparent', () => {
     const bytes = fixtureBytesOf(JPEGS.baseline!.file)
     const whole = decodedOf(bytes).data

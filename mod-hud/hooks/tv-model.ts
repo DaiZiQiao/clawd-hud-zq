@@ -1,4 +1,4 @@
-import type { TextRow } from './text-svg'
+import type { TextRow, TextSpan } from './text-svg'
 import { displayWidth } from './text-width'
 import type { Box, Eyes, Who } from './tv-figure'
 
@@ -14,12 +14,12 @@ import type { Box, Eyes, Who } from './tv-figure'
 export const TV_FRAME_MS = 50
 
 /** The text rows on the glass at most, and at least (with fewer, the pane draws its own view). */
-export const TV_MAX_SCREEN = 14
-export const TV_MIN_SCREEN = 5
+const TV_MAX_SCREEN = 14
+const TV_MIN_SCREEN = 5
 /** The glass's text columns at least. */
-export const TV_MIN_CONTENT = 22
+const TV_MIN_CONTENT = 22
 /** The figure's columns at most. */
-export const TV_MAX_WIDTH = 76
+const TV_MAX_WIDTH = 76
 
 /**
  * Where the TV stands: the figure's box in the region (the pane's body as
@@ -115,10 +115,28 @@ export type TvRow = { key: string; cells: TvCell[] }
 export const isPress = (cell: TvCell): cell is TvPress => 'press' in cell
 
 /** A press's cells as the terminal draws a Button: `[ label ]` primary, the label alone plain. */
-export const pressText = (press: TvPress): string => (press.primary === true ? `[ ${press.label} ]` : press.label)
+const pressText = (press: TvPress): string => (press.primary === true ? `[ ${press.label} ]` : press.label)
 
 /** A cell's text and cells across. */
 export const cellText = (cell: TvCell): string => (isPress(cell) ? pressText(cell) : cell.text)
+
+/** A pane cell as the glass's: each span's look, each Button's key, label and covered cells. */
+export const tvCellOf = (cell: TextSpan | { button: { key: string; label: string; primary?: true; dimColor?: boolean; cover?: number } }): TvCell => {
+  if ('button' in cell) {
+    const { key, label, primary, dimColor, cover } = cell.button
+
+    return { press: key, label, ...(primary === true ? { primary: true as const } : {}), ...(dimColor === true ? { dim: true as const } : {}), ...(cover === undefined ? {} : { cover }) }
+  }
+
+  return {
+    text: cell.text,
+    ...(cell.color === undefined ? {} : { color: cell.color }),
+    ...(cell.bold === true ? { bold: true as const } : {}),
+    ...(cell.dimColor === true ? { dim: true as const } : {}),
+    ...(cell.italic === true ? { italic: true as const } : {}),
+    ...(cell.strikethrough === true ? { strike: true as const } : {}),
+  }
+}
 
 /**
  * The pane's rows of text as the glass's: each span's look kept, each Button
@@ -130,25 +148,9 @@ export const tvRowsOf = (rows: readonly TextRow[]): { rows: TvRow[]; presses: Ma
   const tvRows = rows.map((row): TvRow => ({
     key: row.key,
     cells: row.cells.map((cell): TvCell => {
-      if ('button' in cell) {
-        presses.set(cell.button.key, cell.button.onPress)
+      if ('button' in cell) presses.set(cell.button.key, cell.button.onPress)
 
-        return {
-          press: cell.button.key,
-          label: cell.button.label,
-          ...(cell.button.primary === true ? { primary: true as const } : {}),
-          ...(cell.button.dimColor === true ? { dim: true as const } : {}),
-        }
-      }
-
-      return {
-        text: cell.text,
-        ...(cell.color === undefined ? {} : { color: cell.color }),
-        ...(cell.bold === true ? { bold: true as const } : {}),
-        ...(cell.dimColor === true ? { dim: true as const } : {}),
-        ...(cell.italic === true ? { italic: true as const } : {}),
-        ...(cell.strikethrough === true ? { strike: true as const } : {}),
-      }
+      return tvCellOf(cell)
     }),
   }))
 
@@ -161,7 +163,8 @@ export const tvRowsOf = (rows: readonly TextRow[]): { rows: TvRow[]; presses: Ma
  * glass's top) and the tab's rows (which scroll), the channels (tabs) and the
  * one shown, a `view` naming who and which tab (a new one starts the glass at
  * its top through a flicker of static), where the mascot stood when it was
- * pressed (its sprite's top-left in the region), the pane's scrolls while the
+ * pressed (its body's left and box's top row in the region; a child's mini
+ * at `from.x - BODY_X`, MINI cells across), the pane's scrolls while the
  * TV is up (a new `seq` scrolls the glass by `by`, `page` a glassful),
  * whether the surface draws pixels, whether the mascot is drawn smooth
  * there (the vector art, hooks/tv-smooth.ts) or in its quarters, and
@@ -264,7 +267,7 @@ export type TvHit =
   | { kind: 'inside' }
 
 /** The press whose cells a column of a row falls on, its own cells or its `cover`. */
-export const pressAt = (row: TvRow, column: number): string | undefined => {
+const pressAt = (row: TvRow, column: number): string | undefined => {
   let at = 0
   for (const cell of row.cells) {
     const cells = displayWidth(cellText(cell))
@@ -401,7 +404,7 @@ export type TvLook =
   | { form: 'giant'; glass: Glass; eyes: Eyes; scrim: number; spin?: number }
 
 /** Easing for a move: quick out, slow in. */
-export const easeOut = (t: number): number => 1 - (1 - t) * (1 - t)
+const easeOut = (t: number): number => 1 - (1 - t) * (1 - t)
 
 const ON: Glass = { kind: 'on' }
 

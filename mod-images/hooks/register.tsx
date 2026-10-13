@@ -19,7 +19,7 @@ import { imagesDirOf, isUserDirName, joinPath, listingOf, projectDirOf, storeDou
 import type { StoreEnv, StoreFile, StoreListing } from './store-path'
 import { pictureKeyOf, renderStrip } from './strip'
 import type { TileDrawable } from './strip'
-import { layoutOf, rowsCapOf } from './strip-layout'
+import { SWATCH_COLUMNS, layoutOf, rowsCapOf } from './strip-layout'
 import type { PlacedTile } from './strip-layout'
 import { halfBlockCellsOf, kittyRgbaOf, kittySizeOf, swatchCellsOf } from './thumb-cells'
 
@@ -41,7 +41,9 @@ import { halfBlockCellsOf, kittyRgbaOf, kittySizeOf, swatchCellsOf } from './thu
 // decodes again.
 
 const TWIN = 'mod-images'
-const BAND = 'above-prompt'
+// The unexported Raster cell size and Image side cap in hooks/thumb-cells.ts.
+const CELL_BYTES = 12
+const IMAGE_SIDE_MAX = 2048
 
 // A tile still waiting for its picture is drawn only after this long, so a
 // typical paste (decoded in 20-150 ms) never flashes a placeholder first.
@@ -50,6 +52,8 @@ const PLACEHOLDER_DELAY_MS = 150
 const WATCHDOG_MS = 8000
 // The temporary folders are listed at most this often while the image folder is missing.
 const SCAN_EVERY_MS = 1000
+// A new chip set may wait this long for a folder under another project name.
+const SCAN_WAIT_MS = 10_000
 // A project folder with more entries than this is not searched for the session.
 const SCAN_ENTRIES_CAP = 2000
 // The pixels check: first try after a drawing, then retries while the engine is still asking the terminal.
@@ -60,6 +64,7 @@ const DEMO_MS = 10_000
 // A turn cancelled before any answer puts its prompt back in the box at once:
 // its chips, seen there within this long, are the same pictures.
 const RESTORE_MS = 2000
+// Decoded masters outside the current draft: its own pictures are never dropped.
 const MASTERS_CAP = 32
 // Drawn thumbnails kept, the least recently drawn dropped first: at most this
 // many, holding at most this many characters of base64 in all.
@@ -74,7 +79,8 @@ const provenance = atom(PROVENANCE, EMPTY_PROVENANCE)
 const DEMO = { plugin: 'mod-images', key: 'demo' } as const
 const demo = atom(DEMO, null)
 // Bumped to redraw the band when something only module memory holds changed:
-// a placeholder old enough to show, the drawing mode, the end of a sample strip.
+// a placeholder old enough to show, the drawing mode, the end of a sample strip,
+// or session.start after a reload.
 const PICTURES = { plugin: 'mod-images', key: 'pictures' } as const
 const pictures = atom(PICTURES, 0)
 
@@ -105,12 +111,14 @@ let lastChipKey = ''
 let lastHint = ''
 let currentSid = ''
 let draftIds: ReadonlySet<number> = new Set()
-// The `claude-<uid>` folder, once found: the same for the whole process.
+// The owner and actual project folder, once found: kept across session changes.
 let userDir: string | undefined
+let projectDirs: { root: string; dirs: readonly { owner: string; dir: string }[] } | undefined
 let scannedAt = -Infinity
 let triedBases: readonly string[] = []
-// The chips the folder was last looked for under every project for.
+// The chips waiting for a deep scan, and when their retry window ends.
 let deepScanKey = ''
+let deepScanUntil = 0
 // The chips of the last prompt sent with pictures, and those a cancelled turn
 // may be about to put back, until when.
 let lastSentIds: readonly number[] = []
@@ -127,7 +135,7 @@ let draining = false
 let previousLayout: { rows: number; count: number } | undefined
 let lastBand: ReportBand | undefined
 let lastStrip: { at: number; tiles: readonly ImagesTile[] } | undefined
-let probe: { key: string; source: ImageSource; tries: number } | undefined
+let probe: { requestId: string; key: string; source: ImageSource; tries: number } | undefined
 let demoMasters: readonly Master[] = []
 
 const resetModule = (): void => {
@@ -147,9 +155,11 @@ const resetModule = (): void => {
   currentSid = ''
   draftIds = new Set()
   userDir = undefined
+  projectDirs = undefined
   scannedAt = -Infinity
   triedBases = []
   deepScanKey = ''
+  deepScanUntil = 0
   lastSentIds = []
   restoreIds = []
   restoreUntil = 0
@@ -186,6 +196,8 @@ const forgetSession = (sid: string): void => {
   queue.length = 0
   previousLayout = undefined
   lastChipKey = ''
+  deepScanKey = ''
+  deepScanUntil = 0
   draftIds = new Set()
   lastSentIds = []
   restoreIds = []
@@ -234,16 +246,20 @@ const keepDrawable = (key: string, drawable: TileDrawable): TileDrawable => {
   return drawable
 }
 
-const remember = <T,>(cache: Map<string, T>, key: string, value: T, cap: number): T => {
-  cache.delete(key)
-  cache.set(key, value)
-  while (cache.size > cap) {
-    const oldest = cache.keys().next()
-    if (oldest.done === true) break
-    cache.delete(oldest.value)
-  }
+// Masters outside the draft kept to `MASTERS_CAP`, the least recently used dropped first; the draft's pictures stay.
+const trimMasters = (): void => {
+  const pinned = new Set([...draftIds].map(id => keyOf(currentSid, id)))
+  const others = [...masters.keys()].filter(key => !pinned.has(key))
+  for (const key of others.slice(0, Math.max(0, others.length - MASTERS_CAP))) masters.delete(key)
+}
 
-  return value
+// A master kept as the most recently used; the masters outside the draft then trimmed.
+const rememberMaster = (key: string, master: Master): Master => {
+  masters.delete(key)
+  masters.set(key, master)
+  trimMasters()
+
+  return master
 }
 
 // Each variable by its literal name: the engine refuses any other spelling.
@@ -288,39 +304,65 @@ const existsAt = async ($: EngineInterface, path: string): Promise<boolean> => {
 }
 
 // The session's image folder: `<temp>/claude-<uid>/<project>/<session>/images`.
-// The uid is not known to a plugin, so the temporary folders are listed for a
-// `claude-*` folder holding this project's folder: that one is kept for the
-// process (it never changes), and only the session's own folder is checked
-// after that.
+// The uid is not known to a plugin, so the temporary folders are listed to find it.
+// Keep the actual project folder: /clear and resume try their session there first.
 const imagesDirFor = async ($: EngineInterface, sid: string, root: string, now: number, force = false): Promise<string | undefined> => {
   if (sessionDir !== undefined && sessionDir.sid === sid && sessionDir.root === root && sessionDir.dir !== undefined) return sessionDir.dir
   sessionDir = { sid, root }
   if (userDir !== undefined) {
-    const dir = imagesDirOf(userDir, root, sid)
-    if (await existsAt($, dir)) return (sessionDir.dir = dir)
-    if (!force) return undefined
+    const candidates = projectDirs?.root === root ? projectDirs.dirs : [{ owner: userDir, dir: projectDirOf(userDir, root) }]
+    for (const candidate of candidates) {
+      const dir = joinPath(candidate.dir, sid, 'images')
+      if (await existsAt($, dir)) {
+        userDir = candidate.owner
+        projectDirs = { root, dirs: [candidate] }
+
+        return (sessionDir.dir = dir)
+      }
+    }
+    // A known root-named folder needs no listing unless forced; a deep-scan hit
+    // is tried first, but another session may belong to a different project folder.
+    if (!force && candidates.every(candidate => candidate.dir === projectDirOf(candidate.owner, root))) return undefined
   }
   if (!force && now - scannedAt < SCAN_EVERY_MS) return undefined
   scannedAt = now
   triedBases = tempBasesOf(storeEnv, root)
   const owners: string[] = []
+  const candidates: { owner: string; dir: string }[] = []
   for (const base of triedBases) {
     const entries = await $.fs.list(base).catch(() => [])
     for (const entry of entries) {
       if (!isUserDirName(entry.name) || (entry.kind !== 'dir' && !entry.isLink)) continue
       const candidate = joinPath(base, entry.name)
       owners.push(candidate)
-      if (!(await existsAt($, projectDirOf(candidate, root)))) continue
-      userDir = candidate
+      const project = projectDirOf(candidate, root)
+      if (!(await existsAt($, project))) continue
+      candidates.push({ owner: candidate, dir: project })
       const dir = imagesDirOf(candidate, root, sid)
+      if (await existsAt($, dir)) {
+        userDir = candidate
+        projectDirs = { root, dirs: [{ owner: candidate, dir: project }] }
 
-      return (await existsAt($, dir)) ? (sessionDir.dir = dir) : undefined
+        return (sessionDir.dir = dir)
+      }
     }
   }
-  // No project folder by the root's name: the session's folder is looked for
-  // under each project, once for each new set of chips.
-  if (!force && lastChipKey === deepScanKey) return undefined
-  deepScanKey = lastChipKey
+  const first = candidates[0]
+  if (first !== undefined) {
+    userDir = first.owner
+    // Their session folders may still be on their way: check every candidate
+    // on later looks, without listing the temporary folders again.
+    projectDirs = { root, dirs: candidates }
+
+    return undefined
+  }
+  // No project folder by the root's name: retry all projects while these
+  // chips may still be waiting for their folder to be written.
+  if (lastChipKey !== deepScanKey) {
+    deepScanKey = lastChipKey
+    deepScanUntil = now + SCAN_WAIT_MS
+  }
+  if (!force && now >= deepScanUntil) return undefined
   for (const owner of owners) {
     const projects = await $.fs.list(owner).catch(() => [])
     if (projects.length > SCAN_ENTRIES_CAP) continue
@@ -329,6 +371,7 @@ const imagesDirFor = async ($: EngineInterface, sid: string, root: string, now: 
       const dir = joinPath(owner, project.name, sid, 'images')
       if (await existsAt($, dir)) {
         userDir = owner
+        projectDirs = { root, dirs: [{ owner, dir: joinPath(owner, project.name) }] }
 
         return (sessionDir.dir = dir)
       }
@@ -354,11 +397,12 @@ const refreshOnce = async ($: EngineInterface): Promise<void> => {
   const { text } = await $.prompt.read()
   const ids = chipIdsOf(text)
   const chipKey = chipKeyOf(ids)
-  lastChipKey = chipKey
   const sid = await $.session.id()
   const root = await $.session.root()
   if (sid !== currentSid) forgetSession(sid)
+  lastChipKey = chipKey
   draftIds = new Set(ids)
+  trimMasters()
   let listing: StoreListing | undefined
   let missingReason = 'not found'
   if (ids.length > 0) {
@@ -498,9 +542,17 @@ const decode = async ($: EngineInterface, { sid, dir, file }: DecodeJob): Promis
       return
     }
     const started = startMaster(bytes, MASTER_SIDE)
-    if ('failure' in started) return failed(key, started.failure, facts)
+    if ('failure' in started) {
+      await quietly($, async () => $.ui.log(`mod-images: ${started.detail}`, { to: 'debug' }))
+
+      return failed(key, started.failure, facts)
+    }
     decodeFacts.set(key, { ...facts, state: 'reading' })
-    const outcome = await runSliced(started.step, () => $.clock.now(), { isAborted: isGone }).catch(() => 'broken' as const)
+    const outcome = await runSliced(started.step, () => $.clock.now(), { isAborted: isGone }).catch(async error => {
+      await quietly($, async () => $.ui.log(`mod-images: ${String(error)}`, { to: 'debug' }))
+
+      return 'broken' as const
+    })
     if (outcome === 'aborted') {
       decodeFacts.delete(key)
 
@@ -508,7 +560,7 @@ const decode = async ($: EngineInterface, { sid, dir, file }: DecodeJob): Promis
     }
     if (outcome === 'too slow') return failed(key, 'too slow', facts)
     if (outcome === 'broken') return failed(key, "can't read", facts)
-    remember(masters, key, started.master(), MASTERS_CAP)
+    rememberMaster(key, started.master())
     decodeFacts.set(key, { ...facts, state: 'ready' })
   } finally {
     soon($)
@@ -518,7 +570,7 @@ const decode = async ($: EngineInterface, { sid, dir, file }: DecodeJob): Promis
 const masterOf = (key: string): Master | undefined => {
   const master = masters.get(key)
 
-  return master === undefined ? undefined : remember(masters, key, master, MASTERS_CAP)
+  return master === undefined ? undefined : rememberMaster(key, master)
 }
 
 // Base64 of n bytes is 4 * ceil(n / 3) characters: a drawable of any other
@@ -550,12 +602,12 @@ const pictureOf = (tile: ImagesTile, placed: PlacedTile, master: Master, prefix:
   let drawable: TileDrawable
   if (mode.mode === 'pixels') {
     const source = kittyRgbaOf(master, placed.columns, placed.rows, kittyBytes)
-    const fits = source.width >= 1 && source.height >= 1 && source.width <= 2048 && source.height <= 2048
+    const fits = source.width >= 1 && source.height >= 1 && source.width <= IMAGE_SIDE_MAX && source.height <= IMAGE_SIDE_MAX
       && source.rgba.length === base64Length(source.width * source.height * 4)
     drawable = fits ? { kind: 'image', source, alt: altOf(tile) } : { kind: 'note', lines: ["can't draw"], dashed: false }
   } else {
     const cells = halfBlockCellsOf(master, placed.columns, placed.rows)
-    drawable = cells.length === base64Length(placed.columns * placed.rows * 12) ? { kind: 'cells', cells } : { kind: 'note', lines: ["can't draw"], dashed: false }
+    drawable = cells.length === base64Length(placed.columns * placed.rows * CELL_BYTES) ? { kind: 'cells', cells } : { kind: 'note', lines: ["can't draw"], dashed: false }
   }
 
   return keepDrawable(cacheKey, drawable)
@@ -592,7 +644,7 @@ const probePixels = async ($: EngineInterface): Promise<void> => {
   probeTimer = undefined
   if (probe === undefined || pixelsConfirmed || mode.mode !== 'pixels') return
   probe.tries += 1
-  const answer = await $.ui.blit({ requestId: BAND, key: probe.key, source: probe.source }).catch((error: unknown) => ({ deny: String(error) }))
+  const answer = await $.ui.blit({ requestId: probe.requestId, key: probe.key, source: probe.source }).catch((error: unknown) => ({ deny: String(error) }))
   const deny = answer.deny
   if (deny === undefined) {
     pixelsConfirmed = true
@@ -612,9 +664,9 @@ const probePixels = async ($: EngineInterface): Promise<void> => {
   await bumpPictures($)
 }
 
-const armProbe = ($: EngineInterface, key: string, source: ImageSource): void => {
+const armProbe = ($: EngineInterface, requestId: string, key: string, source: ImageSource): void => {
   if (pixelsConfirmed || mode.mode !== 'pixels') return
-  if (probe === undefined || probe.key !== key) probe = { key, source, tries: 0 }
+  if (probe === undefined || probe.requestId !== requestId || probe.key !== key) probe = { requestId, key, source, tries: 0 }
   else probe.source = source
   if (probeTimer === undefined && probe.tries < PROBE_TRIES) probeTimer = $.clock.after(PROBE_DELAY_MS, () => void probePixels($))
 }
@@ -622,8 +674,8 @@ const armProbe = ($: EngineInterface, key: string, source: ImageSource): void =>
 // A sent prompt's chips: recalled later, they are not attached.
 const noteSent = async ($: EngineInterface, content: readonly { type: string; text?: unknown }[]): Promise<void> => {
   const ids = sentIdsOf(content)
-  if (ids.length === 0) return
   lastSentIds = ids
+  if (ids.length === 0) return
   await quietly($, () => update($, provenance, prov => markSentOf(prov ?? EMPTY_PROVENANCE, ids)))
   soon($)
 }
@@ -823,7 +875,7 @@ export const register: Register = (on, options) => {
       if (tile.state === 'not-attached' || tile.state === 'failed') return noteOf(tile)
       const master = tile.state === 'ready' ? masterFor(tile.id) : undefined
       if (master === undefined) {
-        // Dropped from memory with more pictures in play than it keeps: decoded again.
+        // Dropped from memory while outside the draft, or lost on reload: decoded again.
         if (tile.state === 'ready' && !sampling && decodeFacts.delete(keyOf(shown.sessionId, tile.id))) soon($)
 
         return { kind: 'wait' }
@@ -831,7 +883,7 @@ export const register: Register = (on, options) => {
       const drawable = pictureOf(tile, placed, master, sampling ? `demo:${tile.id}` : keyOf(shown.sessionId, tile.id), layout.kind === 'strip' ? layout.kittyBytes : 0)
       if (drawable.kind === 'image' && !probed) {
         probed = true
-        armProbe($, pictureKeyOf(placed.id), drawable.source)
+        armProbe($, e.requestId, pictureKeyOf(placed.id), drawable.source)
       }
 
       return drawable
@@ -847,7 +899,7 @@ export const register: Register = (on, options) => {
         return held.cells
       }
       const cells = swatchCellsOf(master)
-      if (cells.length !== base64Length(2 * 12)) return undefined
+      if (cells.length !== base64Length(SWATCH_COLUMNS * CELL_BYTES)) return undefined
       keepDrawable(cacheKey, { kind: 'cells', cells })
 
       return cells

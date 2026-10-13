@@ -338,7 +338,7 @@ describe('in the pane', () => {
     }
   })
 
-  test('with mascots off, no scene, no name colours, and nothing written for them; the header\'s working/idle cell still is', {
+  test('with mascots off, no scene or name colours; working/idle and compaction time are still written', {
     options: { mascots: false },
   }, async ($, on) => {
     const { clock, world, main } = arrange(on)
@@ -354,9 +354,9 @@ describe('in the pane', () => {
     expect(hudLines(data, { columns: 72, isNarrow: false })[0]).toMatch(/● working 00:00$/)
     await completeTurn($)
     await $.session.compact({ trigger: 'manual', messages: [{ role: 'user', text: 'x', toolUses: [] }] } as Parameters<Engine['session']['compact']>[0])
-    // Busy, then idle: two writes, and no compaction stamp (that one is the mascot's alone).
-    expect(world.writes.filter(key => key === 'main')).toHaveLength(2)
-    expect(main()).toEqual({ idleSince: clock.now() })
+    // Busy, then idle, then the compaction stamp: kept whatever the mascot option says.
+    expect(world.writes.filter(key => key === 'main')).toHaveLength(3)
+    expect(main()).toEqual({ idleSince: clock.now(), lastTurnReason: 'answer', compactedAt: clock.now() })
     for (const surface of SURFACES) {
       const ui = await mountPane($, surface, 72, 30)
       expect(await orderOf(ui)).toEqual(['hud', 'agents'])
@@ -391,10 +391,12 @@ describe('in the pane', () => {
     await clock.advance(2 * SECOND)
     await completeTurn($)
     await completeTurn($, { agentId: 'sub-9' })
-    expect(main()).toEqual({ idleSince: NOW + 2 * SECOND })
+    expect(main()).toEqual({ idleSince: NOW + 2 * SECOND, lastTurnReason: 'answer' })
     expect(writes()).toBe(2)
-    // Another end with nothing at work writes nothing.
+    // Another end with nothing at work writes nothing, even after time passes.
+    await clock.advance(SECOND)
     await completeTurn($)
+    expect(main()).toEqual({ idleSince: NOW + 2 * SECOND, lastTurnReason: 'answer' })
     expect(writes()).toBe(2)
     expect((await scene()).join('\n')).not.toMatch(/[·∘]|\(hmm\)/)
 

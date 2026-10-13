@@ -145,6 +145,24 @@ describe('wandering', () => {
     for (const rows of [4, 5, 6]) expect([...fly(rows, 300).byId.values()].flat().some(one => one?.motion?.kind === 'fly'), `${rows} rows`).toBe(false)
   })
 
+  test('two smooth fliers meeting head-on under a three-row sky part within a few frames', () => {
+    for (const [sky, start, hi] of [[3, 10, 80], [4, 10, 80], [3, 0, 14], [4, 0, 14]] as const) {
+      let movers: Mover[] = [
+        { id: 'a', width: 17, body: 13, x: start, lo: 0, hi, free: false, sky, ask: { reason: 'scan' }, memo: { x: start, lift: 2, target: 60, pauseUntil: 0, fly: { from: 900, altitude: 2, cruise: 400, stage: 'cruise', since: 998, reason: 'scan', turnAt: 2000 } } },
+        { id: 'b', width: 17, body: 13, x: start + 14, lo: 0, hi, free: false, sky, ask: { reason: 'scan' }, memo: { x: start + 14, lift: 2, target: 0, pauseUntil: 0, fly: { from: 900, altitude: 2, cruise: 400, stage: 'cruise', since: 998, reason: 'scan', turnAt: 2000 } } },
+      ]
+      for (let tick = 1000; tick < 1004; tick += 1) {
+        const moved = stepField(movers, tick, { smooth: true, collisions: 'rare' })
+        const [one, two] = [moved.get('a')!, moved.get('b')!]
+        if (one.lift >= AIRBORNE && two.lift >= AIRBORNE) expect(gapBetween({ x: one.x, width: 13 }, { x: two.x, width: 13 })).toBeGreaterThanOrEqual(GAP)
+        movers = movers.map(mover => ({ ...mover, x: moved.get(mover.id)!.x, d: moved.get(mover.id)!.d, memo: moved.get(mover.id)!.memo }))
+      }
+      expect(movers.some(one => one.x !== (one.id === 'a' ? start : start + 14)), `${sky} rows of sky`).toBe(true)
+      if (start > 0) expect(movers[0]!.memo!.target).toBeLessThan(start)
+      else expect(movers[0]!.memo!.lift).toBeLessThan(AIRBORNE)
+    }
+  })
+
   test('one flight, frame by frame: up a row every other frame to its altitude, a cruise bobbing a row, down a row a frame where the ground is clear, then the bounce', () => {
     const fly = { from: 1000, altitude: 5, cruise: 8, stage: 'climb' as const, since: 1000 }
     let mover: Mover = { id: 'flier', width: 9, x: 0, lo: 0, hi: 91, free: true, sky: 8, memo: { x: 0, lift: 1, target: 90, pauseUntil: 1000, fly } }
@@ -359,6 +377,22 @@ describe('collisions', () => {
     expect(off.get('a')?.x).toBe(9)
     expect(off.get('b')?.x).toBe(21)
     expect(off.get('a')?.bumped).toBe(true)
+  })
+
+  test('two mascots already closer than the gap walking apart neither collide nor bump', () => {
+    for (const collisions of ['off', 'rare', 'normal'] as const) {
+      const movers = pair(0, 40).map(one => one.id === 'b' ? { ...one, x: 14, memo: { ...one.memo!, x: 14 } } : one)
+      const contacts: string[] = []
+      const tick = Array.from({ length: 40 }, (_, index) => 1000 + index).find(tick => movers.every(one => roll(one.id, 'leap', tick, LEAP_ONE_IN) !== 0))!
+      const moved = stepField(movers, tick, { collisions }, contacts)
+      expect(contacts).toEqual([])
+      for (const one of moved.values()) {
+        expect(one.collided).toBe(undefined)
+        expect(one.bumped).toBe(undefined)
+      }
+      expect(moved.get('a')!.x).toBeLessThanOrEqual(10)
+      expect(moved.get('b')!.x).toBeGreaterThan(14)
+    }
   })
 
   test('down two frames, dizzy eight, up two, then back to what it was doing', () => {

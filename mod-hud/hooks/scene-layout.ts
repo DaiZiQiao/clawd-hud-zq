@@ -14,10 +14,10 @@ import type { MascotAgent, MascotScene, Placement, Slot } from './scene-types'
 // `headroom + d` rows of it over its box, which hops and flights rise into.
 
 /** Rows of sky the field leaves over its back row's box, where the rows allow: a hop's apex. */
-export const FIELD_SKY = HOP_HEIGHT
+const FIELD_SKY = HOP_HEIGHT
 /** Narrower than this, the field is shallow: SHALLOW_DEPTH rows at most. */
-export const NARROW_FIELD = 60
-export const SHALLOW_DEPTH = 2
+const NARROW_FIELD = 60
+const SHALLOW_DEPTH = 2
 
 /**
  * The field in `columns` by `rows`: its depth (every row a box and its sky

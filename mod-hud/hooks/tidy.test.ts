@@ -63,11 +63,12 @@ describe('when a tidy is due', () => {
 
 describe('what a tidy pays back', () => {
   test('its one cost over what each request after it saves, at the model\'s list prices', () => {
-    // Opus 5.5: reading 182k from the cache, a 12k summary, caching 30k after, against 152k read less each request.
-    expect(paybackOf('claude-opus-5-5', 182_000, TIDY_AFTER)).toBe(15)
-    // A bigger context pays back sooner.
-    expect(paybackOf('claude-opus-5-5', 400_000, TIDY_AFTER)).toBe(7)
-    expect(paybackOf('claude-sonnet-5-5', 182_000, TIDY_AFTER)).toBe(8)
+    // Opus 5.5: K = 0.0364 + 0.30 + 0.68 = 1.0164; s = 0.0364 - 0.017 = 0.0194.
+    expect(paybackOf('claude-opus-5-5', 182_000, TIDY_AFTER)).toBe(53)
+    // A bigger context: K = 1.06, s = 0.063, ceil(K/s) = 17.
+    expect(paybackOf('claude-opus-5-5', 400_000, TIDY_AFTER)).toBe(17)
+    // Sonnet 5.5: K = 0.0182 + 0.15 + 0.34 = 0.5082; s = 0.0097.
+    expect(paybackOf('claude-sonnet-5-5', 182_000, TIDY_AFTER)).toBe(53)
     // A model with no price, or nothing to save: no estimate.
     expect(paybackOf('some-model', 182_000, TIDY_AFTER)).toBeUndefined()
     expect(paybackOf(undefined, 182_000, TIDY_AFTER)).toBeUndefined()
@@ -79,7 +80,12 @@ describe('what the band says', () => {
   test('a compaction running, then its result for TIDY_RESULT_MS, then a failure, then the countdown or the offer', () => {
     const running = bandTidyOf(due({ tidy: { runningSince: NOW - 12_000 } }))
     expect(running).toEqual({ kind: 'tidying', since: NOW - 12_000, before: 182_000 })
-    expect(textOf(bandLinesOf(running!, NOW))).toEqual(['tidying up · 182k tokens', 'squashing the conversation into a summary · 12s'])
+    expect(textOf(bandLinesOf(running!, NOW))).toEqual(['tidying up · 182k tokens · 12s', 'squashing the conversation into a summary'])
+
+    expect(textOf(bandLinesOf(bandTidyOf(due({ tokens: undefined, tidy: { runningSince: NOW - 12_000 } }))!, NOW))).toEqual(['tidying up · 12s', 'squashing the conversation into a summary'])
+    const unknown = (rule: 'D1' | 'advisory') => bandTidyOf(due({ tokens: undefined, scheduled: true, tidy: { pending: { rule, state: 'offer', automatic: false, reasons: [], otherReasons: 0, ...(rule === 'D1' ? { saving: 7.76 } : { why: 'unpriced' as const }) } } }))!
+    expect(textOf(bandLinesOf(unknown('D1'), NOW))[0]).toBe('save ≈$7.76 · tidy up?')
+    expect(textOf(bandLinesOf(unknown('advisory'), NOW))[0]).toBe('tidy up?')
 
     const last = { at: NOW - 1000, trigger: 'auto' as const, before: 182_000, after: 21_000 }
     const tidied = bandTidyOf(due({ tokens: 21_000, tidy: { last } }))
@@ -92,17 +98,17 @@ describe('what the band says', () => {
     expect(textOf(bandLinesOf(failed!, NOW))).toEqual(['could not tidy up', 'a turn is running'])
 
     const offer = bandTidyOf(due())
-    expect(offer).toEqual({ kind: 'offer', tokens: 182_000, payback: 15 })
-    expect(textOf(bandLinesOf(offer!, NOW))).toEqual(['182k tokens of context · tidy up?', 'pays for itself in ~15 requests'])
-    // The last tidy's size after stands in for the estimate's.
-    expect(bandTidyOf(due({ tidy: { last: { ...last, at: NOW - TIDY_RESULT_MS, after: 60_000 } } }))).toMatchObject({ kind: 'offer', payback: 24 })
+    expect(offer).toEqual({ kind: 'offer', tokens: 182_000, payback: 53 })
+    expect(textOf(bandLinesOf(offer!, NOW))).toEqual(['182k tokens · tidy up?', 'a summary stands in for the conversation'])
+    // A = 60k: K = 0.0364 + 0.30 + 0.64 = 0.9764; s = 0.0204, payback 48.
+    expect(bandTidyOf(due({ tidy: { last: { ...last, at: NOW - TIDY_RESULT_MS, after: 60_000 } } }))).toMatchObject({ kind: 'offer', payback: 48 })
     // No price: the offer without its payback.
     expect(textOf(bandLinesOf(bandTidyOf(due({ model: 'some-model' }))!, NOW))[1]).toBe('a summary stands in for the conversation')
 
     // auto: its countdown while it runs, the offer before one starts.
     const counting = bandTidyOf(due({ mode: 'auto', tidy: { countdownSince: NOW - 3000 } }))
     expect(counting).toEqual({ kind: 'countdown', leftMs: TIDY_COUNTDOWN_MS - 3000, tokens: 182_000 })
-    expect(textOf(bandLinesOf(counting!, NOW))[0]).toBe('tidying up in 7s · 182k tokens')
+    expect(textOf(bandLinesOf(counting!, NOW))[0]).toBe('auto-tidy in 0:27 · save ≈$0.00')
     expect(bandTidyOf(due({ mode: 'auto' }))?.kind).toBe('offer')
     // Off: a compaction's progress and result still show, never an offer.
     expect(bandTidyOf(due({ mode: 'off' }))).toBeUndefined()

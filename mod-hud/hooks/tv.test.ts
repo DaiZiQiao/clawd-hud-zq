@@ -13,6 +13,7 @@ import { FRAME_MS, createWorld, pointer, receive, tick } from './scene-world'
 import { layoutAt } from './scene-view'
 import { NOW, entry } from './scene-model.fixtures'
 import { displayWidth } from './text-width'
+import { CLASSES, SCENE_THEMES } from './svg-style'
 import { SPRITE_RES, extentOf, giantOf, holesFilled, spriteOf, whoOfMain } from './tv-figure'
 import type { Figure, Who } from './tv-figure'
 import { TV_FRAMES, TV_FRAME_MS, channelOf, maxScrollOf, panelOf, scrolledBy, shownRows, thumbOf, tvHitAt, tvKeyOf, tvLayoutOf, tvLookAt } from './tv-model'
@@ -558,6 +559,18 @@ describe('its rows', () => {
 })
 
 describe('drawn', () => {
+  test("the session's Clawd TV drawn in blocks on the desktop paints its body in the accent's colour, never a bare theme key", () => {
+    const inputs = inputsOf(whoOfMain('clawd'), { svg: true, from: { x: 20, y: 30 } })
+    const tv = createTv(inputs)
+    const drawn = (): string => paintSvg(inputs, lookOf(tv), 0, tv.sprite).source
+    const accent = `class='${CLASSES.claude}' fill='${SCENE_THEMES.dark.claude}'`
+    for (const source of [drawn(), (switchedOn(tv), drawn())]) {
+      expect(source).not.toContain("fill='claude'")
+      expect(source).toContain(accent)
+      expect(source).toContain(`.${CLASSES.claude}{fill:${SCENE_THEMES.light.claude}}`)
+    }
+  })
+
   test('on the terminal: once on, only the figure\'s box drawn, the pane showing through the rest; the glass dark with its rows; the ✕ white on red; every row within the region', () => {
     for (const who of [CLAWD, USAGI]) {
       const inputs = inputsOf(who)

@@ -40,6 +40,7 @@ column (cell 18), one idea per row. The TODO section follows under its own
  context  used    ━━━━━━━━────────┃───  41%   412k / 1.0M
           growth  +65k / turn        compact in ~6 turns
           cache   ━━━━━━━━━━━━━━──────  warm · 42m left (1h)
+          tidy    auto · nothing due Turn auto off
  limits   5h      ━━━━━━──────────────  31%   ↻ 14:20   out ~13:43
           7d      ━━──────────────────  12%   ↻ Tue
  usage    cost    $4.21              $3.51 / h · 1h 12m
@@ -52,7 +53,8 @@ column (cell 18), one idea per row. The TODO section follows under its own
 
 Row by row:
 - **Header.** The model, effort and provider, and at the edge the main loop
-  `● working 00:42` (the accent; how long this turn has run) or `○ idle 3m`
+  `● working 00:42` (the accent, the theme's `claude` colour; how long
+  this turn has run) or `○ idle 3m`
   (dim; how long since it stopped), read from the main loop's facts, kept
   whatever the options (mascots on or off). When the row runs short the provider gives way first,
   then the working cell, then the effort. The session's clock and cost moved
@@ -67,19 +69,20 @@ Row by row:
      minutes reaches 100 % before it resets (`error`; 7d and spend alike).
   3. `N agents stalled`: running subagents and workflow agents quiet past
      `stalledAfterSec` (`warning`).
-  4. `compact in ~N turns`: the context compacts within three turns
+  4. `auto-tidy in 0:28`: an automatic tidy's countdown (the accent).
+  5. `compact in ~N turns`: the context compacts within three turns
      (`warning`).
-  5. `cache cools in 2m · next turn rewrites 412k`: the prompt cache goes
+  6. `cache cools in 2m · next turn rewrites 412k`: the prompt cache goes
      cold within two minutes of a 1-hour TTL, or within its last minute of a
      5-minute one (the smaller of 2 minutes and 20 % of the TTL), and the
      next turn would write the whole context to the cache again (`warning`).
      A cache already cold is no alert: the cache row says so, calmly.
-  6. `N calls denied or failed`: tool calls, in any loop, that ended denied
+  7. `N calls denied or failed`: tool calls, in any loop, that ended denied
      or in an error in the last ten minutes (`FAILURE_WINDOW_MS`, from the
      ledger's `failures.recent`; dim `warning`). The alert clears on its own
      ten minutes after the last one; the conversation's totals stay in the
      Session tab's Overview.
-  7. `↓3 behind`: the branch is behind its upstream (dim `warning`).
+  8. `↓3 behind`: the branch is behind its upstream (dim `warning`).
 
   The `⚠` takes the colour of the most severe.
 - A blank row, then the sections.
@@ -117,6 +120,48 @@ Row by row:
   `(1h?)` when the TTL is assumed (see below).
   Cold, an empty track and `cold · next turn rewrites 412k`, all dim. See
   "The prompt cache's TTL" below for how the TTL is known.
+- **context · tidy.** Since 1.11.0 this row is always drawn, below `cache`:
+  the saved mode and the tidy's state, including when nothing is due.
+  Auto-tidy is on by default. The value's states are below; `ask` or `off`
+  replaces the `auto` prefix where that is the saved mode. Long values are
+  cut at the end with `…` to leave
+  room for the button.
+
+  | State | Value | Colour |
+  | --- | --- | --- |
+  | Nothing due | `auto · nothing due` | dim |
+  | Offer D1/D2/D3 or intro | `auto · save ≈$7.76` | accent |
+  | Advisory | `auto · tidy up 400k?`; unknown size `auto · tidy up?` | accent |
+  | Waiting (auto) | `auto · waiting: <first reason>` | accent |
+  | Countdown (auto) | `auto · tidy in 0:28` | accent |
+  | Tidying | `auto · tidying up` | accent |
+  | Tidied | `auto · tidied` | `success` |
+  | Failed | `auto · not tidied: <reason>` | `warning` |
+  | Toggle failed | `auto · not saved: <reason>` | `warning` |
+  | Pending → ask | `auto off at turn end` (whole value) | accent |
+  | Pending → auto | `auto on at turn end` (whole value) | accent |
+  | Pending target = saved | Drawn as if nothing is pending | unchanged |
+
+  Precedence: tidying, tidied, failed, pending toggle (target differs from
+  saved), countdown, toggle failure, waiting, offer or advisory, nothing
+  due. Toggle feedback shows here only when no toggle is pending; then it
+  is a failure.
+
+  The button follows the mode, including a pending target: `Turn auto off`
+  for `auto`, `Turn auto on` for `ask` or `off`. With no change pending, a
+  press targets the opposite of the saved mode and saves the choice
+  permanently for all projects, reloading the plugin. While Claude is
+  working, the change waits until the turn ends and no prompt or compaction
+  blocks the reload. Pressing the button again while the change is pending
+  withdraws it; nothing is saved. A `/config` change to the tidy mode before
+  the turn ends wins over the pending change; the band shows
+  `kept your /config change`. In `off` mode, `Turn auto on` saves `auto`;
+  the band has no offers. `/mod-hud tidy off` saves `ask`; `/config` also
+  offers `off` for
+  no offers. The band shows the estimated saving, an offer, what auto-tidy
+  is waiting for, or the 30 s countdown with `Cancel`. Automatic tidies
+  wait for the safe point and need a terminal-only session. See
+  [Tidying up](../../README.md#tidying-up) for the checks, estimates and limits.
 - **limits · 5h / 7d / spend.** Each window on its own row, its bar as wide
   as the context's, its reset, and `out ~13:43` (`error`) only while the
   window runs out before it resets.
@@ -155,6 +200,7 @@ reserve:
  context  used    ━━━━━━━━────────┃───  41%   412k / 1.0M
           growth  +65k / turn        compact in ~6 turns
           cache   ━━━━━━━━━━━━━━──────  warm · 42m left (1h)
+          tidy    auto · nothing due Turn auto off
  limits   5h      ━━━━━━──────────────  31%   ↻ 14:20   out ~13:43
           7d      ━━──────────────────  12%   ↻ Tue
  usage    cost    $4.21              $3.51 / h · 1h 12m
@@ -177,6 +223,7 @@ button" below):
  context  used    ━━━━━━━━────────┃───  41%   412k / 1.0M
           growth  +65k / turn        compact in ~6 turns
           cache   ━━━━━━━━━━━━━━──────  warm · 42m left (1h)
+          tidy    auto · nothing due Turn auto off
  limits   5h      ━━━━━━──────────────  31%   ↻ 14:20
           7d      ━━──────────────────  12%   ↻ Tue
  usage    cost    $4.21              $3.51 / h · 1h 12m
@@ -205,6 +252,7 @@ ten minutes after that request):
  context  used    ━━━━━━━━────────┃───  41%   412k / 1.0M
           growth  +65k / turn        compact in ~6 turns
           cache   ────────────────────  cold · next turn rewrites 412k
+          tidy    auto · nothing due Turn auto off
  limits   5h      ━━━━━━──────────────  31%   ↻ 14:20
           7d      ━━──────────────────  12%   ↻ Tue
  usage    cost    $4.21              $3.51 / h · 1h 12m
@@ -225,6 +273,7 @@ strip says what is at stake:
  context  used    ━━━━━━━━────────┃───  41%   412k / 1.0M
           growth  +65k / turn        compact in ~6 turns
           cache   ━───────────────────  cooling · 2m left (1h)
+          tidy    auto · nothing due Turn auto off
  limits   5h      ━━━━━━──────────────  31%   ↻ 14:20
           7d      ━━──────────────────  12%   ↻ Tue
  usage    cost    $4.21              $3.51 / h · 1h 12m
@@ -290,6 +339,7 @@ samples the growth row goes; a spend limit gets its own row:
           now     Bash · npm test -- hud                         00:04
  context  used    ━━━━━━━━━━━━━━━━┃━━━ 100%   1.0M / 1.0M
           cache   ━━━━━━━━━━━━━━──────  warm · 42m left (1h)
+          tidy    auto · nothing due Turn auto off
  limits   5h      ━━━━━━━━━━━━━━━━━━──  92%   ↻ 14:20
           7d      ━━━━━━━━━━━━━───────  64%   ↻ Tue
           spend   ━━━━━━━━━━━━━━━━━───  85%   ↻ Nov 1
@@ -312,6 +362,7 @@ behind. The strip is cut to the card; the least severe go first:
  context  used    ━━━━━━━━━━━━━━──┃───  70%   700k / 1.0M
           growth  +65k / turn        compact in ~2 turns
           cache   ━━━━━━━━━━━━━━──────  warm · 42m left (1h)
+          tidy    auto · nothing due Turn auto off
  limits   5h      ━━━━━━──────────────  31%   ↻ 14:20   out ~13:43
           7d      ━━──────────────────  12%   ↻ Tue
  usage    cost    $4.21              $3.51 / h · 1h 12m
@@ -330,6 +381,7 @@ Nothing needing attention (`calm`): no alert row at all.
  context  used    ━━━━━━━━────────┃───  41%   412k / 1.0M
           growth  +65k / turn        compact in ~6 turns
           cache   ━━━━━━━━━━━━━━──────  warm · 42m left (1h)
+          tidy    auto · nothing due Turn auto off
  limits   5h      ━━━━━━──────────────  31%   ↻ 14:20
           7d      ━━──────────────────  12%   ↻ Tue
  usage    cost    $4.21              $3.51 / h · 1h 12m
@@ -355,6 +407,7 @@ is left out:
  ctx  used   ━━━━────┃─  41%  412k/1.0M
       growth +65k/turn  compact in ~6 turns
       cache  ━━━━━━━───  warm · 42m left (1h)
+      tidy   auto · nothing due Turn auto off
  lim  5h     ━━━───────  31%  ↻ 14:20  out ~13:43
       7d     ━─────────  12%  ↻ Tue
  use  cost   $4.21  $3.51 / h · 1h 12m
@@ -374,6 +427,7 @@ is left out:
  ctx  used   ━━━━────┃─  41%  412k/1.0M
       growth +65k/turn  compact in ~6 turns
       cache  ━━━━━━━───  warm · 42m left (1h)
+      tidy   auto · nothing due Turn auto off
  lim  5h     ━━━───────  31%  ↻ 14:20
       7d     ━─────────  12%  ↻ Tue
  use  cost   $4.21  $3.51 / h · 1h 12m
@@ -398,6 +452,7 @@ Below 44 columns the bars are 8 cells:
  ctx  used   ━━━───┃─  41%  412k/1.0M
       growth +65k/turn
       cache  ━━━━━━──  warm · 42m left
+      tidy   auto · noth… Turn auto off
  lim  5h     ━━──────  31%  ↻ 14:20
       7d     ━───────  12%  ↻ Tue
  use  cost   $4.21  $3.51 / h · 1h 12m
@@ -421,6 +476,7 @@ in the header:
  ctx  used    41%  412k/1.0M
       growth +65k/turn
       cache  warm · 42m left (1h)
+      tidy   auto ·… Turn auto off
  lim  5h      31%  ↻ 14:20
       7d      12%  ↻ Tue
  use  cost   $4.21  $3.51 / h
@@ -441,6 +497,7 @@ cells, and free text ends in `…`:
  ctx  used   ━━━━────┃─  41%  412k/1.0M
       growth +65k/turn  compact in ~6 turns
       cache  ━━━━━━━───  warm · 42m left (1h)
+      tidy   auto · nothing due Turn auto off
  lim  5h     ━━━───────  31%  ↻ 14:20
       7d     ━─────────  12%  ↻ Tue
  use  cost   $4.21  $3.51 / h · 1h 12m
@@ -452,11 +509,13 @@ cells, and free text ends in `…`:
 ## Short panes
 
 Given the pane's rows, the HUD takes at most half (never fewer than four).
-Rows go by rank: the alerts, the header, `context · used`, the limits,
-`session · now`, `context · cache`, `usage · cost`, then the rest (branch,
-repo, growth, last turn, cache use, the motto, the blank row). A section's
-label moves to its first row still shown. At 72 columns in 16 rows (eight for
-the HUD):
+The `context · tidy` row always stays. The other rows go by rank: the alerts,
+the header, `context · used`, the limits, `session · now`, `context · cache`,
+`usage · cost`, then the rest (branch, repo, growth, last turn, cache use,
+the motto, the blank row). To keep `tidy`, the lowest-ranked row that would
+otherwise fit gives way.
+A section's label moves to its first row still shown. At 72 columns in
+16 rows (eight for the HUD):
 
 ```
 ◆ opus 5.5 · xhigh · gateway                           ● working 00:42
@@ -464,9 +523,9 @@ the HUD):
  session  now     Bash · npm test -- hud                         00:04
  context  used    ━━━━━━━━────────┃───  41%   412k / 1.0M
           cache   ━━━━━━━━━━━━━━──────  warm · 42m left (1h)
+          tidy    auto · nothing due Turn auto off
  limits   5h      ━━━━━━──────────────  31%   ↻ 14:20   out ~13:43
           7d      ━━──────────────────  12%   ↻ Tue
- usage    cost    $4.21              $3.51 / h · 1h 12m
 ```
 
 At 48 columns in 10 rows (five for the HUD):
@@ -475,8 +534,8 @@ At 48 columns in 10 rows (five for the HUD):
 ◆ opus 5.5 · xhigh · gateway   ● working 00:42
   ⚠ 2 agents waiting for permission · 5h out ~1…
  ctx  used   ━━━━────┃─  41%  412k/1.0M
+      tidy   auto · nothing due Turn auto off
  lim  5h     ━━━───────  31%  ↻ 14:20
-      7d     ━─────────  12%  ↻ Tue
 ```
 
 ## Sparse and early states
@@ -489,6 +548,7 @@ the context's place until the first response:
 ◆ opus 5.5 · xhigh
 
  context  used    —
+          tidy    auto · nothing due Turn auto off
  usage    cost    $0.00              00:12
 ```
 
@@ -504,8 +564,7 @@ and a section with no rows left loses its label:
 - No main turn ended: no `last` row. No tokens and no ledger: no cache-use row.
 - No tool called yet: no `now` row. No main-loop activity known: no
   working/idle cell. No todos: no TODO section.
-- No data at all: the HUD draws nothing and the agent list stands alone.
-  A motto is the HUD's last row, never a HUD of its own.
+- No data at all: the HUD draws only the `tidy` row, plus a motto if set.
 
 `/mod-hud facts` prints the `HudData` the HUD is drawing from as JSON (the
 alert counts under `alerts`, the main loop's activity under `main`, the cache
@@ -761,12 +820,12 @@ whatever the options), its age and its turns; its tabs are **Overview**,
     turns' summed `durationMs`, kept in `usage.busyMs`, plus the turn
     running now).
   - `turns`: main `turn.complete`s (`usage.turns`), the compactions, and
-    how long since the last (`main.compactedAt`).
+    how long since the last (`main.compactedAt`, tracked with mascots on or off).
   - `context`: used and window, the percent, the growth per turn (the mean
     of the last ten main turns' context deltas, from `usage.contextSamples`,
     a compaction's drop left out) and the turns until it compacts (at the
     auto-compact threshold the inventory's breakdown names, else the
-    window).
+    window); no runway when auto-compaction is off.
   - `tokens`: in, out, cache read and write, and the cache hit share.
   - (on `turns`) the files the main loop edited this conversation (the
     distinct paths of its Edit, Write, MultiEdit and NotebookEdit calls that
@@ -796,20 +855,25 @@ whatever the options), its age and its turns; its tabs are **Overview**,
 - **Agents:** the lists.
 
 Per-loop and per-model spend is kept in `mod-hud.ledger`: each request's
-`turn.step` usage booked to its loop (`main`, a subagent, a workflow agent,
-or a `fork`) and the model that answered. The compaction summarizer emits a
-request with its own fork `agentId`, so its tokens and spend are booked only
-from `turn.step`; `session.compact.usage` repeats that accounting and is not
-booked again under the compacted loop. An installed main compaction still
-increments the compaction count (a precompute does not). Also kept: a loop's run end; and the failed calls. One write per request,
-per agent turn end and per failed call; never per tick. It holds at most 500
-loops: a finished loop is folded into its models' `others` an hour after it
-ended, and past 500 the oldest finished go first. It is priced when drawn,
-with `PRICES` in `hooks/hud-ledger.ts` (USD per million tokens: input, output,
-cache read, cache write at 1.25× input; approximate first-party list prices;
-provider prefixes, date suffixes and trailing `-vN[:N]` deployment suffixes
-are stripped before exact matching; unknown versions and providers stay
-unpriced, shown as `—`, rather than inheriting a family's latest price). `/clear` empties it; the lists' expansion stays.
+`turn.step` usage is booked to its loop (`main`, a subagent, a workflow agent,
+or a `fork`) and the model that answered. The compaction summarizer has no
+bound `turn.step`; its `session.compact` result's `usage` is booked once as
+the `compact` fork, under the compacting loop's known model. A main loop
+with no known model is booked as `unknown`; an agent compaction with no
+known model is skipped in the ledger. A reused precomputed summary has no
+new usage to book. The fork is included under `forks` in the Cost tree and
+counts toward the agents' share. An installed main compaction increments
+the compaction count; a precompute does not. The ledger also keeps run ends
+and failed calls. It writes per request, summary, agent turn end and failed
+call, never per tick. It holds at most 500 loops: a finished loop is folded
+into its models' `others` an hour after it ended, and past 500 the oldest
+finished go first. Prices come from `hooks/prices.ts` through
+`hooks/hud-ledger.ts`: approximate first-party list prices, with the ledger's
+cache writes priced at the five-minute rate. Managed `modelPricing` is not
+applied. Provider prefixes, date suffixes and trailing `-vN[:N]` deployment
+suffixes are stripped before exact matching; unknown versions and providers
+stay unpriced (`—`), rather than inheriting a family's latest price. `/clear`
+and resume empty the ledger; the lists' expansion stays.
 
 At 72 columns (real mounted output):
 
@@ -913,10 +977,10 @@ follow in a dim eight-cell column (seven narrow), and every value starts in
 one column. The eye finds a section by its label, a fact by its sub-label,
 and reads values down one edge.
 
-The header and the cost are the only bold text, and the model name alone
-carries the accent. Sections follow how often you need them: where you are
-and what is running, how full the context is and how warm its cache, how
-close the limits are, what it all costs.
+The header and the cost are the only bold text. The model name, working
+cell and active tidy states carry the accent. Sections follow how often you
+need them: where you are and what is running, how full the context is and
+how warm its cache, how close the limits are, what it all costs.
 
 **Close button.** The engine draws the pane's close button (`×`) over the
 last cell of the first body row. The first row, the header whenever it
@@ -945,12 +1009,18 @@ A tick can change a digit but never moves a neighbour. A long MCP tool name
 keeps its tool half (`browser_tak…`, not `playwright:…`).
 
 **Colour.** Colour is reserved for the bars, the status glyphs, the model
-name, `● working`, `out ~HH:MM`, a cooling cache and the alert strip. It is
-all theme keys, so the HUD follows the person's theme:
+name, `● working`, `out ~HH:MM`, a cooling cache, the tidy row and the alert
+strip, including `auto-tidy in 0:28`. The tidy value uses `claude` while
+active, `success` when tidied and `warning` on failure; nothing due is dim.
+It is all theme keys, so the HUD follows the person's theme:
 
 | What | Theme key |
 | --- | --- |
 | `◆`, model name, `● working`, in-progress `◐` | `claude` |
+| tidy value: offer, advisory, waiting, countdown, tidying, pending mode change | `claude` |
+| tidy value: tidied | `success` |
+| tidy value: not tidied, not saved | `warning` |
+| alert strip: `auto-tidy in 0:28` | `claude` |
 | alert strip: asks, a limit running out (and `⚠` when one leads); a limit row's `out ~HH:MM` | `error` |
 | alert strip: stalled agents, a compaction soon, the cache cooling | `warning` |
 | alert strip: failed calls, behind upstream | `warning`, dim |
@@ -968,9 +1038,9 @@ The threshold uses the percent as displayed, so a value shown as `85%` is
 always red. The bar's track, the compaction mark `┃`, sub-labels, paths,
 reset times, token counts, the runway, the cache's time left and a cold
 cache, `○ idle`, the tool's argument and elapsed time, git marks, the
-rate, the clock and the motto are dim. No element sets a background colour
-or `inverse`, and no text is both bold and dim (the two share one reset code
-in most terminals).
+rate, the clock, the motto and the `tidy` row's button label are dim.
+No element sets a background colour or `inverse`, and no text is both bold
+and dim (the two share one reset code in most terminals).
 
 **Bar glyphs.** The fill is `━` and the empty track `─`, drawn as separate
 spans: the fill in the level's colour, the track dim. A shade glyph such as
@@ -989,7 +1059,7 @@ distinct weights in any font, and leaves a gap between rows.
 - The compaction threshold is a `┃` in the bar, and the runway is written
   out.
 
-**Density.** One idea per row: the full sketch is fourteen rows, fifteen
+**Density.** One idea per row: the full sketch is fifteen rows, sixteen
 with a motto, plus the TODO section. Given `rows`, the HUD takes at most
 half the pane (never fewer than four rows) and drops rows by rank (see
 "Short panes"); it never drops the alerts or the header first.
@@ -1008,7 +1078,9 @@ spaces.
 **Wiring note.** The caller should leave one blank row between the HUD and
 the agent list (`gap={1}` on their shared column, or `marginBottom={1}`
 around the HUD), so the bold agent header does not sit flush under the
-HUD's last row. When the HUD draws no rows (no data yet), drop the gap too.
+HUD's last row. With no data yet, the HUD still draws the tidy row (and a
+motto if set), so keep the gap. Drop it only when the HUD draws no rows
+because the pane is too narrow (below about 14 columns).
 
 ## Agent call counts
 
@@ -1193,9 +1265,9 @@ description to give a third:
   1c · answer · last Bash
 ```
 
-- **Name.** `wf-` and the id's last four characters. The `agent.spawn` that
-  would carry a description is the Agent tool's event, and a workflow's agents
-  are not the Agent tool's: there is no description to match to the id.
+- **Name.** `wf-` and the id's last four characters. Some engines raise
+  `agent.spawn` for workflow agents; the hook passes those spawns through
+  without keeping their descriptions or adding them to the board.
 - **Cells.** The subagent rows' grid: status glyph, the name in the type's
   16 cells (in its mascot's colour with mascots on), the last step's model
   (`-` before a step), elapsed time since it was first seen (frozen when it
@@ -1235,7 +1307,7 @@ response and never per tick. What expires is dropped by the next write, or
 by the 5 s reconciliation while one is held (a held one keeps that clock
 going with the pane closed, as a running subagent does), and the drawing
 leaves out what expired before then. `/mod-hud facts` prints the record as
-held under `shadows` (left out while it is empty). `/clear` and every other
-session end drop it. The `showWorkflows` option (on by default) switches all
+held under `shadows` (left out while it is empty). `/clear`, resume and every
+other session end drop it. The `showWorkflows` option (on by default) switches all
 of it off: nothing kept, drawn, counted or printed (a session end still drops
 a record an earlier session left, as it does the `main` facts).

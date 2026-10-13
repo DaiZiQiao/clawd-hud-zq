@@ -64,7 +64,7 @@ const spansOf = (row: readonly (Cell | undefined)[]): Span[] => {
 }
 
 /** The glyph of an agent's pick Button, between its feet. */
-export const PICK_LABEL = '▾'
+const PICK_LABEL = '▾'
 
 /** Pressing a mascot: its Button's constructor and what a press selects. */
 export type MascotPick = { Button: (props: { key?: string; label?: string; plain?: true; dimColor?: boolean; onPress: () => void }) => RenderElement; onPick: (id: string) => void }

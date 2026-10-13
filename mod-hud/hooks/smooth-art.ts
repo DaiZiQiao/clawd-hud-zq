@@ -1,7 +1,7 @@
 import { CLAWD, propShapes } from './clawd-moves'
 import { about, applyTo, chain, multiply, noise, rotate, scale, springAt, translate, wave } from './clawd-vector'
 import type { Matrix, Paint, Shape } from './clawd-vector'
-import { ACCESSORIES, BLANKET, CROWN, LAPTOP_COLOUR } from './mascot-sprites'
+import { ACCESSORIES, BLANKET, CROWN, HAT_X, LAPTOP_COLOUR } from './mascot-sprites'
 import type { Accessory } from './mascot-sprites'
 import { MONO_ADVANCE, monoShapes } from './mono-font'
 import { textWidth } from './raster-font'
@@ -16,7 +16,7 @@ import type { HatName } from './usagi-sprites'
 // and what is beside them. Local units, the origin between the feet on the
 // floor, y down; a cell is 2 units across and 4 down. Clawd keeps Claude
 // Code's own proportions (its logo's 18 by 6 quadrants); Usagi Chiikawa's:
-// a big round head on a smaller round body, long ears close together, a thin
+// a big round head on a smaller round body, long ears close together, a bold
 // dark line round it all.
 
 /** Who a mascot is and what it wears. */
@@ -39,17 +39,40 @@ const EDGE = CLAWD.edge
 const SPARK = 'warning'
 
 
-/** A colour `k` of the way to black: a leg's shade of its body. */
-export const shade = (hex: string, k: number): string => {
+/** A colour `k` of the way to `to` (0 black, 255 white): a shaded or lit side. */
+const mix = (hex: string, k: number, to: number): string => {
   const n = Number.parseInt(hex.slice(1, 7), 16)
   if (!hex.startsWith('#') || !Number.isFinite(n)) return hex
-  const part = (shift: number): string => Math.round(((n >> shift) & 255) * (1 - k)).toString(16).padStart(2, '0')
+  const part = (shift: number): string => {
+    const one = (n >> shift) & 255
+
+    return Math.round(to === 0 ? one * (1 - k) : one + (to - one) * k).toString(16).padStart(2, '0')
+  }
 
   return `#${part(16)}${part(8)}${part(0)}`
 }
 
+/** A colour `k` of the way to black: a leg's shade of its body. */
+export const shade = (hex: string, k: number): string => mix(hex, k, 0)
+
+/** Shapes placed by `m`: each shared placement stays one matrix. */
+const placedShapes = (shapes: readonly Shape[], m: Matrix): Shape[] => {
+  const placed = new Map<Matrix, Matrix>()
+
+  return shapes.map(shape => {
+    if (shape.m === undefined) return { ...shape, m }
+    let at = placed.get(shape.m)
+    if (at === undefined) {
+      at = multiply(m, shape.m)
+      placed.set(shape.m, at)
+    }
+
+    return { ...shape, m: at }
+  })
+}
+
 /** A four-pointed spark, `size` across. */
-export const sparkShapes = (x: number, y: number, size: number, angle: number, fill = SPARK, alpha = 1): Shape[] => {
+const sparkShapes = (x: number, y: number, size: number, angle: number, fill = SPARK, alpha = 1): Shape[] => {
   const m = chain(translate(x, y), rotate(angle))
 
   return [0, Math.PI / 2].map((turn): Shape => ({ kind: 'ellipse', x: -size / 2, y: -size * 0.12, w: size, h: size * 0.24, fill, alpha, m: multiply(m, rotate(turn)) }))
@@ -68,7 +91,7 @@ export const crossShapes = (m: Matrix, fill: string, size = 2.4): Shape[] =>
 // --- what it wears -------------------------------------------------------------------
 
 /** Where a hat sits along the head's top: its left corner, centre, right corner (Clawd's HAT_X, in units). */
-const HAT_AT = { left: -4, centre: 0, right: 4 } as const
+const HAT_AT = { left: (HAT_X.left - HAT_X.centre) * 2, centre: 0, right: (HAT_X.right - HAT_X.centre) * 2 } as const
 
 /** The session's crown, three points on a band, about `x`, its band on the head's top `y`. */
 export const crownShapes = (m: Matrix, x: number, y: number, size = 1): Shape[] => {
@@ -152,7 +175,7 @@ const energyShapes = (m: Matrix, energy: Energy, at: 'left' | 'right', y: number
   if (energy === 0) return []
   const xs = at === 'right' ? [4.6, 6.6] : [-4.6, -6.6]
 
-  return xs.slice(0, energy).flatMap((x, one) => sparkShapes(x, y, 1.8 + 0.25 * wave(t, 900, one), 0.3 * one).map(shape => ({ ...shape, m: multiply(m, shape.m ?? [1, 0, 0, 1, 0, 0]) })))
+  return xs.slice(0, energy).flatMap((x, one) => placedShapes(sparkShapes(x, y, 1.8 + 0.25 * wave(t, 900, one), 0.3 * one), m))
 }
 
 // --- the figures ----------------------------------------------------------------------
@@ -160,21 +183,14 @@ const energyShapes = (m: Matrix, energy: Energy, at: 'left' | 'right', y: number
 /**
  * The eyes of either: `cx` their centres, `y` their middle's height, `w` and
  * `h` an open eye's; `shine` a glint in each open one (Usagi's dots).
- * Squeezed shut, `> <`; smug, half lidded.
+ * Smug, half lidded.
  */
 const eyeShapes = (m: Matrix, pose: FigurePose, cx: readonly [number, number], y: number, w: number, h: number, fill: string, shine = false): Shape[] => {
   const shapes: Shape[] = []
-  for (const [index, x0] of cx.entries()) {
+  for (const x0 of cx) {
     const x = x0 + pose.eyeX
     const cy = y + pose.eyeY
     switch (pose.eyes) {
-      case 'squeeze': {
-        // Each a chevron pointing in: `>` the left, `<` the right.
-        const point = index === 0 ? 1 : -1
-        const k = chain(m, translate(x + point * 0.45, cy), scale(point, 1))
-        for (const turn of [0.5, -0.5]) shapes.push({ kind: 'rect', x: -1.25, y: -0.17, w: 1.25, h: 0.34, r: 0.17, fill, m: multiply(k, rotate(turn)) })
-        break
-      }
       case 'half':
         shapes.push({ kind: 'ellipse', x: x - w / 2, y: cy - h * 0.05, w, h: h * 0.5, fill, m })
         shapes.push({ kind: 'rect', x: x - w * 0.8, y: cy - h * 0.12, w: w * 1.6, h: 0.26, r: 0.13, fill, m })
@@ -238,7 +254,7 @@ const clawdShapes = (pose: FigurePose, info: FigureInfo, t: number): Shape[] => 
   } else if (info.crown === true || info.accessory !== undefined) {
     // Knocked flat: its hat on the floor beside it.
     const floor = chain(translate(pose.dx + 9.5, 0), rotate(0.4))
-    shapes.push(...(info.crown === true ? crownShapes(floor, 0, 0, 0.8) : accessoryShapes(chain(floor, translate(0, 10)), info.accessory ?? 'beanie', 0, t)))
+    shapes.push(...(info.crown === true ? crownShapes(floor, 0, 0, 0.8) : accessoryShapes(chain(floor, translate(0, 10)), info.accessory!, 0, t)))
   }
 
   return shapes
@@ -248,9 +264,9 @@ const clawdShapes = (pose: FigurePose, info: FigureInfo, t: number): Shape[] => 
 export type UsagiMouth = 'cat' | 'scream' | 'o' | 'smirk' | 'grin'
 
 /** Its mouth for a pose: as the pose says, else wide open past `mouth` 0.45, a grin with its eyes happy, else its `ω`. */
-export const usagiMouthOf = (pose: FigurePose): { kind: UsagiMouth; open: number } => {
+const usagiMouthOf = (pose: FigurePose): { kind: UsagiMouth; open: number } => {
   const open = Math.max(0, Math.min(1, pose.mouth))
-  const kind: UsagiMouth = pose.mouthShape === 'dot' ? 'cat' : pose.mouthShape ?? (open > 0.45 ? 'scream' : pose.eyes === 'happy' ? 'grin' : 'cat')
+  const kind: UsagiMouth = pose.mouthShape ?? (open > 0.45 ? 'scream' : pose.eyes === 'happy' ? 'grin' : 'cat')
 
   return { kind, open }
 }
@@ -426,19 +442,6 @@ const HAT_BROWS = 0.55
 /** Where an ear comes up through a hat, either side: its hole's middle across, and how far under the hat's top. */
 const EAR_HOLE = { x: 1.55, under: 0.55, rx: 1.45, ry: 0.32 } as const
 
-/** A colour `k` of the way to white: a lit side. */
-const tint = (hex: string, k: number): string => {
-  const n = Number.parseInt(hex.slice(1, 7), 16)
-  if (!hex.startsWith('#') || !Number.isFinite(n)) return hex
-  const part = (shift: number): string => {
-    const one = (n >> shift) & 255
-
-    return Math.round(one + (255 - one) * k).toString(16).padStart(2, '0')
-  }
-
-  return `#${part(16)}${part(8)}${part(0)}`
-}
-
 /** Points round an ellipse about (`cx`, `cy`) from angle `from` to `to` (radians, y down: π/2 its front). */
 const ellipsePoints = (cx: number, cy: number, rx: number, ry: number, from: number, to: number, steps = 16): Point[] =>
   Array.from({ length: steps + 1 }, (_, index) => {
@@ -549,7 +552,7 @@ const HARDHAT: HatDesign = (() => {
   const main = HATS.hardhat.colour
   const brim = brimPoints(5.0, 0.6, 0.02, 0)
   const shell = domePoints(4.35, 3.0)
-  const ridge: Shape = { kind: 'rect', x: -0.45, y: -2.95, w: 0.9, h: 3.35, r: 0.45, fill: tint(main, 0.22) }
+  const ridge: Shape = { kind: 'rect', x: -0.45, y: -2.95, w: 0.9, h: 3.35, r: 0.45, fill: mix(main, 0.22, 255) }
 
   return {
     shapes: m => [
@@ -659,7 +662,7 @@ const TOPHAT: HatDesign = (() => {
     shapes: m => [
       ...inked(m, brim, main),
       ...inked(m, crown, main),
-      ...inked(m, lid, tint(main, 0.18), 0.22),
+      ...inked(m, lid, mix(main, 0.18, 255), 0.22),
       polyOf(m, band, HATS.tophat.palette.R),
       { kind: 'rect', x: -2.35, y: -2.85, w: 0.5, h: 1.85, r: 0.25, fill: '#FFFFFF', alpha: 0.18, m },
       polyOf(m, lip, main),
@@ -795,7 +798,7 @@ export const usagiCapShapes = (m: Matrix, tone: string, turn: number): { cap: Sh
 
   return {
     cap: [
-      ...inked(m, shell, tint(tone, 0.3)),
+      ...inked(m, shell, mix(tone, 0.3, 255)),
       polyOf(m, panel, tone),
       ...[-1, 1].flatMap(side => strokeShapes(m, seam(side), 0.14, shade(tone, 0.35))),
       ...inked(m, peak, shade(tone, 0.2)),
@@ -837,9 +840,9 @@ export const usagiCrownShapes = (m: Matrix): Shape[] => {
 
 /**
  * Usagi as Chiikawa draws it: a big round head on a small round body, its
- * long ears together (pink inside; lowered squatting, trailing a walk,
- * drooping slumped), its little feet, its hands nubs at its sides (raised
- * beside its face, out to its laptop), a thin dark line round it all; its dot
+ * long ears together (pink inside; lowered squatting, trailing a walk),
+ * its little feet, its hands nubs at its sides (raised beside its face,
+ * out to its laptop), a bold dark line round it all; its dot
  * eyes with a glint under fine brows, its hatched pink cheeks, its small
  * mouth (wide open shouting); its hat (its ears through it), side crown,
  * energy.
@@ -849,12 +852,11 @@ const usagiShapes = (pose: FigurePose, info: FigureInfo, t: number): Shape[] => 
   const capped = pose.cap !== undefined
   const flat = pose.flat
   const body = chain(translate(pose.dx, pose.drop), rotate(pose.tilt), about(0, -6.2, rotate(pose.spin)), scale(pose.sx, pose.sy * (1 - 0.45 * flat)))
-  // Its ears come up through its hat or its cap, standing; only bare (no hat, no crown) do they droop.
+  // Its ears come up through its hat or its cap, standing; bare, lowered squatting.
   const through = capped || hat !== undefined
   const earsDown = hat === undefined && !capped ? Math.max(pose.earsDown, 0) : 0
-  const droop = hat === undefined && !capped && info.crown !== true ? pose.droop : 0
   const earLength = 7.8 - 3 * earsDown
-  const earTurn = (side: number): number => side * 0.05 + 0.3 * pose.trail + side * (1.9 * droop + 1.45 * flat + (side < 0 ? pose.earL : pose.earR))
+  const earTurn = (side: number): number => side * 0.05 + 0.3 * pose.trail + side * (1.45 * flat + (side < 0 ? pose.earL : pose.earR))
   // Its silhouette, outlined as one: the outlines first, then the parts over them.
   const lines: Shape[] = []
   const parts: Shape[] = []
@@ -898,7 +900,7 @@ const usagiShapes = (pose: FigurePose, info: FigureInfo, t: number): Shape[] => 
   const worn = hat !== undefined ? HAT_DESIGNS[hat].parts() : cap?.parts ?? []
   shapes.push(...hatShadeShapes(seat, worn))
   // Its face: dot eyes with a small glint, its brows high over them (higher wide-eyed, as far as a hat lets them), level
-  // over the middle and falling away to the sides, its cheeks blushing with three strokes, its mouth.
+  // over the middle and falling away to the sides, its cheeks blushing with four strokes, its mouth.
   const browTop = -10.75 + (worn.length > 0 ? HAT_BROWS : 0) + (pose.eyes === 'wide' ? (worn.length > 0 ? -0.1 : -0.5) : 0)
   shapes.push(
     ...blushShapes(body, -3.7, -6.85),
@@ -944,7 +946,6 @@ const usagiShapes = (pose: FigurePose, info: FigureInfo, t: number): Shape[] => 
   return shapes
 }
 
-/** The laptop in front of it, opening (`open` 0 to 1), its screen lit, a key flickering under the near hand. */
 /** Its laptop, `open` that far; typing (by its seed), the code it writes on the screen, else a few still lines glowing. */
 const laptopShapes = (m: Matrix, open: number, t: number, typing: number | undefined): Shape[] => {
   if (open <= 0.02) return []
@@ -1048,16 +1049,6 @@ const spinShapes = (m: Matrix, glyph: string, x: number, y: number, fill: Paint,
 }
 
 /**
- * A thought, as Claude Code's spinner says it: its glyph turning, its words
- * (Usagi's line) in Claude's orange in the terminal's own font with a light
- * sweeping back along them, an ellipsis after; in a pill over its head, two
- * dots trailing up to it. Coming (`since`, the scene's time), the dots and
- * then the pill spring in (Motion's springs), the words after; then it
- * floats. A mini's thought (no words) is its dots alone. With too little
- * room over its feet (`ceiling`; the band's one row of sky) the pill comes
- * down and out by as much, the dots still leading up to it.
- */
-/**
  * A thought's pill (or dot): solid, its outline inside it, so nothing of it
  * is see-through but its very edge. A terminal draws a picture a cell at a
  * time, the cells' edges overlapping a pixel, and there a see-through fill
@@ -1073,18 +1064,28 @@ const solidPill = (m: Matrix, x: number, y: number, w: number, h: number): Shape
   ]
 }
 
+/**
+ * A thought, as Claude Code's spinner says it: its glyph turning, its words
+ * (Usagi's line) in Claude's orange in the terminal's own font with a light
+ * sweeping back along them, an ellipsis after; in a pill over its head, two
+ * dots trailing up to it. Coming (`since`, the scene's time), the dots and
+ * then the pill spring in (Motion's springs), the words after; then it
+ * floats. A mini's thought (no words) is its dots alone. With too little
+ * room over its feet (`ceiling`; the band's one row of sky) the pill comes
+ * down and out by as much, the dots still leading up to it.
+ */
 const thoughtShapes = (m: Matrix, text: string, since: number | undefined, t: number, ceiling: number): Shape[] => {
   const age = since === undefined ? Infinity : t - since
   const float = (phase: number): number => 0.3 * Math.sin((2 * Math.PI * (t - (since ?? 0))) / 2600 + phase)
   const dot = (x: number, y: number, d: number, delay: number): Shape[] => {
-    const r = (d / 2) * springAt(age - delay, 260, 0.45)
+    const r = (d / 2) * (Number.isFinite(age) ? springAt(age - delay, 260, 0.45) : 1)
 
     const cy = y + float(delay / 200)
 
     return r > 0.02 ? solidPill(m, x - r, cy - r, 2 * r, 2 * r) : []
   }
   const shapes = [...dot(6.3, -11.3, 1, 0), ...dot(8.2, -13.4, 1.5, 90)]
-  const grow = springAt(age - 180, 340, 0.3)
+  const grow = Number.isFinite(age) ? springAt(age - 180, 340, 0.3) : 1
   if (text === '' || grow <= 0.02) return shapes
   const line = /[…!?]$/.test(text) ? text : `${text}…`
   const chars = [...line].length
@@ -1193,7 +1194,7 @@ const besideShapes = (one: Beside, m: Matrix, info: FigureInfo, t: number, usagi
       return [0, 1, 2].flatMap(index => {
         const a = (t / 1000) * 3 + (index * 2 * Math.PI) / 3
 
-        return sparkShapes(4.2 * Math.cos(a), (usagi ? -11 : -11.6) + 1.2 * Math.sin(a), 1.7, a, 'warning').map(shape => ({ ...shape, m: multiply(m, shape.m ?? [1, 0, 0, 1, 0, 0]) }))
+        return placedShapes(sparkShapes(4.2 * Math.cos(a), (usagi ? -11 : -11.6) + 1.2 * Math.sin(a), 1.7, a, 'warning'), m)
       })
     case 'paper': {
       const k = chain(m, translate(9.4, -7.2), rotate(0.18))
@@ -1222,13 +1223,13 @@ const besideShapes = (one: Beside, m: Matrix, info: FigureInfo, t: number, usagi
       ]
     }
     case 'props':
-      return one.props.flatMap(prop => propShapes(prop).map(shape => ({ ...shape, m: shape.m === undefined ? m : multiply(m, shape.m) })))
+      return placedShapes(one.props.flatMap(prop => propShapes(prop)), m)
     case 'sparkles':
       return [0, 1, 2].flatMap(index => {
         const a = (t / 1000) * 2.2 + (index * 2 * Math.PI) / 3
         const twinkle = 1.2 + 0.6 * Math.abs(wave(t + index * 170, 420))
 
-        return sparkShapes(8.5 * Math.cos(a), row(0) + 2 + 3.2 * Math.sin(a), twinkle, a, index === 1 ? '#F2A0AE' : 'warning').map(shape => ({ ...shape, m: multiply(m, shape.m ?? [1, 0, 0, 1, 0, 0]) }))
+        return placedShapes(sparkShapes(8.5 * Math.cos(a), row(0) + 2 + 3.2 * Math.sin(a), twinkle, a, index === 1 ? '#F2A0AE' : 'warning'), m)
       })
     case 'dust': {
       // Puffs kicked up behind its feet (both sides, landing), each growing and fading.
@@ -1258,7 +1259,7 @@ const besideShapes = (one: Beside, m: Matrix, info: FigureInfo, t: number, usagi
 
           return { kind: 'rect', x: 11 + index * 3 + 1.5 * phase - 0.5, y: -2.4 - 4 * Math.sin(Math.PI * phase) - 0.5, w: 1, h: 0.8, r: 0.15, fill: '#C9CED6', alpha: 1 - phase * 0.6, m: chain(m, about(11 + index * 3, -2.4, rotate(phase * 3 * (index % 2 === 0 ? 1 : -1)))) }
         }),
-        ...sparkShapes(13 + 2 * wave(t, 300), -5.4, 1.6 + 0.5 * Math.abs(wave(t, 170)), t / 200).map(shape => ({ ...shape, m: multiply(m, shape.m ?? [1, 0, 0, 1, 0, 0]) })),
+        ...placedShapes(sparkShapes(13 + 2 * wave(t, 300), -5.4, 1.6 + 0.5 * Math.abs(wave(t, 170)), t / 200), m),
       ]
     case 'jitter':
       // A shake's blur lines either side of it.
@@ -1304,7 +1305,7 @@ const burstShapes = (m: Matrix, text: string, y: number, t: number): Shape[] => 
  */
 export const figureShapes = (pose: FigurePose, info: FigureInfo, m: Matrix, t: number, ceiling = Infinity): Shape[] => {
   const usagi = info.character === 'usagi'
-  const figure = (usagi ? usagiShapes(pose, info, t) : clawdShapes(pose, info, t)).map(shape => ({ ...shape, m: shape.m === undefined ? m : multiply(m, shape.m) }))
+  const figure = placedShapes(usagi ? usagiShapes(pose, info, t) : clawdShapes(pose, info, t), m)
   const ground = chain(m, translate(pose.dx, 0))
   const upright = chain(m, translate(pose.dx, pose.drop))
 

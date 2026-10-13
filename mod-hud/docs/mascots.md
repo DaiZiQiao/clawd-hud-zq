@@ -45,10 +45,10 @@ blocks; see "The vector art". Text-only terminals draw the blocks either way.
 drawing as plain text. Every frame below is its output (`spriteSheet()`).
 
 The `mascots` option (on by default) switches all of it off: no scene, no
-name colours, no scene clock, no raised hands and no compaction stamp
-(`main.compactedAt`). What the HUD reads stays tracked whatever it says: the
-main loop's busy and idle times (`main.busySince`, `main.idleSince`), a
-subagent's lingering permission ask (the `tool.check` hook, for the alert
+name colours, no scene clock and no raised hands. What the HUD reads stays
+tracked whatever it says: the main loop's busy and idle times
+(`main.busySince`, `main.idleSince`), the compaction stamp (`main.compactedAt`),
+a subagent's lingering permission ask (the `tool.check` hook, for the alert
 strip's count) and the files edited (the Session tab's Overview).
 `wander` (on) lets mascots off their laptops roam the field (idle ones on
 their feet, the session's watching its agents), `scenes` (on) plays
@@ -57,7 +57,7 @@ behave; see "Choreography". `motion` (`smooth`) picks the renderer: `classic`
 keeps the Box/Text scene on every surface. `character` (`clawd`) picks who
 the mascots are: Clawd, as the rest of this page draws it, or `usagi`; see
 "Usagi".
-`/clear` still removes stale `main` facts left by an earlier enabled session.
+`/clear` and resume remove stale `main` facts left by an earlier enabled session.
 
 ## The band above the prompt
 
@@ -68,12 +68,15 @@ desktop; a `ui.render` hook on `AbovePrompt` draws it whether the HUD's pane
 is open or not, so the mascot shows with the HUD closed and in a terminal too
 narrow to dock the pane.
 
-- **Its yard.** The band's width (less `TIDY_COLUMNS` while tidying up has
-  something to say beside it, never under `YARD_COLUMNS`, 28) and a
-  mascot's 5 rows (`GRID_ROWS`: its sky row and its box): a field one row
-  deep, where it strolls the width of the prompt (idle too, till it falls
-  asleep under its blanket), hops and can be picked up and thrown like any
-  mascot. It is the same scene in the same
+- **Its yard.** The band's width, less a 48-column tidy box (`TIDY_COLUMNS`)
+  and a one-column gap while a tidy line shows. The tidy box shrinks to the
+  band's width below 48 columns. The yard shows only when at least 28 columns
+  (`YARD_COLUMNS`) are left: 77 columns or more in all. Otherwise, while a
+  tidy line shows, the session's mascot steps into the pane's scene.
+  The yard is a mascot's 5 rows (`GRID_ROWS`: its sky row and its box): a field
+  one row deep, where it strolls the width of the prompt (idle too, till it
+  falls asleep under its blanket), hops and can be picked up and thrown like
+  any mascot. It is the same scene in the same
   `Client` (`hooks/scene-client.tsx`, keyed `session`), cast with the
   session's mascot alone: `sceneInputsOf(..., { only: 'main' })`. The board
   rides along in its props so that its mood still reads the agents (watching
@@ -101,10 +104,16 @@ narrow to dock the pane.
 - **A click.** Pressing the band's mascot posts `{ kind: 'inspect', id:
   'main' }`, as in the pane; the HUD opens where it is not and selects the
   session (its TV or inspect view, Overview and Cost).
-- **Tidying up beside it.** Right of the yard, the band says what tidying up
-  has to (`hooks/tidy.ts`, the `tidy` and `tidyAt` options): the offer, the
-  `auto` countdown, a compaction running, its result. See "Tidying up" in the
-  README.
+- **Tidying up beside it.** In the tidy box, beside the yard when it fits,
+  the band shows cost-aware auto-tidy (`hooks/tidy.ts`, the `tidy` and
+  `tidyAt` options): an estimated saving, an offer, what it is waiting for,
+  the 30 s countdown with `Cancel`, a compaction running, or its result.
+  Since 1.11.0 auto-tidy is on by default and runs only at a safe point;
+  only a terminal-only session gets automatic tidies. `Turn auto off`
+  saves `ask` permanently for all projects and reloads the plugin, as does
+  `/mod-hud tidy off`; `/config` also offers `off` for no offers. Any main
+  compaction still gets the animation and result. See
+  [Tidying up](../../README.md#tidying-up) for the checks, estimates and limits.
 
 ## Where it draws
 
@@ -330,11 +339,11 @@ pipe over them all; marks last, on no one's cell. The SVG draws each layer's
 cells only where the text canvas shows them, so a farther mascot's quarter
 blocks never show through a nearer one's.
 
-A child (an agent whose parent is also in the scene) stands as a mini 5
-cells wide, its slot right after its parent's at the parent's depth where
-that is clear. When it stands right beside its parent in its slot, the
-parent's arm points (`▀`) and a `▸` in the parent's colour fills the gap
-after the parent's slot.
+A child (an agent whose parent is also in the scene) stands as a mini 5 cells
+wide, its slot right after its parent's at the parent's depth where that is
+clear. Without `scenes`, when it stands right beside its parent in its slot, the
+parent's arm points (`▀`) and a `▸` in the parent's colour fills the gap after
+the parent's slot.
 
 **A full field.** When a newcomer finds no clear cell (the field genuinely
 full, after a packed layout too), the **back row turns to minis**: full
@@ -448,17 +457,17 @@ bubble `○` is `claude`. A thought (`·`, `∘`, the parentheses around its phr
 smoke, `z`s, the laptop's screen and keys are dim. The terminal's foreground
 draws two things only: an agent's role letter, centred above its head, and
 the phrase of a thought, in the sky. The raised hand, the stretch's arms, the
-reach to the keys and the parent's `⇢` are the mascot's own colour. No
+reach to the keys and the parent's `⇢` or `▸` are the mascot's own colour. No
 background or `inverse` is set. Unsupported `permission` and `ide` keys are
 not used.
 
 ## Workflow agents
 
-The agents a Workflow run starts are not the Agent tool's, so `agent.spawn`
-(the Agent tool's event) does not name them, and their ids are ones no
-`$.agent.list()` names: the board never holds them. The pane keeps them
-apart, in `mod-hud.shadows` (see the pane sketch's "Workflow agents"), and
-`sceneOf` takes the ones the list shows (`options.shadows`) as more agents:
+The agents a Workflow run starts stay off the board, even on engines that raise
+`agent.spawn` for them: the hook passes workflow-tagged spawns through without
+keeping them. Their ids are ones no `$.agent.list()` names; the pane keeps them
+in its Workflow agents list, `mod-hud.shadows` (see the pane sketch). `sceneOf`
+takes the ones that list shows (`options.shadows`) as more agents:
 
 - one mascot each, in `colourFor(id)`, which the `wf-…` name in the list shares;
 - its activity from its current tool, as a subagent's; a stall, its idle,
@@ -660,11 +669,12 @@ shrinks from its nose. Its shouts (the cigarette's puffs, `Haa?` dazed,
 ## The TV
 
 With `inspectView: tv` (the default), pressing a mascot (the smooth scene's
-click, a classic pick, or an agent's row) sends it to the pane's centre,
-where it grows into a TV of itself over the pane: its body is the casing,
-the screen sits on its forehead, and around it stay its arms, its legs and
-what it wears. The pane's text shows through wherever the TV draws nothing;
-on the desktop the pane is dimmed under it.
+click, a classic pick, or an agent's row) opens its TV over the pane. Only a
+scene click flies it from the pressed place to the centre; a classic pick or an
+agent's row starts it growing there, with no flight in. It grows into a TV of
+itself: its body the casing, the screen on its forehead, its arms, legs and what
+it wears round it. The pane's text shows through where it draws nothing; on the
+desktop the pane is dimmed under it.
 
 ![Clawd's TV, terminal and desktop](tv-clawd.png)
 ![Usagi's TV, terminal and desktop](tv-usagi.png)
@@ -691,7 +701,7 @@ it wears flies and grows with it (the sprite is drawn at 8 quarters to the
 scene's one).
 
 **Drawn smooth** (`hooks/tv-smooth.ts`, with `mascotArt: vector`). On the
-desktop the mascot flies in and grows as the scene's own vector figure, its
+desktop it flies in only after a scene click and grows as its vector figure, its
 proportions kept, as big as the giant's box holds it; then the giant is
 drawn as shapes. Clawd: its casing in its colour with a glint along its top
 and a shade along its bottom, its tall eyes under the TV, its arms and four
@@ -725,39 +735,38 @@ whole picture was 22), drawn once, again for its blink and for a propeller
 cap's blade, only the windows a frame changes (two a blink), the blade
 turning two frames a second. The giant blinks every few seconds there too, the hooks swapping
 its eyes shut a moment. The flight and the growing stay the module's quarters there.
-Drawn smooth, a press anywhere in the giant's box is on the mascot, not
-outside it.
+In either art, a press on its body, drawn arms, legs or what it wears is
+inside; empty cells round them, even within its box, are outside and close it.
 
-**The TV** (`hooks/tv-model.ts`) is the glass with one panel of controls on
-its right, the casing showing as much left of the TV as right. The glass
-keeps the inspect view's title (one row, clear of the channel's number), its
-tabs and a blank row pinned, and scrolls the tab's rows under them, a thumb
-on its right. The panel, top down: the channel dial, which goes on a tab,
-with `CH` and `◀ ▶` (back and on, round the tabs) under it; the scroll knob,
-a glassful up (its top) or down, with `▲ ▼` under it, a row, repeating while
-held; a grille. A short glass keeps `◀ ▶` and `▲ ▼` first, then the dial,
-`CH` and the knob. Keys, once the TV has been
-clicked: `← →` change channel, `↑ ↓` a row, Page Up and Down a glassful,
-Home and End, `q` or `x` close; the pane's wheel and its scroll keys move the
-glass while the TV is up. The `✕` on the casing's top right, or a click
-anywhere else in the pane, closes it. The layout is centred in the pane's
-window: up to 76 columns, the glass 5 to 14 rows and 22 columns or more; a
-pane too small for that draws the inspect view instead.
+**The TV** (`hooks/tv-model.ts`) is the glass with one panel of controls on its
+right, the casing showing as much left of the TV as right. The glass keeps the
+inspect view's title (one row, clear of the channel's number), its tabs and a
+blank row pinned, and scrolls the tab's rows under them, a thumb on its right.
+The panel, top down: the channel dial, which goes on a tab, with `CH` and `◀ ▶`
+(back and on, round the tabs) under it; the scroll knob, a glassful up (its top)
+or down, with `▲ ▼` under it, a row, repeating while held; a grille. A short
+glass keeps `◀ ▶` and `▲ ▼` first, then the dial, `CH` and the knob. Keys, once
+the TV has been clicked: `← →` change channel, `↑ ↓` a row, Page Up/Down a
+glassful (Space down), Home and End, `q` or `x` close; the pane's wheel and
+scroll keys move the glass while the TV is up. The `✕`, or a click outside the
+TV and mascot, closes it. The layout is centred in the pane's window: up to 76
+columns, the glass 5 to 14 rows and 22 columns or more; a pane too small for
+that draws the inspect view instead.
 
 **Its life** (`hooks/tv-world.ts`, on the `Client`'s own 20-a-second clock,
-`hooks/tv-client.tsx`): the mascot flies from where it stood to the centre
-(5 frames), grows into the giant (5), and the glass switches on, a bright
-line widening across it, then the picture opening out of the line (6); the
-channel's number shows on the glass a moment. A new channel or agent flickers
-three frames of static first. Closing, the glass switches off first, the
-picture folding into the line and the line into a dot that fades (7); then
-the giant shrinks back into the mascot (5) and it flies home (5). Only then
+`hooks/tv-client.tsx`): only a scene click flies it from its pressed place
+(airborne too) to the centre (5 frames). A classic pick or an agent's row starts
+there. It grows into the giant (5), then the glass switches on: a line widens
+across it, the picture opens out of it (6); the channel's number shows a moment.
+A new channel or agent flickers three frames of static first. Closing, the glass
+switches off first, the picture folding into the line and the line into a dot
+that fades (7); then the giant shrinks (5). After a scene click it flies back to
+the pressed place (5); with no flight in, it is gone at the centre. Only then
 are the hooks told, and the mascot, out of the scene while it was the TV, is
-back: for three seconds it shakes its head, looking left and right, then
-stands wide-eyed with its arms down, a sweat drop and a `!?` beside it
-(Usagi shouts `Haa?!`), out of the choreography and on its floor, then
-carries on. The scene counts those seconds on its own clock from when it
-hears the mascot is back.
+back: for three seconds it shakes its head, looking left and right, then stands
+wide-eyed with its arms down, a sweat drop and a `!?` beside it (Usagi shouts
+`Haa?!`), out of the choreography and on its floor, then carries on. The scene
+counts those seconds on its own clock from when it hears the mascot is back.
 
 ## Sprite sheet
 
@@ -847,7 +856,7 @@ small dot bubbles rather than text.
 An agent's type gives it one letter, centred above its head (column 6 of the
 air row) in the foreground, in every frame but flat on its back
 (`roleOf`, `ROLE_LETTERS`): `r` reviewer, `d` debugger, `p` Plan, `w` worker,
-`f` frontend, `e` Explore or researcher; none for any other type
+coder or writer, `f` frontend, `e` Explore or researcher; none for any other type
 (`general-purpose`, a workflow agent). No role carries a prop. Minis have no
 letter.
 
@@ -1656,10 +1665,10 @@ The first match wins:
 Sweating goes over any of these while the context is 85 % full or more.
 
 The main loop's activity is the `mod-hud.main` state value
-(`HudMainFacts`). It is never written per tick; `/clear` resets it:
+(`HudMainFacts`). It is never written per tick; `/clear` and resume reset it:
 - `busySince`: the first main `turn.step` of a turn, whatever the options (the HUD's `main` row reads it);
 - `idleSince`: the main `turn.complete` (only when it was busy), whatever the options;
-- `compactedAt`: a main `session.compact` that took place, with mascots on only (the stretch is all that reads it).
+- `compactedAt`: a main `session.compact` that took place, whatever the options (the stretch and the Session tab's Overview read it).
 
 A compaction running is not a `main` fact: `mod-hud.tidy` (`HudTidyFacts`)
 holds when it started (`runningSince`, written once as it starts) and the
@@ -1870,43 +1879,41 @@ hop of up to ten cells over open ground (three rows of sky or more, room
 within a row of its depth), else a spring in place, a row up and down (so
 too walking only in depth).
 
-**Flights.** One leap in three is a flight, where the sky over its own floor
-has three rows or more (`FLY_SKY`) and there is room to come down. Each
-flier picks a cruising altitude by a hash, anywhere from 1 row above its
-floor to a row under the top of its sky (its propeller takes that row,
-`PROPELLER_ROWS`), three rows or more from any other flier's within a row of
-depth, so fliers pass over each other. While up it roams the field, across
-and in depth (a row of depth every other frame); its lift is always above
-the floor of the depth it is over.
+**Flights.** One leap in three is a flight, where the sky over its own floor has
+three rows or more (`FLY_SKY`) and there is room to come down. Each flier picks
+a cruising altitude by a hash, anywhere from 1 row above its floor to a row
+under the top of its sky (its propeller takes that row, `PROPELLER_ROWS`), three
+rows or more from any other flier's within a row of depth, so fliers pass over
+each other. While up it roams the field, across and in depth (a row of depth
+every other frame); its lift is always above the floor of the depth it is over.
 It flies under a **propeller cap**, Doraemon-style: a cap `▄▄▄` in its hat's
 place (the hat's colour; the session's in its crown's gold), its blade a row
 above turning `+` then `x` every frame, legs tucked, no wings. It climbs two
-rows a second, cruises 6 to 10 frames with a slow bob of a row either way,
-comes down a row a frame, and lands with a squash. It comes down into the ground's rows only where the ground is clear:
-otherwise it stays a row up and makes for the nearest clear cell anywhere in
-the field (a column and a depth). Only when no cell is clear, out of
-patience (20 s; 4 s in the smooth scene), it picks the nearest gap at its
-depth
-(`gapSpot`: the spot whose opening moves the others and itself the fewest
-cells) and hangs over it while the mascots standing in it walk aside **a cell
-a frame**; nobody walks back into a gap being opened, and it lands once the
-spot is clear. The smooth landing accepts the one-cell gap it reserved
-once its four-second patience ends, and gives up waiting after 240 frames
-(60 seconds) if no gap can open. Nobody is ever shoved in one jump. A
+rows a second, cruises 6 to 10 frames with a slow bob of a row either way, comes
+down a row a frame, and lands with a squash. It comes down into the ground's
+rows only where the ground is clear: otherwise it stays a row up and makes for
+the nearest clear cell (a column and a depth). In the smooth scene it searches
+only its side of another lander at least two rows up and within a row of height
+and depth, and keeps its chosen spot while it stays clear and on that side. Only
+when no cell is clear, out of patience (20 s; 4 s in the smooth scene), it picks
+the nearest gap at its depth (`gapSpot`: the spot whose opening moves the others
+and itself the fewest cells) and hangs over it while the mascots standing in it
+walk aside **a cell a frame**; nobody walks back into a gap being opened, and it
+lands once the spot is clear. The smooth landing accepts the one-cell gap it
+reserved once its four-second patience ends, and gives up waiting after 240
+frames (60 seconds) if no gap can open. Nobody is ever shoved in one jump. A
 blocked smooth hop stays a hop while it finds a landing, never a reasonless
-flight: it goes on toward the clear ground nearest it at its own depth (a
-hop holds its depth; its row packed, it hangs where it is) a hop's reach at
-a time from where it is, never across the field in a frame; its landing
-taken more than 16 times (`SMOOTH_LANDING_PATIENCE`), it comes down anyway,
-the crowd walking apart. In the air only bodies
-count: a flier never overlaps anyone in the air within a row of it (it holds
-back: rising from a row up, it keeps its place on the ground's rows, where
-nobody walks in beside it), keeps a few cells from all a hop has still to
-cross wherever the rest of its arc comes within a row of it (low too, before
-it climbs: a hop rises and drops two rows a frame), never takes off under
-one, and a hop
-never starts across a flier's path (in the smooth scene with collisions on,
-hops and fliers may meet; see "Physics and controls").
+flight: it goes on toward the clear ground nearest it at its own depth (a hop
+holds its depth; its row packed, it hangs where it is) a hop's reach at a time
+from where it is, never across the field in a frame; its landing taken more than
+16 times (`SMOOTH_LANDING_PATIENCE`), it comes down anyway, the crowd walking
+apart. In the air only bodies count: a flier never overlaps anyone in the air
+within a row of it (it holds back: rising from a row up, it keeps its place on
+the ground's rows, where nobody walks in beside it), keeps a few cells from all
+a hop has still to cross wherever the rest of its arc comes within a row of it
+(low too, before it climbs: a hop rises and drops two rows a frame), never takes
+off under one, and a hop never starts across a flier's path (in the smooth scene
+with collisions on, hops and fliers may meet; see "Physics and controls").
 
 ### Flights with a meaning (the smooth scene)
 
@@ -1927,19 +1934,45 @@ so a quick call never makes it flicker.
 | arriving | no flight: the pipe brings it (see "The pipe") |
 | a wanderer, for fun | rarely: one walking frame in 400, far less often than a sit or a puff |
 
-A long flight (10 to 30 s for a flight for fun) changes altitude every three
-to six seconds, a row a frame, and one change in three is a **loop**: a
-circle three rows high (`LOOP_ROWS`) over a second and a half, drawn by the
-smooth scene between the choreography's cells, only where the sky over the
-flier has room for it under the propeller's row (it keeps its row of depth
-while it loops). An errand or the session's little flight goes just
-over the heads (four rows, a row a frame up); every other flight picks an
-altitude of its own, three rows from any other flier's where it can.
-After its signal ends and its four-second minimum expires, even a tall
-climb turns toward landing instead of finishing the climb. A new signal
-during descent restarts the climb from its current height with the new
-reason and minimum. Opposed smooth flyers that block each other yield
-vertically in stable id order where the sky has room, then pass.
+A long flight (10 to 30 s for a flight for fun) changes altitude every three to
+six seconds, a row a frame, and one change in three is a **loop**: a circle
+three rows high (`LOOP_ROWS`) over a second and a half, drawn by the smooth
+scene between the choreography's cells, only where the sky over the flier has
+room for it under the propeller's row (it keeps its row of depth while it
+loops). An errand or the session's little flight goes just over the heads (four
+rows, a row a frame up); every other flight picks an altitude of its own, three
+rows from any other flier's where it can. After its signal ends and its
+four-second minimum expires, even a tall climb turns toward landing instead of
+finishing the climb. A new signal during descent restarts the climb from its
+current height with the new reason and minimum, unless it was brought down to
+give way: then it lands first. Opposed smooth fliers that block each other climb
+over in stable id order where the sky has room. A jam is a flier held back by
+another not heading the same way, including one hovering or landing. It waits
+only while one of the pair is still coming down a row. Otherwise the roaming run
+on one side, back to the first flier with clear air behind it, turns toward the
+field's edge away from the flier it met. The smaller run turns; equal runs pick
+the first id at the front. Errand fliers and those heading home do not turn. A
+faster flier coming up behind can make a turned run turn back.
+
+If neither side can turn, one of the pair gives way: one over clear ground
+first, then one with clear ground on its far side, then the first id. Those
+ground checks leave out landers still in the air. It aims for the nearest clear
+ground on that far side, or keeps its column as its target if none is clear
+there. Coming down, it keeps to its side of another lander at least two rows up
+and within a row of height and depth. Higher up, a target past that lander is
+pulled back inside its landing range. Once it hangs a row up over the ground's
+rows, it picks a new spot only when its current spot is blocked or lies past
+that lander. It can turn back toward the flier it met, and that flier may have
+to come down too. Its landing patience starts already used up: from its first
+frame at the ground's rows it accepts ground clear by one cell. With none clear
+in its landing range, it asks the mascots there to open a gap at once, without
+the usual four-second wait. No signal lifts a give-way flier before it lands; an
+unfinished errand can ask for another flight once it lands. A flier already
+coming down is never selected to turn or give way.
+
+A rare-mode wanderer that keeps two cells from anyone looks again when its
+four-second patience runs out and one cell will do. Then it tries ground clear
+by one cell on its side before asking the mascots there to open a gap.
 
 ### Collisions (`collisions`)
 
@@ -1978,8 +2011,8 @@ hands that is drawn: a hand is held out, and taken.
 | delegate | an agent first seen running (its spawn) | its spawner (its parent agent when known, else the session) walks to meet it, at its depth, as it comes out of the pipe, holds out its hand (1 frame), the newcomer takes its task (1), then turns to its desk |
 | hand back | an agent turning done (not a workflow agent) | it packs up, walks up to 8 frames toward its spawner (to its depth), holds out its hand (1); the spawner nods, eyes shut (1); then the cheer, where it stands |
 | message | a `SendMessage` whose `to` names a known agent (name or id) | a bubble `○`, in the accent, travels from the sender's air row to the receiver's, a cell (or a row of depth) a frame, to the receiver, who glances up (eyes up, 1 frame); over any occupied sprite cell it moves one row up if free, else is omitted; held senders or receivers suppress it; module memory, never state |
-| review | a reviewer spawned within 60 s after a worker, frontend or debugger agent finished, that agent still in the scene | once at work it walks to that desk (up to 10 frames) and stands a cell beside it, at its depth, for 8; if it later finishes done while the desk is there, it stamps `✓` above that desk's laptop as it packs up |
-| fix | a debugger spawned within 60 s after a reviewer finished | it goes to the latest worker-type agent's desk and stays beside it, at its depth, while it works, sparks `✦` between them two frames in eight |
+| review | a reviewer spawned within 60 s after an agent with role `w` (worker, coder or writer), `f` (frontend) or `d` (debugger) finished, that agent still in the scene | from work starting it has an 18-frame visit window: it walks toward that desk and, if it reaches it, stands a cell beside it, at its depth, for the rest of the window; if it later finishes done while the desk is there, it stamps `✓` above that desk's laptop as it packs up |
+| fix | a debugger spawned within 60 s after a reviewer finished | it goes to the latest maker's desk (role `w`, worker, coder or writer; `f`, frontend; or `d`, debugger) and stays beside it, at its depth, while it works, sparks `✦` between them two frames in eight |
 | parent and child | a child (known parent) arriving | it stands beside its parent, a mini; the parent points `⇢` for the two frames it drops out of the pipe |
 | squad | a workflow agent turning done while another workflow agent runs | the finished one holds out its hand to the next running one (1), which takes over (1), then the cheer |
 
@@ -2129,7 +2162,7 @@ Euler, no randomness: the same throw flies the same way everywhere.
 | soft landing | under 8 cells a second into the floor: a squash, set down |
 | bounce | 8 or more: it bounces at 0.4, and wobbles (a cell aside and back for 700 ms) once it settles |
 | knocked out | 16 or more into a wall or the floor: down, dizzy and up again (the knocked-over sequence) |
-| gentle drop | from fewer than 3 rows: set down, however it lands |
+| gentle drop | from fewer than 3 rows: set down unless the impact is 16 cells a second or more (knockout is checked first) |
 
 Walls are the region's sides (a slot's width in from the right), the ceiling
 its top row. Set down, the mascot rejoins the choreography where it landed;

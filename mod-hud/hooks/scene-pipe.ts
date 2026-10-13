@@ -1,3 +1,5 @@
+import { smooth } from './clawd-vector'
+import { BOX_ROWS } from './mascot-sprites'
 import type { Cell } from './scene-types'
 
 // The warp pipe an agent arrives by and, its work done, leaves by: a red pipe
@@ -61,12 +63,6 @@ export const pipeHang = (sky: number): { mouth: number; drop: number } => {
   const drop = Math.min(PIPE_DROP_MAX, Math.max(0, free - 2))
 
   return { mouth: Math.min(drop + 1, free), drop }
-}
-
-const smooth = (t: number): number => {
-  const u = Math.min(1, Math.max(0, t))
-
-  return u * u * (3 - 2 * u)
 }
 
 /** The lip from just above the ceiling (`sky + 1`, out of sight) down to where it hangs, or back. */
@@ -133,7 +129,7 @@ export const farewellAt = (ms: number, sky: number): PipeFrame => {
   const { mouth } = pipeHang(sky)
   const free = Math.max(0, Math.floor(sky))
   // Its feet past the lip: the box's four rows above it.
-  const top = mouth + 4
+  const top = mouth + BOX_ROWS
   if (ms < PIPE_SLIDE_MS) {
     const at = slid(free, mouth, ms / PIPE_SLIDE_MS)
 

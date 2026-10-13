@@ -86,6 +86,6 @@ export const settingsOf = (options: PluginOptions): Settings => ({
   mascotArt: options.mascotArt === 'blocks' ? 'blocks' : 'vector',
   cacheTtl: options.cacheTtl === '5m' || options.cacheTtl === '1h' ? options.cacheTtl : 'auto',
   sessionMascot: options.sessionMascot === 'pane' ? 'pane' : 'band',
-  tidy: options.tidy === 'auto' || options.tidy === 'off' ? options.tidy : 'ask',
+  tidy: options.tidy === 'ask' || options.tidy === 'off' ? options.tidy : 'auto',
   tidyAt: Math.round(positive(options.tidyAt, 150) * 1000),
 })

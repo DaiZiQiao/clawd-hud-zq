@@ -1,5 +1,5 @@
 import { atom, read, update } from 'claude-code'
-import type { BuiltinToolResults, EngineInterface, ImageProps, JsonValue, ProcessRunResult, Register, RenderElement, Timer, ToolCallResult } from 'claude-code'
+import type { BuiltinToolResults, ConfigRow, EngineInterface, ImageProps, JsonValue, ModelUsage, ProcessRunResult, Register, RenderElement, Timer, ToolCallResult } from 'claude-code'
 
 import type {
   AgentBoardEntry,
@@ -15,6 +15,7 @@ import type {
   HudTab,
   HudTidied,
   HudTidyFacts,
+  HudTidyGate,
   HudTodoFacts,
   HudToolFacts,
   HudTrailStep,
@@ -25,6 +26,7 @@ import { isRunning, isStalled, merge, summarize, workflowOf } from './agent-mode
 import type { Agents } from './agent-model'
 import {
   isShadowVisible,
+  isShadowLive,
   readingAfter,
   shadowCallEnded,
   shadowCallStarted,
@@ -46,8 +48,12 @@ import {
   applyMeasure,
   assembleHudData,
   CACHE_ENV,
+  CACHE_TTL_MS,
   COMPACT_ENV,
   autoCompactOf,
+  compactDisabledOf,
+  counted,
+  cacheCoolAt,
   cacheTtlOf,
   debouncer,
   editedPathOf,
@@ -63,14 +69,16 @@ import {
   parseShortstat,
   providerOf,
   sameFacts,
+  shortModel,
   seedTurnBaseline,
   throttleDue,
   todoFactsOf,
+  tidyOpenTasksOf,
   toolSettled,
   toolStarted,
 } from './facts'
 import type { CacheSettings } from './facts'
-import { cacheStateOf, renderHudBlock, renderTodos, statusLineText } from './hud'
+import { NARROW_BELOW, cacheStateOf, compactRunway, renderHudBlock, renderTodos, statusLineText } from './hud'
 import { FAILURE_WINDOW_MS, NO_LEDGER, agentShareOf, costTree, ledgerBooked, ledgerEnded, ledgerFailed, ledgerSummary, recentFailures } from './hud-ledger'
 import type { LedgerWho } from './hud-ledger'
 import { settingsOf } from './hud-options'
@@ -96,18 +104,22 @@ import type { AgentBody, InspectAction, InspectHeader, InspectRow, Trails } from
 import { inspectedOf, overviewOf } from './inspect-model'
 import { STARTLED_MS } from './mascot-poses'
 import { GRID_ROWS, SLOT } from './mascot-sprites'
+import type { Accessory } from './mascot-sprites'
 import { IMAGE_FRAME_MS, createStage, hitsOf, refusedPicture, restage, stageHits, stagePicture, stageTick } from './scene-image'
 import type { HitPost, Stage } from './scene-image'
 import { MOST_STEP_MS } from './scene-world'
-import { sceneInputsOf, sceneOf } from './scene-model'
-import { MESSAGE_TICKS, SCENE_FRAME_MS } from './scene-phases'
+import { pinnedAccessoriesOf, sceneInputsOf, sceneOf } from './scene-model'
+import { EXIT_TICKS, LINK_WINDOW_MS, MESSAGE_TICKS, SCENE_FRAME_MS, TIDY_STALE_MS, holdTicks } from './scene-phases'
 import { mascotPlan } from './scene-plan'
 import { renderMascots, renderMascotsSvg } from './scene-render'
-import type { MascotPlan, SceneEvent, SceneInputs } from './scene-types'
+import type { MascotPlan, SceneEvent, SceneInputs, SceneOptions } from './scene-types'
 import { defined } from './state-json'
-import { printable } from './text-width'
-import { TIDY_COUNTDOWN_MS, TIDY_INSTRUCTIONS, bandLinesOf, bandTidyOf, isTidyDue } from './tidy'
+import { displayWidth, printable } from './text-width'
+import { TIDY_COUNTDOWN_MS, TIDY_INSTRUCTIONS, bandHasClock, bandLinesOf, bandTidyOf, formatTidyCost, tidyButtonLabels, tidyInstructionsOf } from './tidy'
 import type { BandTidy, TidyInputs } from './tidy'
+import { TIDY_AGAIN, TIDY_AFTER, TIDY_FRESH, TIDY_SUMMARY, TIDY_SETTLE_MS, TIDY_STOP_TASK_KINDS, TIDY_AVAILABILITY_REASONS, TIDY_FEEDBACK_REASONS, TIDY_WAITING_REASONS, tidyDueOf, tidyCostsOf, tidySafeReasonsOf, tidySavingOf } from './tidy-policy'
+import type { TidyDue, TidyPolicyInputs, TidySafeSnapshot } from './tidy-policy'
+import { PRICES, pricesAt } from './prices'
 import type { Who } from './tv-figure'
 import { tvLayoutOf, tvRowsOf } from './tv-model'
 import type { TvInputs, TvLayout, TvRow } from './tv-model'
@@ -119,6 +131,7 @@ import { BLADE_MS, BLINK_EVERY_MS, BLINK_MS, tvPostOf } from './tv-world'
 
 const PANE = 'hud'
 const TWIN = 'mod-hud'
+const PANE_OPEN = { id: PANE, title: 'HUD', columns: 72, rows: 16 } as const
 
 // A placed pane ticks each second; reconciliation and a closed pane's status
 // refresh every RECONCILE_TICKS.
@@ -126,12 +139,11 @@ const TICK_MS = 1000
 const RECONCILE_TICKS = 5
 // A `session.append` from a subagent writes at most this often.
 const ACTIVITY_THROTTLE_MS = 5000
-const NARROW_BELOW = 60
 const SUMMARY_MAX = 200
 
 const AGENTS = { plugin: 'mod-hud', key: 'agents' } as const
 const agents = atom(AGENTS, {})
-// Workflow agents, beside the board: `agents` stays the board's alone.
+// Workflow agents, seen at their loops' first steps or calls, never seeded from a spawn; `agents` stays the board's alone.
 const SHADOWS = { plugin: 'mod-hud', key: 'shadows' } as const
 const shadows = atom(SHADOWS, {})
 const tick = atom({ plugin: 'mod-hud', key: 'tick' } as const, 0)
@@ -148,9 +160,11 @@ const hudGit = atom({ plugin: 'mod-hud', key: 'git' } as const, NO_FACTS.git)
 const hudTools = atom({ plugin: 'mod-hud', key: 'tools' } as const, NO_FACTS.tools)
 const hudTodos = atom({ plugin: 'mod-hud', key: 'todos' } as const, NO_FACTS.todos)
 const hudInventory = atom({ plugin: 'mod-hud', key: 'inventory' } as const, NO_FACTS.inventory)
-// The main loop's activity (busy and idle whatever the options; its compactions with mascots on); /clear also drops stale facts.
+// The main loop's activity and compactions, whatever the options; /clear and resume also drop stale facts.
 const NO_MAIN: HudMainFacts = {}
 const mainFacts = atom({ plugin: 'mod-hud', key: 'main' } as const, NO_MAIN)
+const NO_TIDY_GATE: HudTidyGate = { todos: [], tasks: [], precomputeSeen: false, teammate: false, requestsSinceCompaction: 0, mainRequests: 0, mainInput: 0, mainCacheRead: 0 }
+const tidyGate = atom({ plugin: 'mod-hud', key: 'tidyGate' } as const, NO_TIDY_GATE)
 // Click to inspect: the selection (on a press or when its agent goes), the selected
 // subagent's last answer (on selection and its turn ends), and the trails.
 const SELECTED = { plugin: 'mod-hud', key: 'selected' } as const
@@ -189,6 +203,14 @@ const short = (tool: string): string => {
   return mcp === null ? tool : `${mcp[1]}:${mcp[2]}`
 }
 
+// A text prefix in code units, never ending halfway through an astral character.
+const cut = (text: string, max: number): string => {
+  const high = text.charCodeAt(max - 1)
+  const low = text.charCodeAt(max)
+
+  return text.slice(0, max - (high >= 0xd800 && high <= 0xdbff && low >= 0xdc00 && low <= 0xdfff ? 1 : 0))
+}
+
 const firstLine = (text: string): string | undefined => {
   const line = text
     .split('\n')
@@ -196,21 +218,23 @@ const firstLine = (text: string): string | undefined => {
     .find(one => one !== '')
   if (line === undefined) return undefined
 
-  return line.length > SUMMARY_MAX ? `${line.slice(0, SUMMARY_MAX - 1)}…` : line
+  return line.length > SUMMARY_MAX ? `${cut(line, SUMMARY_MAX - 1)}…` : line
 }
 
 // The status line, when switched on: the HUD's line, then the agents' summary.
-// A HUD that cannot be read leaves the summary alone. The summary counts the
-// stalled agents itself, so the HUD's `⚠ n` then leaves that alert out. With
-// it, how long the prompt cache stays warm and how long until the oldest
-// failure the `⚠` counts leaves its window, for the status line's own timer.
+// A HUD that cannot be read leaves the summary alone. The summary counts only
+// the board's stalled agents; the HUD's `⚠ n` leaves that alert out only when
+// the summary's `N stalled` equals `data.alerts.stalled`. With it, how long
+// the prompt cache stays warm and how long until the oldest failure the `⚠`
+// counts leaves its window, for the status line's own timer.
 type StatusShown = { text: string | null; cacheLeftMs?: number; failureLeftMs?: number }
 const statusOf = async ($: EngineInterface, settings: Settings, all: Agents, now: number): Promise<StatusShown> => {
   if (!settings.statusLine) return { text: null }
   const data = await attempt(() => hudDataOf($, settings, now))
   const held = settings.showWorkflows ? await attempt(() => read($, shadows)) : undefined
   const summary = summarize(Object.values(all), workflowOf(held, all, now), now, settings.stalledMs) ?? ''
-  const skip = /\d+ stalled/.test(summary) ? ['stalled'] : []
+  const stalled = /(?:^| · )(\d+) stalled(?: · |$)/.exec(summary)
+  const skip = stalled !== null && Number(stalled[1]) === data?.alerts?.stalled ? ['stalled'] : []
   const parts = [data === undefined ? '' : statusLineText(data, skip), summary].filter(part => part !== '')
   const cache = data === undefined ? undefined : cacheStateOf(data)
   const failureLeftMs = settings.inspect ? await attempt(async () => failureLeftOf(await read($, ledger), now)) : undefined
@@ -304,6 +328,7 @@ const reconcile = async ($: EngineInterface, settings: Settings, now: number, mi
   // reset boundary when retrying a conflicting agents write, including startup.
   const seedAtStart = await $.state.get(SEEDED)
   let held = await $.state.get(AGENTS)
+  const hiddenAtStart = new Set(await read($, dismissed))
   const listed = await $.agent.list()
   listedIds = new Set(listed.map(info => info.id))
   for (let retry = 0; retry < 2; retry += 1) {
@@ -323,8 +348,15 @@ const reconcile = async ($: EngineInterface, settings: Settings, now: number, mi
       continue
     }
     if (initial) await update($, seeded, () => true)
+    const kept = await prune($, settings, written === undefined ? await read($, agents) : all)
+    const named = new Set(listed.map(info => info.id))
+    // Only ids dismissed before `$.agent.list()` was read can go; an id
+    // dismissed during this reconcile waits for a later list.
+    const keep = (ids: string[]): string[] => ids.filter(id => !hiddenAtStart.has(id) || named.has(id))
+    const ids = await read($, dismissed)
+    if (keep(ids).length !== ids.length) await update($, dismissed, keep)
 
-    return prune($, settings, written === undefined ? await read($, agents) : all)
+    return kept
   }
 
   return read($, agents)
@@ -350,6 +382,28 @@ let timer: Timer | undefined
 let sceneTimer: Timer | undefined
 const scenePlans = new Map<string, MascotPlan>()
 const sceneRendered = new Map<string, number>()
+// An agent keeps its accessory across board clears and while its scene is leaving.
+let pinned: Record<string, Accessory> = {}
+const accessoryGone = new Map<string, number>()
+
+/** Pins current accessories and lets absent agents keep theirs through the scene horizon. */
+const pinAccessories = (list: readonly AgentBoardEntry[], workflow: SceneOptions['shadows'], now: number, scenes: boolean): void => {
+  Object.assign(pinned, pinnedAccessoriesOf(list, workflow, now, pinned))
+  const present = new Set([...list, ...Object.values(workflow ?? {})].map(entry => entry.id))
+  const horizon = Math.max(LINK_WINDOW_MS, (holdTicks({ status: 'done', spawner: 'main', squadNext: 'next' }, scenes) + EXIT_TICKS) * SCENE_FRAME_MS)
+  for (const id of Object.keys(pinned)) {
+    if (present.has(id)) accessoryGone.delete(id)
+    else {
+      const since = accessoryGone.get(id) ?? now
+      accessoryGone.set(id, since)
+      if (now - since > horizon) {
+        delete pinned[id]
+        accessoryGone.delete(id)
+      }
+    }
+  }
+}
+
 // The ids the latest `$.agent.list()` named: a loop it names is no workflow agent.
 let listedIds: ReadonlySet<string> = new Set()
 
@@ -472,6 +526,12 @@ let lastMeasureLimits: readonly { kind: string }[] | undefined
 // Whether the main loop was last written busy (true) or idle (false), so a
 // turn's later requests skip the state; undefined after a load reads it once.
 let mainBusy: boolean | undefined
+// Every loop and plugin call counts, even with the tools display off.
+let toolsInFlight = 0
+let mainCompactionsInFlight = 0
+let summarizersInFlight = 0
+let summarizerSteps = 0
+let loadedAt = 0
 // A known subagent's calls in flight, by tool_use_id: `tool.check` names the
 // call, not its loop.
 const subagentCalls = new Map<string, string>()
@@ -521,6 +581,10 @@ const resetHud = (): void => {
   lastStep = undefined
   lastMeasureLimits = undefined
   mainBusy = undefined
+  toolsInFlight = 0
+  mainCompactionsInFlight = 0
+  summarizersInFlight = 0
+  summarizerSteps = 0
   clearCalls()
 }
 
@@ -560,7 +624,11 @@ const reviseLedger = async ($: EngineInterface, change: Change<HudLedger>): Prom
   if (change(held) !== held) await update($, ledger, change)
 }
 
-// The main loop at work from its turn's first request until the turn ends:
+const reviseTidyGate = async ($: EngineInterface, change: Change<HudTidyGate>): Promise<void> => {
+  if (changes(await read($, tidyGate), change)) await update($, tidyGate, change)
+}
+
+// The main loop at work from its turn start until the turn ends:
 // one write each way per turn, none per request or tick.
 const markMainBusy = async ($: EngineInterface): Promise<void> => {
   const now = await $.clock.now()
@@ -568,9 +636,9 @@ const markMainBusy = async ($: EngineInterface): Promise<void> => {
   mainBusy = true
 }
 
-const markMainIdle = async ($: EngineInterface): Promise<void> => {
+const markMainIdle = async ($: EngineInterface, reason: string): Promise<void> => {
   const now = await $.clock.now()
-  await reviseMain($, held => (held.busySince === undefined ? held : defined({ ...held, busySince: undefined, idleSince: now })))
+  await reviseMain($, held => defined({ ...held, busySince: undefined, idleSince: held.busySince === undefined ? held.idleSince : now, lastTurnReason: reason }))
   mainBusy = false
 }
 
@@ -723,7 +791,7 @@ const compactEnvReads = ($: EngineInterface): EnvReads<(typeof COMPACT_ENV)[numb
 // The session's facts at start and at each reload: who, where, and what the
 // engine has measured so far. Git and the inventory follow from timers.
 const startHud = async ($: EngineInterface, settings: Settings, startCwd: string): Promise<void> => {
-  const [model, cwd, repo, usage, env, compactEnv, stored] = await Promise.all([
+  const [model, cwd, repo, usage, env, compactEnv, stored, rows, surfaces, tools] = await Promise.all([
     attempt(() => $.session.model()),
     attempt(() => $.session.cwd()),
     attempt(() => $.session.repo()),
@@ -731,7 +799,11 @@ const startHud = async ($: EngineInterface, settings: Settings, startCwd: string
     readEnv(cacheEnvReads($)),
     readEnv(compactEnvReads($)),
     attempt(() => $.settings.read()),
+    attempt(() => $.config.list()),
+    attempt(() => $.session.surfaces()),
+    attempt(() => $.tool.list()),
   ])
+  const compactRow = rows?.find(row => row.key === 'autoCompact' && row.provider.plugin === 'engine')
   const baseUrl = env?.ANTHROPIC_BASE_URL
   const settingsRead = stored as (CacheSettings & { autoCompactEnabled?: unknown }) | undefined
   // An environment that cannot be read leaves the TTL unknown (the option may still name one).
@@ -747,6 +819,10 @@ const startHud = async ($: EngineInterface, settings: Settings, startCwd: string
     // What the figures read now say of the login (a load mid-session may hold a response's).
     account: usage === undefined ? held.account : accountAfter(held.account, usage),
     autoCompact: autoCompactOf(compactEnv, settingsRead),
+    autoCompactRow: typeof compactRow?.value === 'boolean' ? compactRow.value : undefined,
+    compactDisabled: compactDisabledOf(compactEnv),
+    surfaces: surfaces === undefined ? undefined : [...surfaces],
+    workListTools: tools === undefined ? undefined : tools.filter(tool => ['TodoWrite', 'TaskCreate', 'TaskGet', 'TaskUpdate', 'TaskList'].includes(tool.name)).map(tool => tool.name),
     startedAt: usage?.startedAt ?? held.startedAt,
     cwd: cwd ?? startCwd,
     // null is outside a repository; undefined, a failed call that changes nothing.
@@ -835,7 +911,7 @@ const refreshStatus = async ($: EngineInterface, settings: Settings): Promise<vo
   await showStatus($, settings, await read($, agents), await $.clock.now())
 }
 
-// A `/clear`: tools, todos, compactions and context fill start over; who and
+// A `/clear` or resume: tools, todos, compactions and context fill start over; who and
 // where the session is, git and the inventory stay. The engine may still be
 // reporting the old conversation, so accept its clock and cost only together.
 const clearHud = async ($: EngineInterface, settings: Settings): Promise<void> => {
@@ -950,10 +1026,10 @@ const settleAgentCall = ($: EngineInterface, settings: Settings, outcome: ToolCa
   })
 
 // --- workflow agents ---------------------------------------------------------
-// A Workflow run's agents carry ids no list names, and are not the Agent
-// tool's, whose `agent.spawn` would name them: their loops' steps, calls and
-// turn ends are all there is. They are kept in `mod-hud.shadows`, never on
-// the board, so `mod-hud.agents` stays as the mods that read it expect.
+// A Workflow run's agents carry ids no list names. Their `agent.spawn`
+// carries `workflow` and leaves the board alone; their loops' steps, calls
+// and turn ends keep them in `mod-hud.shadows`, never on the board, so
+// `mod-hud.agents` stays as the mods that read it expect.
 
 // One compare-and-set of the workflow agents: the record before and after,
 // or undefined when the change kept it as it was and nothing was written.
@@ -1028,16 +1104,19 @@ const clearShadows = async ($: EngineInterface): Promise<void> => {
 }
 
 // --- click to inspect ----------------------------------------------------------
-// A press on an agent's row or mascot selects it (`mod-hud.selected`); the
-// pane then draws its detail view in place of the scene. A subagent's last
-// answer is read on selection and at each of its turn ends, never per frame;
-// every agent's last calls are kept as a trail, one write as each call starts.
+// A press on an agent's row or mascot selects it (`mod-hud.selected`); with
+// the default inspectView: tv, the TV is drawn over the pane where it fits,
+// otherwise the inspect view goes under the HUD. A subagent's last answer is
+// read on selection and at each of its turn ends, never per frame; every
+// agent's last calls are kept as a trail, one write as each call starts.
 
 // Messages between agents for the scene's bubbles: module memory, never state.
 const MAX_EVENTS = 16
 let sceneEvents: SceneEvent[] = []
 // The smooth scene's `Client`: its key in the pane's tree, which a click's `ui.message` names.
 const SCENE_KEY = 'mascots'
+// Surfaces whose scene's `Client` failed: the classic scene there.
+const sceneFaulted = new Set<string>()
 
 // The TV (hooks/tv-client.tsx): its `Client`'s key, which its posts' `ui.message` names. Module
 // memory, never state, for what only its drawing reads: where the pressed mascot stood (the
@@ -1203,6 +1282,43 @@ const noteMessage = async ($: EngineInterface, settings: Settings, from: string 
   sceneEvents = [...sceneEvents, { kind: 'message' as const, from: from ?? 'main', to: id, tick }].slice(-MAX_EVENTS)
 }
 
+// Diagnostics gather the same persisted evidence Batch 4 will use. Reads only:
+// no scheduling, countdown or setting write runs from this command.
+const tidyDiagnostics = async ($: EngineInterface, settings: Settings, now: number): Promise<unknown> => {
+  const data = await readTidySnapshot($, settings, now)
+  const { gate, session, usage, inventory, main, tidy, surfaces, row, workListTools, calibration, ttl, assumed, gapMs, cold, miss, model } = data
+  const due = decisionOf(data)
+  const snapshot = due === undefined ? data.snapshot : safeSnapshotOf(data, due)
+  const intro = await attempt(() => $.store.get('autoTidyIntroShown'))
+  const costs = usage.contextTokens === undefined || ttl === undefined ? undefined : tidyCostsOf(data.inputs)
+  const id = shortModel(model)
+  const price = id === undefined ? undefined : PRICES[id]
+  const tier = price === undefined ? 'unknown' : !('above' in price) ? 'flat' : usage.contextTokens === undefined ? 'unknown' : usage.contextTokens > price.above ? 'high' : 'low'
+  const reasons = tidySafeReasonsOf(snapshot)
+  const blocked = (...text: string[]): boolean => !text.some(one => reasons.includes(one))
+
+  return defined({
+    mode: settings.tidy, introShown: intro ?? false, model, tier, prices: pricesAt(model, usage.contextTokens),
+    tokens: { S: usage.contextTokens ?? 'unknown', after: calibration?.after ?? TIDY_AFTER, fresh: calibration?.after === undefined ? TIDY_FRESH : 0, afterSource: calibration?.after === undefined ? 'default A + F' : 'measured A+F', Os: calibration?.summary ?? TIDY_SUMMARY, summarySource: calibration?.summary === undefined ? 'default' : 'measured' },
+    ttl: ttl ?? 'unknown', assumed, gapMs, miss, costs, N_past: data.inputs.requests,
+    saving: costs === undefined ? 'unavailable' : { D1: tidySavingOf('D1', costs, data.inputs.requests), D2: tidySavingOf('D2', costs, data.inputs.requests), D3: cold ? tidySavingOf('D3', costs, data.inputs.requests) : 'not cold' },
+    decision: tidy.pending ?? due ?? 'nothing due', countdown: tidy.pending?.endsAt,
+    safePoint: {
+      SP1: !snapshot.mainBusy && main.lastTurnReason === 'answer', SP2: gate.stop !== undefined && usage.mainRequestAt !== undefined && gate.stop.requestAt === usage.mainRequestAt,
+      SP3: blocked(TIDY_WAITING_REASONS.agentsUnknown, TIDY_WAITING_REASONS.workflow, TIDY_WAITING_REASONS.unknownTask) && !reasons.some(reason => /^\d+ agents? running$/.test(reason)),
+      SP3b: blocked(TIDY_WAITING_REASONS.background), SP4: toolsInFlight === 0, SP5: snapshot.draft === 'empty', SP6: gate.queuedAt === undefined,
+      SP7: blocked(TIDY_WAITING_REASONS.compacting, TIDY_WAITING_REASONS.compacted), SP8: snapshot.openTodos === 0 && snapshot.openTasks === 0,
+      SP9: gate.stop === undefined ? false : gate.stop.oneShotCrons === 0, SP10: snapshot.interactive,
+      SP11: blocked(TIDY_WAITING_REASONS.visible), SP12: snapshot.availability.autoCompact && snapshot.availability.compactEnabled && snapshot.availability.notTeammate && snapshot.availability.bandSurfaces,
+      SP13: !reasons.some(reason => /^a \d+-min pause/.test(reason)), reasons,
+    },
+    gate, toolsInFlight, workListTools: workListTools ?? 'unknown',
+    autoCompact: { environmentAndSettings: session.autoCompact ?? 'not disabled', builtInRow: row?.value ?? 'unknown', breakdown: inventory.isAutoCompactEnabled ?? 'unknown', source: inventory.autocompactSource ?? 'unknown' },
+    DISABLE_COMPACT: session.compactDisabled ?? 'unknown', surfaces: surfaces ?? 'unknown', teammate: gate.teammate, isInteractive: session.isInteractive ?? 'unknown',
+    engineIdleCompactionAt: gate.engineIdleCompactionAt, lastSummarizerUsage: calibration?.usage, summarizerTurnSteps: summarizerSteps, summarizerTurnStepScope: 'steps overlapping a compaction; attribution is diagnostic only',
+  })
+}
+
 // `/mod-hud facts`: what the HUD draws from, the workflow agents' record as
 // held (`shadows`), the ledger's summary (`ledger`: each model's estimated
 // cost and tokens, the loops counted, the failures) and the lists' expansion
@@ -1217,6 +1333,7 @@ const factsText = async ($: EngineInterface, settings: Settings): Promise<string
   const booked = Object.keys(spent.entries).length > 0 || Object.keys(spent.others).length > 0 || spent.failures !== undefined
   const data = {
     ...hud,
+    tidy: (await attempt(() => tidyDiagnostics($, settings, now))) ?? 'unavailable',
     ...(Object.keys(held).length === 0 ? {} : { shadows: held }),
     ...(booked ? { ledger: ledgerSummary(spent, now) } : {}),
     ...(Object.keys(view).length === 0 ? {} : { listView: view }),
@@ -1300,7 +1417,7 @@ const noPictures = ($: EngineInterface, surface: string, why: string): void => {
   for (const [site, picture] of pictures) if (picture.surface === surface) pictures.delete(site)
   for (const [site, giant] of giantPictures) if (giant.surface === surface) giantPictures.delete(site)
   if (pictures.size === 0 && giantPictures.size === 0) stopPictures()
-  $.ui.log(`the scene's picture on ${surface} is refused (${printable(why).slice(0, 160)}): its blocks there`, { to: 'debug' })
+  $.ui.log(`the scene's picture on ${surface} is refused (${cut(printable(why), 160)}): its blocks there`, { to: 'debug' })
   $.clock.after(0, () => $.ui.invalidate('ui.render'))
 }
 
@@ -1443,6 +1560,10 @@ const holdPicture = (requestId: string, surface: string, inputs: SceneInputs): v
   picture.refusedSince = undefined
 }
 
+type ClientProps = { key: string; module: string; props?: unknown; width?: number; height?: number }
+const clientOf = (table: object): ((props: ClientProps) => RenderElement) =>
+  (table as { Client: (props: ClientProps) => RenderElement }).Client
+
 /**
  * The scene as a picture at `requestId`, `columns` by `rows` cells: its
  * stage made or handed the props, its last frame the Image's source, and
@@ -1471,10 +1592,10 @@ const pictureOf = async (
   const png = stagePicture(picture.stage, scheme)
   startPictures($)
   const { columns, rows } = inputs
-  const { Box, Image, Client } = table as {
+  const Client = clientOf(table)
+  const { Box, Image } = table as {
     Box: (props: Record<string, unknown>) => RenderElement
     Image: (props: ImageProps) => RenderElement
-    Client: (props: { key: string; module: string; props?: unknown; width?: number; height?: number }) => RenderElement
   }
 
   return (
@@ -1546,7 +1667,7 @@ const pictureHits = (requestId: string, surface: string, post: HitPost): JsonVal
 
 // The band's scene `Client`: its key, which a click's `ui.message` names.
 const BAND_KEY = 'session'
-// The yard is the band's width, less what tidying up has to say beside it, but never under YARD_COLUMNS.
+// Beside tidy's 48-column slot, the yard draws only with at least YARD_COLUMNS left (77 columns total).
 const YARD_COLUMNS = 28
 const TIDY_COLUMNS = 48
 // On which surfaces the band last drew the session's mascot, and where its `Client` failed (the classic scene there).
@@ -1555,6 +1676,37 @@ const bandFaulted = new Set<string>()
 // The band's one-second clock and the `auto` countdown's timer.
 let bandTimer: Timer | undefined
 let countdownTimer: Timer | undefined
+let coolingTimer: Timer | undefined
+let coolingAt: number | undefined
+let settleTimer: Timer | undefined
+let settleAt: number | undefined
+let tidyEpoch = 0
+let tidyNowInFlight = false
+let toggleInFlight = false
+let toggleSettings: Settings = settingsOf({})
+let toggleTimer: ReturnType<EngineInterface['clock']['after']> | undefined
+let introFlags: Promise<boolean> | undefined
+
+// Only our two permanent flags can suppress the introduction. Unavailable
+// storage fails closed to an offer, and a reload reads the flags afresh.
+const introNeeded = ($: EngineInterface): Promise<boolean> => {
+  introFlags ??= Promise.all([
+    attempt(() => $.store.get('autoTidyIntroShown')),
+    attempt(() => $.store.get('autoTidyChosen')),
+  ]).then(([shown, chosen]) => shown === undefined && chosen === undefined)
+
+  return introFlags
+}
+
+const endTidyIntro = async ($: EngineInterface): Promise<void> => {
+  await reviseTidyGate($, held => defined({ ...held, introSince: undefined, introTokens: undefined }))
+}
+let tidyCompactionInFlight = false
+let tidyWorkEpoch = 0
+let tidyWorkReason: string = TIDY_FEEDBACK_REASONS.startedWorkingRetry
+let turnStarts = 0
+let waitingForTool = false
+let bandDrawnAt: number | undefined
 // Whether this module's `session.compact` hook saw the main conversation's compaction since `tidyNow` cleared it.
 let compactSeen = false
 
@@ -1577,6 +1729,7 @@ const tidyInputsOf = async ($: EngineInterface, settings: Settings, now: number)
   tidy: await read($, tidyFacts),
   model: (await read($, hudSession)).model,
   now,
+  scheduled: true,
 })
 
 // The band's one-second clock, started by the band's drawing: while it draws
@@ -1591,7 +1744,13 @@ const startBandClock = ($: EngineInterface, settings: Settings): void => {
       const now = await $.clock.now()
       const shown = bandTidyOf(await tidyInputsOf($, settings, now))
       if (bandTimer !== mine) return
-      if (shown === undefined || shown.kind === 'offer') stopBandClock()
+      if (shown?.kind === 'offer' && shown.decision?.rule === 'D2' && shown.decision.cacheExpiresAt !== undefined && shown.decision.cacheExpiresAt <= now) {
+        stopBandClock()
+        await evaluateTidy($, settings)
+        await update($, bandTick, () => now)
+        return
+      }
+      if (!bandHasClock(shown, now)) stopBandClock()
       await update($, bandTick, () => now)
     })
   })
@@ -1599,10 +1758,10 @@ const startBandClock = ($: EngineInterface, settings: Settings): void => {
 }
 
 // Why a tidy the mod asked for did not run: the band says so a while.
-const failTidy = async ($: EngineInterface, reason: string): Promise<void> => {
+const failTidy = async ($: EngineInterface, reason: string, preserveRunning = false): Promise<void> => {
   const now = await $.clock.now()
-  const text = printable(reason).slice(0, 160)
-  await update($, tidyFacts, held => defined({ ...held, runningSince: undefined, countdownSince: undefined, failed: { at: now, reason: text === '' ? 'the engine refused it' : text } }))
+  const text = cut(printable(reason), 160)
+  await update($, tidyFacts, held => defined({ ...held, runningSince: preserveRunning ? held.runningSince : undefined, countdownSince: undefined, pending: undefined, failed: { at: now, reason: text === '' ? TIDY_FEEDBACK_REASONS.engineRefused : text } }))
 }
 
 // A compaction of the main conversation starting (any trigger but `precompute`): one write; the mascot tidies up and the band says so.
@@ -1610,7 +1769,7 @@ const tidyStarted = async ($: EngineInterface): Promise<void> => {
   const now = await $.clock.now()
   stopCountdown()
   const held = await read($, tidyFacts)
-  if (held.runningSince === undefined) await update($, tidyFacts, one => defined({ ...one, runningSince: now, countdownSince: undefined, failed: undefined }))
+  if (held.runningSince === undefined || now - held.runningSince >= TIDY_STALE_MS) await update($, tidyFacts, one => defined({ ...one, runningSince: now, countdownSince: undefined, pending: undefined, failed: undefined }))
 }
 
 // It did not run (vetoed, or it threw): the mascot stops.
@@ -1618,20 +1777,31 @@ const tidyStopped = async ($: EngineInterface): Promise<void> => {
   if ((await read($, tidyFacts)).runningSince !== undefined) await update($, tidyFacts, held => defined({ ...held, runningSince: undefined }))
 }
 
-// It stood: counted, the session's mascot stretches (with mascots on), the
-// band shows its size before and after (one write), and the offer starts over.
+// It stood: counted and its time stamped whatever the options, the session's
+// mascot stretches (with mascots on), the band shows its size before and after
+// (one write), and the offer starts over.
 const compacted = async (
   $: EngineInterface,
   settings: Settings,
   trigger: HudTidied['trigger'],
   before: number | undefined,
-  result: { tokensBefore?: number; tokensAfter?: number },
+  result: { tokensBefore?: number; tokensAfter?: number; usage?: ModelUsage },
+  engineIdle = false,
 ): Promise<void> => {
+  const at = await $.clock.now()
+  await quietly($, () => reviseTidyGate($, held => defined({
+    ...held,
+    engineIdleCompactionAt: engineIdle ? at : held.engineIdleCompactionAt,
+    precomputeSeen: false,
+    requestsSinceCompaction: 0,
+    awaitingAfter: true,
+    calibration: calibrationOf(held.calibration, result.usage),
+  })))
   await quietly($, async () => {
     await reviseUsage($, afterCompaction)
     await refreshStatus($, settings)
   })
-  if (settings.mascots) await quietly($, async () => {
+  await quietly($, async () => {
     const now = await $.clock.now()
     await reviseMain($, held => ({ ...held, compactedAt: now }))
   })
@@ -1642,66 +1812,550 @@ const compacted = async (
   })
 }
 
-// Tidy up now: the call `/compact` makes, told to keep the plan and the
-// todos. Where the engine runs it past this module's own `session.compact`
-// hook, the hook's bookkeeping is done here.
-const tidyNow = async ($: EngineInterface, settings: Settings): Promise<void> => {
-  stopCountdown()
-  const before = (await read($, hudUsage)).contextTokens
-  compactSeen = false
-  await tidyStarted($)
-  let result: Awaited<ReturnType<EngineInterface['session']['compact']>>
-  try {
-    result = await $.session.compact({ instructions: TIDY_INSTRUCTIONS })
-  } catch (error) {
-    return failTidy($, error instanceof Error ? error.message : String(error))
+// Task results are the built-ins' objects. A failed update never changes the
+// list; TaskList is authoritative, including completed and removed tasks.
+const taskToolGateOf = (held: HudTidyGate, name: string, input: Record<string, unknown>, result: unknown, creator: string): HudTidyGate => {
+  if (typeof result !== 'object' || result === null) return held
+  if (name === 'TaskList') {
+    const list = (result as BuiltinToolResults['TaskList']).tasks
+    if (!Array.isArray(list)) return held
+
+    return { ...held, tasks: list.filter(task => task.status !== 'completed').map(({ id, subject, status }) => ({ id, subject, status, creator: held.tasks.find(task => task.id === id)?.creator ?? 'main' })) }
   }
-  if (result.skip !== undefined) return failTidy($, result.skip)
-  if (!compactSeen) await compacted($, settings, 'plugin', before, result)
+  if (name === 'TaskCreate') {
+    const task = (result as BuiltinToolResults['TaskCreate']).task
+    if (task === undefined || typeof task.id !== 'string') return held
+
+    return { ...held, tasks: [...held.tasks.filter(one => one.id !== task.id), { ...task, status: 'pending', creator: held.tasks.find(one => one.id === task.id)?.creator ?? creator }] }
+  }
+  const changed = result as BuiltinToolResults['TaskUpdate']
+  if (changed.success !== true) return held
+  const id = changed.taskId
+  const status = changed.statusChange?.to ?? input.status
+  if (status === 'deleted' || status === 'completed') return { ...held, tasks: held.tasks.filter(one => one.id !== id) }
+  if (typeof status !== 'string' && typeof input.subject !== 'string') return held
+  const previous = held.tasks.find(one => one.id === id)
+  const task = { id, creator: previous?.creator ?? 'main', subject: typeof input.subject === 'string' ? input.subject : previous?.subject ?? id, status: typeof status === 'string' ? status : previous?.status ?? 'pending' }
+
+  return { ...held, tasks: [...held.tasks.filter(one => one.id !== id), task] }
 }
 
-// A load (or a session's end) mid-way: no compaction this module saw start is
-// running any more as far as it knows, and no countdown's timer survived.
-const tidyTimersGone = async ($: EngineInterface): Promise<void> => {
-  const held = await read($, tidyFacts)
-  if (held.runningSince !== undefined || held.countdownSince !== undefined) await update($, tidyFacts, one => defined({ ...one, runningSince: undefined, countdownSince: undefined }))
+// A summary has no bound turn.step in this engine. Reused summaries carry no
+// usage, so their earlier precompute is the only booking. No mainAt is supplied.
+const bookSummary = async ($: EngineInterface, settings: Settings, spent: ModelUsage | undefined, agentId?: string): Promise<void> => {
+  if (spent === undefined) return
+  await quietly($, () => reviseUsage($, held => addTokens(held, spent)))
+  if (!settings.inspect) return
+  await quietly($, async () => {
+    const model = agentId === undefined
+      ? (await attempt(() => $.session.model())) ?? (await read($, hudSession)).model
+      : (await read($, agents))[agentId]?.model ?? (await read($, shadows))[agentId]?.model
+    if (agentId !== undefined && model === undefined) return
+    const now = await $.clock.now()
+    await reviseLedger($, held => ledgerEnded(ledgerBooked(held, 'compact', { ...spent, model }, { kind: 'fork', name: 'compaction' }, now), 'compact', 'answer', now))
+  })
 }
 
-// Not now: the offer (or the countdown) goes until the context holds TIDY_AGAIN tokens more.
-const dismissTidy = ($: EngineInterface): Promise<void> =>
-  quietly($, async () => {
-    stopCountdown()
-    const tokens = (await read($, hudUsage)).contextTokens
-    await update($, tidyFacts, held => defined({ ...held, countdownSince: undefined, dismissedAt: tokens ?? held.dismissedAt }))
+const calibrationOf = (held: HudTidyGate['calibration'], spent: ModelUsage | undefined): HudTidyGate['calibration'] =>
+  spent === undefined ? held : defined({
+    ...held,
+    summary: counted(spent.output_tokens),
+    summarizerInput: counted(spent.input_tokens) + counted(spent.cache_read_input_tokens) + counted(spent.cache_creation_input_tokens),
+    summarizerCacheRead: counted(spent.cache_read_input_tokens),
+    usage: defined({ input_tokens: spent.input_tokens, output_tokens: spent.output_tokens, cache_read_input_tokens: spent.cache_read_input_tokens, cache_creation_input_tokens: spent.cache_creation_input_tokens }),
   })
 
-// `auto`: a main turn ended with a tidy due and no subagent running: the band
-// counts down, then tidies up, unless the person said Not now or sent a
-// prompt, a subagent started, or the tidy is no longer due.
-const armCountdown = async ($: EngineInterface, settings: Settings): Promise<void> => {
-  if (settings.tidy !== 'auto') return
-  const now = await $.clock.now()
-  if (!isTidyDue(await tidyInputsOf($, settings, now))) return
-  if (Object.values(await read($, agents)).some(isRunning)) return
-  await update($, tidyFacts, held => defined({ ...held, countdownSince: now, failed: undefined }))
+// All final reads finish here. Policy evaluation and the compact call below
+// share this plain snapshot, with no asynchronous work between them.
+const readTidySnapshot = async ($: EngineInterface, settings: Settings, now: number, phase: TidySafeSnapshot['phase'] = 'start') => {
+  const [gate, session, usage, inventory, main, tidy, liveAgents, draft, surfaces, rows, tools, panes, board, workflow, edited, liveUsage, needsIntro] = await Promise.all([
+    read($, tidyGate), read($, hudSession), read($, hudUsage), read($, hudInventory), read($, mainFacts), read($, tidyFacts),
+    attempt(() => $.agent.list()), attempt(() => $.prompt.read()), attempt(() => $.session.surfaces()),
+    attempt(() => $.config.list()), attempt(() => $.tool.list()), attempt(() => $.ui.panes()),
+    read($, agents), settings.showWorkflows ? read($, shadows) : {} as Shadows, read($, hudTools), attempt(() => $.session.usage()),
+    settings.tidy === 'auto' ? introNeeded($) : false,
+  ])
+  now = await $.clock.now()
+  const data = assembleHudData({ ...NO_FACTS, session, usage, inventory }, now, settings.cacheTtl)
+  const ttl = data.cache?.ttl ?? (settings.cacheTtl === 'auto' ? session.cacheTtl : settings.cacheTtl)
+  const assumed = data.cache?.assumed === true || (settings.cacheTtl === 'auto' && session.cacheTtlAssumed === true && data.cache === undefined)
+  const gapMs = usage.mainRequestAt === undefined ? undefined : Math.max(0, now - usage.mainRequestAt)
+  const calibration = gate.calibration
+  const cold = ttl !== undefined && ttl !== 'off' && gapMs !== undefined && gapMs >= CACHE_TTL_MS[assumed ? '5m' : ttl]
+  const miss = cold || (calibration?.summarizerInput !== undefined && calibration.summarizerInput > 0 && (calibration.summarizerCacheRead ?? 0) < calibration.summarizerInput / 2)
+  const model = session.model
+  const row = rows?.find(one => one.key === 'autoCompact' && one.provider.plugin === 'engine')
+  const workListTools = tools?.filter(tool => ['TodoWrite', 'TaskCreate', 'TaskGet', 'TaskUpdate', 'TaskList'].includes(tool.name)).map(tool => tool.name)
+  const cacheWorking = ttl !== 'off' && !(gate.mainRequests >= 5 && gate.mainCacheRead < gate.mainInput / 2)
+  const alive = new Set([...Object.values(board).filter(agent => !['done', 'failed', 'killed', 'completed', 'stopped'].includes(agent.status)).map(agent => agent.id), ...(Array.isArray(liveAgents) ? liveAgents : []).filter(agent => ['pending', 'running', 'waiting'].includes(agent.status)).map(agent => agent.id)])
+  const snapshot: TidySafeSnapshot = {
+    now, phase, countdownSince: tidy.pending?.countdownSince, settleMs: 0, idleSince: main.idleSince ?? Number.NaN,
+    mainBusy: main.busySince !== undefined, lastTurnReason: main.lastTurnReason, mainRequestAt: usage.mainRequestAt, stop: gate.stop,
+    agents: liveAgents, workflowShadows: Object.values(workflow).map(shadow => ({ status: shadow.status, visible: isShadowVisible(shadow), live: isShadowLive(shadow, now) })),
+    toolsInFlight, draft: draft === undefined ? 'unknown' : draft.text.trim() === '' ? 'empty' : 'nonempty',
+    queuedAt: gate.queuedAt, compactionRunning: (tidy.runningSince !== undefined && now - tidy.runningSince < TIDY_STALE_MS) || mainCompactionsInFlight > 0 || tidyCompactionInFlight, compactionFinishedAt: tidy.last?.at,
+    openTodos: gate.todos.length, openTasks: tidyOpenTasksOf(gate.tasks, alive),
+    interactive: session.isInteractive === true, loadedAt, bandDrawnAt, paneOpen: panes?.some(pane => pane.id === PANE && pane.isPlaced && pane.isShown) === true,
+    availability: {
+      autoCompact: rows !== undefined && session.autoCompact !== false && row?.value !== false && inventory.isAutoCompactEnabled !== false,
+      compactEnabled: session.compactDisabled === false, notTeammate: !gate.teammate,
+      bandSurfaces: Array.isArray(surfaces) && surfaces.length > 0 && surfaces.every(surface => surface === 'terminal'),
+      priced: pricesAt(model, usage.contextTokens) !== undefined, model, ttlAllowed: true, promptCacheWorking: cacheWorking,
+    },
+  }
+  const inputs: TidyPolicyInputs = {
+    model, tokens: gate.awaitingAfter === true || usage.contextTokens === undefined ? Number.NaN : liveUsage?.context.tokens ?? usage.contextTokens,
+    after: calibration?.after, fresh: calibration?.after === undefined ? undefined : 0, summary: calibration?.summary,
+    ttl: ttl ?? 'off', assumed, gapMs, miss, mode: settings.tidy, at: settings.tidyAt,
+    requests: gate.seedPending === true ? 0 : gate.requestsSinceCompaction, mainBusy: snapshot.mainBusy,
+    dismissedAt: tidy.dismissedAt, lastAfter: tidy.last?.after,
+    coolingDismissed: tidy.coolingDismissedAt !== undefined && tidy.coolingDismissedAt === usage.mainRequestAt,
+    windowSource: inventory.autocompactSource, compactDisabled: !snapshot.availability.compactEnabled,
+    interactive: snapshot.interactive, promptCacheWorking: cacheWorking,
+    autoAllowed: snapshot.availability.autoCompact && snapshot.availability.notTeammate && snapshot.availability.bandSurfaces,
+  }
+
+  return { needsIntro, gate, session, usage, inventory, main, tidy, surfaces, row, settingsReadable: rows !== undefined, workListTools, calibration, ttl, assumed, gapMs, cold, miss, model, cacheWorking, snapshot, inputs, edited: edited.edited }
+}
+
+const decisionOf = (data: Awaited<ReturnType<typeof readTidySnapshot>>): (TidyDue & { intro?: true }) | undefined => {
+  const { backoff } = data.tidy
+  if (backoff !== undefined && data.usage.mainRequestAt === backoff.requestAt && data.inputs.tokens < backoff.tokens + TIDY_AGAIN) return undefined
+  const mode = data.inputs.mode === 'auto' && data.gate.pendingToggle === 'ask' ? 'ask' : data.inputs.mode
+  if (mode === 'auto' && data.needsIntro && data.snapshot.mainBusy) return undefined
+  // Not now belongs to D1/advisory's growth window; D2/D3 belong to
+  // the current request gap. One cancellation applies both, not all gaps.
+  const due = tidyDueOf({ ...data.inputs, mode, dismissedAt: undefined }).filter(item =>
+    item.rule === 'D2' || item.rule === 'D3'
+      ? data.tidy.coolingDismissedAt === undefined || data.tidy.coolingDismissedAt !== data.usage.mainRequestAt
+      : data.tidy.dismissedAt === undefined || data.inputs.tokens >= data.tidy.dismissedAt + TIDY_AGAIN)
+
+  const chosen = due.find(item => item.automatic && item.rule === 'D2') ?? due.find(item => item.automatic && item.rule === 'D1') ?? due[0]
+  const introOpen = data.gate.introSince !== undefined && (data.gate.introTokens === undefined || data.inputs.tokens < data.gate.introTokens + TIDY_AGAIN)
+  if (chosen?.automatic === true && mode === 'auto' && !data.snapshot.mainBusy && (introOpen || data.needsIntro)) return { ...chosen, automatic: false, intro: true }
+  if (chosen?.rule === 'D2' && chosen.automatic && !data.snapshot.mainBusy) {
+    const ttlMs = CACHE_TTL_MS[data.inputs.ttl as '5m' | '1h']
+    const countdownMs = TIDY_COUNTDOWN_MS
+    const since = data.tidy.pending?.state === 'countdown' && data.tidy.pending.rule === 'D2' ? data.tidy.pending.countdownSince ?? data.snapshot.now : data.snapshot.now
+    const settledAt = (data.workListTools?.length ?? 0) === 0 ? data.snapshot.idleSince + TIDY_SETTLE_MS : since
+    const expiresAt = (data.usage.mainRequestAt ?? Number.NaN) + ttlMs
+    if (!(Math.max(since, settledAt) + countdownMs <= expiresAt - 10_000)) return { ...chosen, automatic: false }
+  }
+
+  return chosen
+}
+
+const safeSnapshotOf = (data: Awaited<ReturnType<typeof readTidySnapshot>>, due: TidyDue): TidySafeSnapshot => ({
+  ...data.snapshot,
+  settleMs: due.automatic && (due.rule === 'D1' || due.rule === 'D2') && (data.workListTools?.length ?? 0) === 0 ? TIDY_SETTLE_MS : 0,
+  availability: { ...data.snapshot.availability, ttlAllowed: due.rule !== 'D2' || !data.assumed },
+})
+
+const pendingOf = (data: Awaited<ReturnType<typeof readTidySnapshot>>, due: TidyDue & { intro?: true }, reasons: string[], state: NonNullable<HudTidyFacts['pending']>['state'], since?: number, endsAt?: number): NonNullable<HudTidyFacts['pending']> => {
+  const availability = TIDY_AVAILABILITY_REASONS
+  const flags = data.snapshot.availability
+  const availabilityReason = !data.settingsReadable ? TIDY_FEEDBACK_REASONS.settingsUnreadable : !flags.autoCompact ? availability.autoCompact : !flags.notTeammate ? availability.notTeammate : !flags.bandSurfaces ? availability.bandSurfaces : due.rule === 'advisory' ? due.why === 'cache' ? availability.promptCacheWorking : availability.priced(data.model ?? 'unknown') : data.assumed ? availability.ttlAllowed : undefined
+
+  return defined({
+    state, intro: due.intro, rule: due.rule, why: due.rule === 'advisory' ? due.why : undefined, saving: due.saving, costs: due.costs === undefined ? undefined : defined(due.costs), automatic: due.automatic,
+    reasons, firstReason: reasons[0], otherReasons: Math.max(0, reasons.length - 1), countdownSince: since, endsAt,
+    cacheExpiresAt: due.rule === 'D2' && data.usage.mainRequestAt !== undefined && data.ttl !== undefined && data.ttl !== 'off' ? data.usage.mainRequestAt + CACHE_TTL_MS[data.ttl] : undefined,
+    availabilityReason,
+  })
+}
+
+const reviseTidy = async ($: EngineInterface, change: Change<HudTidyFacts>): Promise<void> => {
+  if (changes(await read($, tidyFacts), change)) await update($, tidyFacts, change)
+}
+
+const showPending = async ($: EngineInterface, pending: HudTidyFacts['pending']): Promise<void> => {
+  await reviseTidy($, held => defined({ ...held, pending, countdownSince: pending?.countdownSince, failed: pending?.state === 'countdown' ? undefined : held.failed }))
+  waitingForTool = pending?.state === 'waiting' && pending.reasons.includes('a tool is running')
+}
+
+// A countdown break never applies Not now. The next event can start it again.
+const stopPending = async ($: EngineInterface): Promise<void> => {
+  tidyEpoch += 1
   stopCountdown()
-  const mine = $.clock.after(TIDY_COUNTDOWN_MS, () => {
-    void quietly($, async () => {
-      if (countdownTimer !== mine) return
-      countdownTimer = undefined
-      const inputs = await tidyInputsOf($, settings, await $.clock.now())
-      if (inputs.tidy.countdownSince !== now) return
-      if (!isTidyDue(inputs) || Object.values(await read($, agents)).some(isRunning)) {
-        await update($, tidyFacts, held => defined({ ...held, countdownSince: undefined }))
-        return
+  await reviseTidy($, held => defined({ ...held, countdownSince: undefined, pending: held.pending === undefined ? undefined : defined({ ...held.pending, state: 'waiting' as const, countdownSince: undefined, endsAt: undefined }) }))
+}
+
+const armCooling = async ($: EngineInterface, settings: Settings, requestAt?: number): Promise<void> => {
+  const [session, usage, now] = await Promise.all([read($, hudSession), read($, hudUsage), $.clock.now()])
+  const effective = assembleHudData({ ...NO_FACTS, session, usage }, now, settings.cacheTtl)
+  const ttl = effective.cache?.ttl ?? (settings.cacheTtl === 'auto' ? session.cacheTtl : settings.cacheTtl)
+  const at = requestAt ?? usage.mainRequestAt
+  const deadline = ttl === undefined || ttl === 'off' || at === undefined ? undefined : at + CACHE_TTL_MS[ttl] - cacheCoolAt(CACHE_TTL_MS[ttl])
+  if (deadline === coolingAt) return
+  coolingTimer?.cancel()
+  coolingTimer = undefined
+  coolingAt = deadline
+  if (deadline === undefined || deadline <= now) return
+  coolingTimer = $.clock.after(deadline - now, () => {
+    coolingTimer = undefined
+    void evaluateTidy($, settings)
+  })
+}
+
+const armSettle = ($: EngineInterface, settings: Settings, snapshot: TidySafeSnapshot): void => {
+  const deadline = snapshot.settleMs > 0 && Number.isFinite(snapshot.idleSince) ? snapshot.idleSince + snapshot.settleMs : undefined
+  if (deadline === settleAt) return
+  settleTimer?.cancel()
+  settleTimer = undefined
+  settleAt = deadline
+  if (deadline === undefined || deadline <= snapshot.now) return
+  settleTimer = $.clock.after(deadline - snapshot.now, () => {
+    settleTimer = undefined
+    void evaluateTidy($, settings)
+  })
+}
+
+const noteTeammate = async ($: EngineInterface, settings: Settings): Promise<void> => {
+  await quietly($, async () => {
+    if ((await read($, tidyGate)).teammate) return
+    tidyEpoch += 1
+    await reviseTidyGate($, held => ({ ...held, teammate: true }))
+    await evaluateTidy($, settings)
+  })
+}
+
+// Exposed for Batch 4b's command handler as well as the existing band buttons.
+const cancelTidy = ($: EngineInterface, settings: Settings): Promise<void> => quietly($, async () => {
+  tidyEpoch += 1
+  stopCountdown()
+  const usage = await read($, hudUsage)
+  await reviseTidy($, held => defined({
+    ...held, pending: undefined, countdownSince: undefined,
+    dismissedAt: usage.contextTokens ?? held.dismissedAt,
+    coolingDismissedAt: usage.mainRequestAt,
+  }))
+  await evaluateTidy($, settings)
+})
+
+const finishTidy = async ($: EngineInterface, settings: Settings, data: Awaited<ReturnType<typeof readTidySnapshot>>, instructions: string): Promise<void> => {
+  const started = turnStarts
+  compactSeen = false
+  summarizersInFlight += 1
+  tidyCompactionInFlight = true
+  try {
+    const call = $.session.compact({ instructions })
+    const outcome = call.then(result => ({ result, error: undefined }), error => ({ result: undefined, error }))
+    await quietly($, () => tidyStarted($))
+    const settled = await outcome
+    if (settled.result === undefined) throw settled.error
+    const result = settled.result
+    if (result.skip !== undefined) {
+      await failTidy($, result.skip)
+      await reviseTidy($, held => ({ ...held, backoff: defined({ tokens: Number.isFinite(data.inputs.tokens) ? data.inputs.tokens : 0, requestAt: data.usage.mainRequestAt }) }))
+    } else if (!compactSeen) {
+      await bookSummary($, settings, result.usage)
+      await compacted($, settings, 'plugin', data.usage.contextTokens, result)
+    }
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error)
+    const main = await attempt(() => read($, mainFacts))
+    const benign = main?.busySince !== undefined || started !== turnStarts
+    await failTidy($, benign ? TIDY_FEEDBACK_REASONS.startedWorking : /compacts between turns|a newer turn began/i.test(reason) ? TIDY_FEEDBACK_REASONS.turnAlreadyRunning : reason)
+    if (!benign) await reviseTidy($, held => ({ ...held, backoff: defined({ tokens: Number.isFinite(data.inputs.tokens) ? data.inputs.tokens : 0, requestAt: data.usage.mainRequestAt }) }))
+  } finally {
+    summarizersInFlight = Math.max(0, summarizersInFlight - 1)
+    tidyCompactionInFlight = false
+    await applyPendingTidyToggle($)
+    await evaluateTidy($, settings)
+  }
+}
+
+const tidyNow = async ($: EngineInterface, settings: Settings): Promise<void> => {
+  if (tidyNowInFlight) return
+  try {
+    tidyNowInFlight = true
+    tidyEpoch += 1
+    stopCountdown()
+    for (let retry = 0; retry < 2; retry += 1) {
+      const epoch = tidyWorkEpoch
+      const data = await readTidySnapshot($, settings, await $.clock.now(), 'final')
+      if (epoch !== tidyWorkEpoch) {
+        if (retry === 0) continue
+        return await failTidy($, tidyWorkReason, true)
       }
-      await tidyNow($, settings)
+      const instructions = tidyInstructionsOf(data.gate, data.edited)
+      const reasons = tidySafeReasonsOf({ ...data.snapshot, userStarted: true })
+      if (reasons.length > 0) return await failTidy($, reasons[0] ?? TIDY_WAITING_REASONS.busy, true)
+      await finishTidy($, settings, data, instructions)
+      return
+    }
+  } finally {
+    tidyNowInFlight = false
+  }
+}
+
+// Event-driven waiting. Only an active countdown has a one-second read poll.
+const evaluateTidy = ($: EngineInterface, settings: Settings, phase: TidySafeSnapshot['phase'] = 'start'): Promise<void> => quietly($, async () => {
+  if (settings.tidy === 'off') return
+  const epoch = ++tidyEpoch
+  const data = await readTidySnapshot($, settings, await $.clock.now(), phase)
+  if (epoch !== tidyEpoch) return
+  if (data.gate.introSince !== undefined && data.gate.introTokens !== undefined && data.inputs.tokens >= data.gate.introTokens + TIDY_AGAIN) await reviseTidyGate($, held => held.introSince === data.gate.introSince && held.introTokens === data.gate.introTokens ? defined({ ...held, introSince: undefined, introTokens: undefined }) : held)
+  const due = decisionOf(data)
+  if (epoch !== tidyEpoch) return
+  if (due === undefined) {
+    stopCountdown()
+    armSettle($, settings, { ...data.snapshot, settleMs: 0 })
+    await showPending($, undefined)
+    return
+  }
+  const snapshot = safeSnapshotOf(data, due)
+  const reasons = due.automatic ? tidySafeReasonsOf(snapshot) : []
+  armSettle($, settings, snapshot)
+  if (!due.automatic || reasons.length > 0) {
+    stopCountdown()
+    await showPending($, pendingOf(data, due, reasons, due.automatic ? 'waiting' : 'offer'))
+    if (epoch !== tidyEpoch) return
+    if (due.intro === true) {
+      await reviseTidyGate($, held => held.introSince !== undefined || held.introTokens !== undefined ? held : { ...held, introSince: data.snapshot.now, introTokens: data.inputs.tokens })
+      if (epoch !== tidyEpoch) return
+      if (data.needsIntro) {
+        await $.store.set('autoTidyIntroShown', true)
+        introFlags = Promise.resolve(false)
+      }
+    }
+    return
+  }
+  const previous = data.tidy.pending
+  if (previous?.state === 'countdown' && previous.rule === due.rule && countdownTimer !== undefined) {
+    if (phase === 'final') {
+      const instructions = tidyInstructionsOf(data.gate, data.edited)
+      // S14: every read is above; evaluation and the call cannot yield.
+      const finalDue = decisionOf(data)
+      const finalReasons = finalDue === undefined ? ['no longer due'] : tidySafeReasonsOf(safeSnapshotOf(data, finalDue))
+      if (epoch !== tidyEpoch || toggleInFlight || finalDue?.automatic !== true || finalReasons.length > 0) return
+      stopCountdown()
+      await finishTidy($, settings, data, instructions)
+    }
+    return
+  }
+  stopCountdown()
+  const since = data.snapshot.now
+  const endsAt = since + TIDY_COUNTDOWN_MS
+  await showPending($, pendingOf(data, due, [], 'countdown', since, endsAt))
+  if (epoch !== tidyEpoch) return
+  let polling = false
+  const mine = $.clock.every(TICK_MS, () => {
+    if (countdownTimer !== mine || polling) return
+    polling = true
+    void quietly($, async () => {
+      try {
+        const now = await $.clock.now()
+        if (countdownTimer !== mine) return
+        await evaluateTidy($, settings, now >= endsAt ? 'final' : 'poll')
+      } finally {
+        polling = false
+      }
     })
   })
   countdownTimer = mine
+  startBandClock($, settings)
+})
+
+// Toggle feedback is independent of the saved mode and the current decision.
+const toggleFeedback = async ($: EngineInterface, reason: string): Promise<{ text: string }> => {
+  const at = await $.clock.now()
+  await reviseTidy($, held => ({ ...held, toggle: { at, reason: cut(printable(reason), 160) } }))
+
+  return { text: reason }
 }
 
-// What the session's mascot reads of the HUD's facts: who, the context, the tool running.
+const tidyRunningAt = (tidy: HudTidyFacts, now: number): boolean => tidy.runningSince !== undefined && now - tidy.runningSince < TIDY_STALE_MS
+
+const toggleBlocked = async ($: EngineInterface): Promise<boolean> => {
+  const [main, gate, tidy, now] = await Promise.all([read($, mainFacts), read($, tidyGate), read($, tidyFacts), $.clock.now()])
+
+  return main.busySince !== undefined || gate.queuedAt !== undefined || tidyRunningAt(tidy, now) || mainCompactionsInFlight > 0 || tidyCompactionInFlight || tidyNowInFlight
+}
+
+const deferTidyToggle = async ($: EngineInterface, value: 'auto' | 'ask', row: ConfigRow): Promise<{ text: string }> => {
+  await reviseTidyGate($, held => ({ ...held, pendingToggle: value, pendingToggleFrom: String(row.value) }))
+
+  return toggleFeedback($, value === toggleSettings.tidy ? value === 'auto' ? TIDY_FEEDBACK_REASONS.keptOn : TIDY_FEEDBACK_REASONS.keptOff : value === 'ask' ? TIDY_FEEDBACK_REASONS.deferredOff : TIDY_FEEDBACK_REASONS.deferredOn)
+}
+
+// Every toggle ends the current display episode without suppressing a rule.
+const startTidyToggle = async ($: EngineInterface): Promise<void> => {
+  tidyEpoch += 1
+  stopCountdown()
+  await reviseTidy($, held => defined({ ...held, countdownSince: undefined, pending: undefined }))
+  await endTidyIntro($)
+}
+
+const failTidyToggle = async ($: EngineInterface, value: 'auto' | 'ask', reason: string): Promise<{ text: string }> => {
+  await quietly($, async () => {
+    if (value === 'ask') await cancelTidy($, toggleSettings)
+    await reviseTidyGate($, held => defined({ ...held, pendingToggle: undefined, pendingToggleFrom: undefined }))
+    await toggleFeedback($, reason)
+    if (value === 'auto') await evaluateTidy($, toggleSettings)
+  })
+
+  return { text: reason }
+}
+
+const setTidyMode = async ($: EngineInterface, value: 'auto' | 'ask', work = tidyWorkEpoch, pendingToggleFrom?: string): Promise<{ text: string }> => {
+  const settings = toggleSettings
+  const feedback = (reason: string): Promise<{ text: string }> => failTidyToggle($, value, reason)
+  try {
+    await startTidyToggle($)
+    const rows = await $.config.list()
+    const name = $.plugin.name
+    const matches = rows.filter(row => row.key.endsWith('.tidy') && (row.provider.plugin === name || row.key.startsWith(`${name}.`) || row.key.startsWith(`${name}@`)))
+    if (matches.length !== 1) return feedback(TIDY_FEEDBACK_REASONS.optionMissing)
+    const row = matches[0]!
+    if (row.isLocked) return feedback(TIDY_FEEDBACK_REASONS.optionLocked)
+    if (pendingToggleFrom !== undefined && pendingToggleFrom !== String(row.value)) {
+      await toggleFeedback($, TIDY_FEEDBACK_REASONS.configChanged)
+      await reviseTidyGate($, held => defined({ ...held, pendingToggle: undefined, pendingToggleFrom: undefined }))
+      await evaluateTidy($, settings)
+      return { text: TIDY_FEEDBACK_REASONS.configChanged }
+    }
+    if (work !== tidyWorkEpoch || await toggleBlocked($)) return await deferTidyToggle($, value, row)
+    if (value === 'auto') await quietly($, async () => {
+      await $.store.set('autoTidyChosen', true)
+      introFlags = Promise.resolve(false)
+    })
+    // Store failures can leave one extra intro, but never lose the toggle.
+    await reviseTidy($, held => defined({ ...held, toggle: undefined }))
+    await reviseTidyGate($, held => defined({ ...held, pendingToggle: undefined, pendingToggleFrom: undefined }))
+    // Success reloads the module: no engine call follows config.set.
+    if (work !== tidyWorkEpoch || mainCompactionsInFlight > 0 || tidyCompactionInFlight || tidyNowInFlight) return await deferTidyToggle($, value, row)
+    if (settings.tidy === value) $.clock.after(0, () => void evaluateTidy($, settings))
+    return $.config.set({ key: row.key, value }).then(
+      result => result.deny === undefined ? { text: value === 'auto' ? 'auto-tidy is on' : 'auto-tidy is off (ask mode)' } : feedback(result.deny),
+      error => feedback(error instanceof Error ? error.message : String(error)),
+    )
+  } catch (error) {
+    return feedback(error instanceof Error ? error.message : String(error))
+  }
+}
+
+const toggleTidy = async ($: EngineInterface, value: 'auto' | 'ask'): Promise<{ text: string }> => {
+  if (toggleInFlight) {
+    await startTidyToggle($)
+    return { text: 'auto-tidy change is pending' }
+  }
+  toggleInFlight = true
+  try {
+    return await setTidyMode($, value)
+  } finally {
+    toggleInFlight = false
+  }
+}
+
+// Stop/turn.complete can both fire. One callback claims the persisted request;
+// blocked callbacks leave it for the next main end, including after a reload.
+const applyPendingTidyToggle = ($: EngineInterface): Promise<void> => quietly($, async () => {
+  if (toggleTimer !== undefined) return
+  const pending = (await read($, tidyGate)).pendingToggle
+  if (pending === undefined || toggleTimer !== undefined) return
+  toggleTimer = $.clock.after(0, () => {
+    toggleTimer = undefined
+    void quietly($, async () => {
+      if (toggleInFlight) return
+      toggleInFlight = true
+      const work = tidyWorkEpoch
+      let value = pending
+      try {
+        const [gate, main, tidy, now] = await Promise.all([read($, tidyGate), read($, mainFacts), read($, tidyFacts), $.clock.now()])
+        if (gate.pendingToggle === undefined) return
+        value = gate.pendingToggle
+        if (main.busySince !== undefined || gate.queuedAt !== undefined || tidyRunningAt(tidy, now) || mainCompactionsInFlight > 0 || tidyCompactionInFlight || tidyNowInFlight) return
+        await setTidyMode($, value, work, gate.pendingToggleFrom)
+      } catch (error) {
+        await failTidyToggle($, value, error instanceof Error ? error.message : String(error))
+      } finally {
+        toggleInFlight = false
+      }
+    })
+  })
+})
+
+const pressTidyToggle = async ($: EngineInterface, settings: Settings): Promise<void> => {
+  tidyEpoch += 1
+  stopCountdown()
+  const gate = await attempt(() => read($, tidyGate))
+  if (gate?.pendingToggle !== undefined && !toggleInFlight) {
+    toggleInFlight = true
+    try {
+      await startTidyToggle($)
+      await reviseTidy($, held => defined({ ...held, toggle: undefined }))
+      await reviseTidyGate($, held => defined({ ...held, pendingToggle: undefined, pendingToggleFrom: undefined }))
+      await evaluateTidy($, settings)
+    } finally {
+      toggleInFlight = false
+    }
+  } else await toggleTidy($, settings.tidy === 'auto' ? 'ask' : 'auto')
+}
+
+const pressTidyNow = async ($: EngineInterface, settings: Settings): Promise<void> => {
+  tidyEpoch += 1
+  stopCountdown()
+  try {
+    await quietly($, () => endTidyIntro($))
+    await tidyNow($, settings)
+  } finally {
+    await applyPendingTidyToggle($)
+  }
+}
+
+const pressTidyCancel = async ($: EngineInterface, settings: Settings): Promise<void> => {
+  tidyEpoch += 1
+  stopCountdown()
+  await quietly($, () => endTidyIntro($))
+  await cancelTidy($, settings)
+}
+
+const runTidy = async ($: EngineInterface, argument: string, settings: Settings): Promise<{ text: string }> => {
+  if (argument === 'on' || argument === 'off') return toggleTidy($, argument === 'on' ? 'auto' : 'ask')
+  if (argument === 'now' || argument === 'cancel') {
+    tidyEpoch += 1
+    stopCountdown()
+    if (argument === 'now' && tidyNowInFlight) return { text: 'tidy already requested' }
+    await quietly($, () => endTidyIntro($))
+  }
+  const [tidy, main, gate, now] = await Promise.all([read($, tidyFacts), read($, mainFacts), read($, tidyGate), $.clock.now()])
+  if (argument === 'now') {
+    if (tidyNowInFlight) return { text: 'tidy already requested' }
+    const reason = main.busySince !== undefined ? TIDY_WAITING_REASONS.busy : tidyRunningAt(tidy, now) || mainCompactionsInFlight > 0 || tidyCompactionInFlight ? TIDY_WAITING_REASONS.compacting : undefined
+    if (reason !== undefined) {
+      await failTidy($, reason, true)
+      return { text: reason }
+    }
+    void quietly($, () => pressTidyNow($, settings))
+    return { text: 'tidy requested' }
+  }
+  if (argument === 'cancel') {
+    if (tidy.pending === undefined) {
+      await evaluateTidy($, settings)
+      return { text: 'nothing to cancel' }
+    }
+    await cancelTidy($, settings)
+    return { text: 'tidy cancelled' }
+  }
+  if (argument !== '') return { text: 'Usage: /mod-hud tidy [on|off|now|cancel]' }
+  const state = tidyRunningAt(tidy, now) ? TIDY_WAITING_REASONS.compacting : tidy.pending === undefined ? 'nothing due' : tidy.pending.state === 'waiting' ? `waiting: ${tidy.pending.firstReason ?? 'the next turn to end'}` : tidy.pending.intro === true ? 'intro offer' : tidy.pending.state
+  const saving = tidy.pending?.saving
+
+  const pending = gate.pendingToggle === undefined || gate.pendingToggle === settings.tidy ? '' : ` · ${gate.pendingToggle === 'ask' ? TIDY_FEEDBACK_REASONS.deferredOff : TIDY_FEEDBACK_REASONS.deferredOn}`
+  const reason = tidy.pending?.availabilityReason
+  const offersOnly = settings.tidy === 'auto' && tidy.pending?.automatic === false && tidy.pending.intro !== true && reason !== undefined && reason !== TIDY_AVAILABILITY_REASONS.ttlAllowed ? ` · offers only: ${reason}` : ''
+
+  return { text: `${settings.tidy} · ${state}${pending}${saving === undefined ? '' : ` · save ≈${formatTidyCost(saving)}`}${offersOnly}` }
+}
+
+// On load the old module's timers are gone; persisted evidence is kept.
+const tidyTimersGone = async ($: EngineInterface, settings: Settings): Promise<void> => {
+  const held = await read($, tidyFacts)
+  if (held.runningSince !== undefined || held.countdownSince !== undefined || held.pending?.state === 'countdown' || (settings.tidy === 'off' && held.pending !== undefined)) await reviseTidy($, one => defined({ ...one, runningSince: undefined, countdownSince: undefined, pending: undefined }))
+}
+
+
 const bandHudOf = async ($: EngineInterface, settings: Settings, now: number): Promise<HudData> =>
   assembleHudData({
     session: await read($, hudSession),
@@ -1734,6 +2388,7 @@ const bandYard = async (
   const all = await read($, agents)
   const list = Object.values(all)
   const workflow = settings.showWorkflows ? workflowOf(await read($, shadows), all, now) : []
+  pinAccessories(list, workflow, now, settings.scenes)
   const hud = await bandHudOf($, settings, now)
   const main = (await attempt(() => read($, mainFacts))) ?? NO_MAIN
   const tidyingSince = (await read($, tidyFacts)).runningSince
@@ -1757,16 +2412,16 @@ const bandYard = async (
       ...(svg === undefined ? {} : { svg: true as const }),
       ...(settings.mascotArt === 'vector' ? { art: 'vector' as const } : {}),
       ...(settings.character === 'usagi' ? { character: 'usagi' as const } : {}),
-    })
+    }, pinned)
     // A terminal that shows pictures: the vector art as one, swapped frame by frame.
     if (await picturedOn($, settings, surface, table, props.columns, props.rows)) return pictureOf($, table, surface, requestId, BAND_KEY, props, now)
-    const { Client } = table as { Client: (props: { key: string; module: string; props?: unknown; width?: number; height?: number }) => RenderElement }
+    const Client = clientOf(table)
 
     return <Client key={BAND_KEY} module="./scene-client.tsx" props={props} width={columns} height={GRID_ROWS} />
   }
   const key = `${BAND_SCENE}${surface}`
   const frame = await read($, sceneTick)
-  const mascots = sceneOf(list, hud, now, { stalledMs: settings.stalledMs, main, shadows: workflow, scenes: settings.scenes, character: settings.character, only: 'main', ...(tidyingSince === undefined ? {} : { tidyingSince }) })
+  const mascots = sceneOf(list, hud, now, { stalledMs: settings.stalledMs, main, shadows: workflow, pinned, scenes: settings.scenes, character: settings.character, only: 'main', ...(tidyingSince === undefined ? {} : { tidyingSince }) })
   const room = { columns, rows: GRID_ROWS, tick: Math.max(frame, Math.floor(now / SCENE_FRAME_MS)), wander: settings.wander, scenes: settings.scenes, collisions: settings.collisions }
   const plan = mascotPlan(mascots, room, scenePlans.get(key))
   if (plan === undefined) {
@@ -1786,6 +2441,7 @@ const bandYard = async (
 // `facts` shows what the HUD draws from.
 const runBoard = async ($: EngineInterface, args: string, settings: Settings): Promise<{ text: string }> => {
   const argument = args.trim()
+  if (argument === 'tidy' || argument.startsWith('tidy ')) return runTidy($, argument.slice(4).trim(), settings)
   if (argument === 'facts') return { text: await factsText($, settings) }
   if (argument === 'clear') {
     stopTicking()
@@ -1802,7 +2458,7 @@ const runBoard = async ($: EngineInterface, args: string, settings: Settings): P
 
     return { text: `Dropped ${dropped.length} finished ${dropped.length === 1 ? 'agent' : 'agents'} from the board.` }
   }
-  if (argument !== '') return { text: 'Usage: /mod-hud [clear|facts]' }
+  if (argument !== '') return { text: 'Usage: /mod-hud [clear|facts|tidy [on|off|now|cancel]]' }
 
   const pane = (await $.ui.panes()).find(one => one.id === PANE)
   if (pane?.isPlaced && pane.isShown) {
@@ -1817,10 +2473,7 @@ const runBoard = async ($: EngineInterface, args: string, settings: Settings): P
   }
 
   const opened = await $.ui.open({
-    id: PANE,
-    title: 'HUD',
-    columns: 72,
-    rows: 16,
+    ...PANE_OPEN,
     focus: pane?.isPlaced && !pane.isShown ? true : undefined,
   })
   if (!opened.isPlaced) return { text: `HUD is waiting: ${opened.reason}` }
@@ -1852,8 +2505,9 @@ const askedOf = async ($: EngineInterface, settings: Settings, component: string
     await quietly($, async () => {
       const pane = (await $.ui.panes()).find(one => one.id === PANE)
       if (!(pane?.isPlaced === true && pane.isShown)) {
-        const opened = await $.ui.open({ id: PANE, title: 'HUD', columns: 72, rows: 16, ...(pane?.isPlaced === true ? { focus: true } : {}) })
+        const opened = await $.ui.open({ ...PANE_OPEN, ...(pane?.isPlaced === true ? { focus: true } : {}) })
         if (opened.isPlaced) startTicking($, settings)
+        else $.ui.toast(`HUD is waiting: ${opened.reason}`)
       }
       await selectAgent($, { id: 'main', kind: 'main' })
     })
@@ -1862,6 +2516,7 @@ const askedOf = async ($: EngineInterface, settings: Settings, component: string
 
 export const register: Register = (on, options) => {
   const settings = settingsOf(options)
+  toggleSettings = settings
 
   // A reload starts this module afresh; a registration in a context that
   // already ran one drops what that left running.
@@ -1875,10 +2530,36 @@ export const register: Register = (on, options) => {
   stopStatusTimer()
   stopBandClock()
   stopCountdown()
+  coolingTimer?.cancel()
+  settleTimer?.cancel()
+  coolingTimer = undefined
+  settleTimer = undefined
+  coolingAt = undefined
+  settleAt = undefined
+  tidyEpoch += 1
+  waitingForTool = false
+  toggleTimer?.cancel()
+  toggleTimer = undefined
+  toggleInFlight = false
+  introFlags = undefined
+  bandDrawnAt = undefined
   resetHud()
   listedIds = new Set()
   bandMascot.clear()
   bandFaulted.clear()
+  sceneFaulted.clear()
+  tvFaulted.clear()
+  pictureless.clear()
+  tvUp.clear()
+  tvPresses.clear()
+  tvFrom = undefined
+  startled = undefined
+  sceneTops.clear()
+  sceneEvents = []
+  hitSeqs.clear()
+  pictureScheme = undefined
+  pinned = {}
+  accessoryGone.clear()
   compactSeen = false
 
   on('session.start', async ($, e, next) => {
@@ -1886,7 +2567,7 @@ export const register: Register = (on, options) => {
       await $.command.register({
         name: TWIN,
         description: 'Show or hide the HUD (session, context, limits, cost, git, tools, todos, and every subagent)',
-        argumentHint: 'clear|facts',
+        argumentHint: 'clear|facts|tidy [on|off|now|cancel]',
         immediate: true,
       })
     } catch (error) {
@@ -1905,15 +2586,25 @@ export const register: Register = (on, options) => {
       $.ui.status(text ?? undefined)
       await startIfNeeded($, settings)
     })
+    loadedAt = await $.clock.now()
+    await quietly($, () => reviseSession($, held => ({ ...held, isInteractive: e.isInteractive })))
     await quietly($, () => startHud($, settings, e.cwd))
     await quietly($, () => refreshStatus($, settings))
-    await quietly($, () => tidyTimersGone($))
+    await quietly($, () => tidyTimersGone($, settings))
+    await quietly($, () => armCooling($, settings))
+    await applyPendingTidyToggle($)
+    await evaluateTidy($, settings)
 
     return next(e)
   })
 
   on('agent.spawn', async ($, e, next) => {
+    tidyEpoch += 1
     const spawned = await next(e)
+    if (e.workflow !== undefined) {
+      await evaluateTidy($, settings)
+      return spawned
+    }
     if (spawned.deny === undefined && spawned.agentId !== undefined) {
       const id = spawned.agentId
       await quietly($, async () => {
@@ -1935,89 +2626,102 @@ export const register: Register = (on, options) => {
             toolCalls: 0,
           }),
         }))
-        // A first step that raced its spawn was taken for a workflow agent's.
+        // A plain subagent's first step that raced its spawn was taken for a workflow agent's.
         if (settings.showWorkflows) await reviseShadows($, held => shadowsPruned(held, now, one => one === id))
         await showStatus($, settings, written, now)
         await startIfNeeded($, settings)
       })
     }
 
+    await evaluateTidy($, settings)
     return spawned
   })
 
-  // A known subagent's call is its activity and its current tool; a call in a
-  // loop no list names is a workflow agent's, kept beside the board; a
+  // A known subagent's call is its activity and its current tool; a workflow
+  // loop's first call shows its shadow beside the board, never its spawn; a
   // main-loop call is the HUD's current tool and counts. Once it ends these
   // clear, a main-loop TodoWrite's list is kept, a tool that may have changed
   // the tree (any loop's) asks for a git reading, and an Agent result settles
   // its entry.
   on('tool.call', async ($, e, next) => {
-    const name = String(e.tool)
-    const label = short(name)
-    const loop = e.agentId
-    const isKnown = loop !== undefined && (await boardCallStarted($, settings, loop, label))
-    const workflow = !isKnown && settings.showWorkflows && loop !== undefined && !listedIds.has(loop) ? loop : undefined
-    if (workflow !== undefined) await quietly($, () => shadowCallStart($, settings, workflow, label))
-    const trailAt = loop !== undefined && (isKnown || workflow !== undefined)
-      ? await attempt(() => recordTrail($, settings, loop, label, e as unknown as Readonly<Record<string, unknown>>))
-      : undefined
-    if (name === 'SendMessage') await quietly($, () => noteMessage($, settings, loop, (e as { to?: unknown }).to))
-    // A known subagent's call is tracked for its permission asks: the alert strip's and the mascot's raised hand alike.
-    const callId = isKnown && typeof e.tool_use_id === 'string' ? e.tool_use_id : undefined
-    if (callId !== undefined && loop !== undefined) await trackCall($, callId, loop)
-    if (loop === undefined && settings.showTools) {
-      await quietly($, async () => {
-        const now = await $.clock.now()
-        // The call's main argument (a path, a command, a pattern) rides with it, for the `now` row.
-        const arg = mainArgOf(e as unknown as Readonly<Record<string, unknown>>)
-        await update($, hudTools, held => toolStarted(held, label, e.tool_use_id, now, arg))
-      })
-    }
-
-    let ran: ToolCallResult | undefined
+    tidyEpoch += 1
+    toolsInFlight += 1
     try {
-      ran = await next(e)
-    } finally {
-      if (callId !== undefined) forgetCall(callId)
-      if (isKnown) await boardCallEnded($, loop, label)
-      if (workflow !== undefined) await quietly($, () => shadowCallEnd($, settings, workflow, label))
-      const outcome = ran
-      // Its trail step ends; a call denied or failed, in any loop, counts.
-      const ended = outcomeOf(outcome)
-      if (trailAt !== undefined && loop !== undefined) await quietly($, () => endTrail($, loop, label, trailAt, ended))
-      // The status line's `⚠` counts it: redrawn now (nothing else may redraw it), and its timer re-armed for when it expires.
-      if (settings.inspect && ended !== 'ok') await quietly($, async () => {
-        const now = await $.clock.now()
-        await reviseLedger($, held => ledgerFailed(held, ended, now))
-        await refreshStatus($, settings)
-      })
-      await quietly($, async () => {
-        const isDone = outcome !== undefined && outcome.deny === undefined && outcome.isError !== true
-        // A main-loop edit that ended ok counts its file, in the same write that settles the call.
-        const edited = loop === undefined && isDone ? editedPathOf(name, e as unknown as Readonly<Record<string, unknown>>) : undefined
-        // The files edited are the Session tab's Overview's: counted whatever `showTools` says.
-        if (loop === undefined && (settings.showTools || edited !== undefined)) {
-          await reviseTools($, held => {
-            const settled = settings.showTools ? toolSettled(held, label, e.tool_use_id) : held
+      const name = String(e.tool)
+      const label = short(name)
+      const loop = e.agentId
+      const isKnown = loop !== undefined && (await boardCallStarted($, settings, loop, label))
+      const workflow = !isKnown && settings.showWorkflows && loop !== undefined && !listedIds.has(loop) ? loop : undefined
+      if (workflow !== undefined) await quietly($, () => shadowCallStart($, settings, workflow, label))
+      const trailAt = loop !== undefined && (isKnown || workflow !== undefined)
+        ? await attempt(() => recordTrail($, settings, loop, label, e as unknown as Readonly<Record<string, unknown>>))
+        : undefined
+      if (name === 'SendMessage') await quietly($, () => noteMessage($, settings, loop, (e as { to?: unknown }).to))
+      // A known subagent's call is tracked for its permission asks: the alert strip's and the mascot's raised hand alike.
+      const callId = isKnown && typeof e.tool_use_id === 'string' ? e.tool_use_id : undefined
+      if (callId !== undefined && loop !== undefined) await trackCall($, callId, loop)
+      if (loop === undefined && settings.showTools) {
+        await quietly($, async () => {
+          const now = await $.clock.now()
+          // The call's main argument (a path, a command, a pattern) rides with it, for the `now` row.
+          const arg = mainArgOf(e as unknown as Readonly<Record<string, unknown>>)
+          await update($, hudTools, held => toolStarted(held, label, e.tool_use_id, now, arg))
+        })
+      }
 
-            return edited === undefined ? settled : fileEdited(settled, edited)
-          })
-        }
-        if (settings.showTodos && loop === undefined && isDone && e.tool === 'TodoWrite') {
-          const items = parseTodos(e.todos)
-          if (items !== undefined) {
-            const now = await $.clock.now()
-            await reviseTodos($, held => todoFactsOf(held, items, now))
-            await refreshStatus($, settings)
+      let ran: ToolCallResult | undefined
+      try {
+        ran = await next(e)
+      } finally {
+        if (callId !== undefined) forgetCall(callId)
+        if (isKnown) await boardCallEnded($, loop, label)
+        if (workflow !== undefined) await quietly($, () => shadowCallEnd($, settings, workflow, label))
+        const outcome = ran
+        // Its trail step ends; a call denied or failed, in any loop, counts.
+        const ended = outcomeOf(outcome)
+        if (trailAt !== undefined && loop !== undefined) await quietly($, () => endTrail($, loop, label, trailAt, ended))
+        // The status line's `⚠` counts it: redrawn now (nothing else may redraw it), and its timer re-armed for when it expires.
+        if (settings.inspect && ended !== 'ok') await quietly($, async () => {
+          const now = await $.clock.now()
+          await reviseLedger($, held => ledgerFailed(held, ended, now))
+          await refreshStatus($, settings)
+        })
+        await quietly($, async () => {
+          const isDone = outcome !== undefined && outcome.deny === undefined && outcome.isError !== true
+          // A main-loop edit that ended ok counts its file, in the same write that settles the call.
+          const edited = loop === undefined && isDone ? editedPathOf(name, e as unknown as Readonly<Record<string, unknown>>) : undefined
+          // The files edited are the Session tab's Overview's: counted whatever `showTools` says.
+          if (loop === undefined && (settings.showTools || edited !== undefined)) {
+            await reviseTools($, held => {
+              const settled = settings.showTools ? toolSettled(held, label, e.tool_use_id) : held
+
+              return edited === undefined ? settled : fileEdited(settled, edited)
+            })
           }
-        }
-        if (GIT_TOOLS.has(name) && outcome?.deny === undefined) await requestGit($, settings)
+          if (loop === undefined && isDone && e.tool === 'TodoWrite') {
+            const items = parseTodos(e.todos)
+            if (items !== undefined) {
+              const now = await $.clock.now()
+              if (settings.showTodos) await reviseTodos($, held => todoFactsOf(held, items, now))
+              await reviseTidyGate($, held => ({ ...held, todos: items.filter(item => item.status !== 'completed') }))
+              if (settings.showTodos) await refreshStatus($, settings)
+            }
+          }
+          if (isDone && (name === 'TaskCreate' || name === 'TaskUpdate' || (loop === undefined && name === 'TaskList'))) await reviseTidyGate($, held => taskToolGateOf(held, name, e as unknown as Record<string, unknown>, outcome?.result, loop ?? 'main'))
+          if (GIT_TOOLS.has(name) && outcome?.deny === undefined) await requestGit($, settings)
+        })
+      }
+
+      if (name === 'Agent') await settleAgentCall($, settings, ran)
+
+      return ran
+    } finally {
+      toolsInFlight = Math.max(0, toolsInFlight - 1)
+      if (toolsInFlight === 0 && mainBusy !== true && waitingForTool) await quietly($, async () => {
+        const [main, tidy] = await Promise.all([read($, mainFacts), read($, tidyFacts)])
+        if (main.busySince === undefined && tidy.pending?.state === 'waiting' && tidy.pending.reasons.includes('a tool is running')) await evaluateTidy($, settings)
       })
     }
-
-    if (name === 'Agent') await settleAgentCall($, settings, ran)
-
-    return ran
   })
 
   // Only a lingering ask marks its agent waiting (the alert strip's count, and
@@ -2034,16 +2738,114 @@ export const register: Register = (on, options) => {
     return verdict
   })
 
-  // A prompt sent: the `auto` countdown stops at once, before the turn it starts is under way.
+  // All origins queue work, before next can start a turn. Only a drop or
+  // rejection writes again; a consumed prompt clears at start/complete.
   on('prompt.submit', async ($, e, next) => {
-    if (countdownTimer !== undefined) {
-      stopCountdown()
-      await quietly($, async () => {
-        if ((await read($, tidyFacts)).countdownSince !== undefined) await update($, tidyFacts, held => defined({ ...held, countdownSince: undefined }))
-      })
+    tidyEpoch += 1
+    tidyWorkEpoch += 1
+    tidyWorkReason = TIDY_FEEDBACK_REASONS.startedWorkingRetry
+    await quietly($, () => stopPending($))
+    const at = await $.clock.now()
+    let previous: Pick<HudTidyGate, 'queuedAt' | 'queuedTurnId' | 'queuedWait'> | undefined
+    await quietly($, () => reviseTidyGate($, held => {
+      previous = held.queuedAt !== undefined ? { queuedAt: held.queuedAt, queuedTurnId: held.queuedTurnId, queuedWait: held.queuedWait } : undefined
+
+      return defined({ ...held, queuedAt: at, queuedTurnId: e.turnId, queuedWait: e.wait === true || (previous?.queuedTurnId === e.turnId && previous?.queuedWait === true) ? true : undefined, teammate: held.teammate || e.origin.kind === 'coordinator' })
+    }))
+    const clearQueued = () => quietly($, () => reviseTidyGate($, held => held.queuedAt !== at || held.queuedTurnId !== e.turnId ? held : defined({ ...held, queuedAt: previous?.queuedAt, queuedTurnId: previous?.queuedTurnId, queuedWait: previous?.queuedWait })))
+    let result: Awaited<ReturnType<typeof next>>
+    try {
+      result = await next(e)
+    } catch (error) {
+      await clearQueued()
+      await evaluateTidy($, settings)
+      throw error
     }
+    if (result.drop !== undefined) {
+      await clearQueued()
+    }
+    await evaluateTidy($, settings)
+
+    return result
+  })
+
+  on('turn.start', async ($, e, next) => {
+    tidyEpoch += 1
+    tidyWorkEpoch += 1
+    tidyWorkReason = TIDY_FEEDBACK_REASONS.startedWorkingRetry
+    turnStarts += 1
+    await quietly($, () => markMainBusy($))
+    await quietly($, async () => {
+      const pending = (await read($, tidyGate)).seedPending === true
+      // The API view normalizes away the history before the last compaction.
+      const requests = pending ? (await attempt(async () => {
+        const messages = await $.session.messages({ as: 'api' })
+
+        return messages.filter((message, index, all) => message.role === 'assistant' && all[index - 1]?.role !== 'assistant').length
+      })) ?? 0 : 0
+      await reviseTidyGate($, held => defined({ ...held, queuedAt: undefined, queuedTurnId: undefined, queuedWait: undefined, ...(pending ? { requestsSinceCompaction: requests, seedPending: undefined } : {}) }))
+    })
+
+    const result = await next(e)
+    void evaluateTidy($, settings)
+    return result
+  })
+
+  on('classic.Stop', async ($, e, next) => {
+    const result = await next(e)
+    if (e.agent_id === undefined && result.block === undefined) await quietly($, async () => {
+      const at = await $.clock.now()
+      const requestAt = (await read($, hudUsage)).mainRequestAt
+      await reviseTidyGate($, held => ({ ...held, stop: defined({
+        at,
+        requestAt,
+        tasks: (e.background_tasks ?? []).map(task => {
+          const id = String(task.id)
+          const type = String(task.type)
+          const status = String(task.status ?? '')
+
+          return { id, type, status, kind: Object.hasOwn(TIDY_STOP_TASK_KINDS, type) ? TIDY_STOP_TASK_KINDS[type] ?? 'unknown' : 'unknown' }
+        }),
+        previousTaskIds: held.stop?.tasks.map(task => task.id) ?? [],
+        oneShotCrons: (e.session_crons ?? []).filter(cron => !cron.recurring).length,
+      }) }))
+    })
+
+    if (e.agent_id === undefined) {
+      await applyPendingTidyToggle($)
+      await evaluateTidy($, settings)
+    }
+    return result
+  })
+
+  on('classic.TaskCreated', async ($, e, next) => {
+    const result = await next(e)
+    if (result.block === undefined) await quietly($, () => reviseTidyGate($, held => held.tasks.some(task => task.id === e.task_id) ? held : { ...held, tasks: [...held.tasks, { id: e.task_id, subject: e.task_subject, status: 'pending', creator: e.agent_id ?? 'main' }] }))
+
+    return result
+  })
+
+  on('classic.TeammateIdle', async ($, e, next) => {
+    if (e.agent_id === undefined) await noteTeammate($, settings)
 
     return next(e)
+  })
+
+  on('session.receive', async ($, e, next) => {
+    if (e.agentId === undefined && e.origin.kind === 'coordinator') await noteTeammate($, settings)
+
+    return next(e)
+  })
+
+  on('classic.SessionStart', async ($, e, next) => {
+    const result = await next(e)
+    if (e.source === 'resume' || e.source === 'fork') await quietly($, async () => {
+      await reviseTidyGate($, held => defined({ ...NO_TIDY_GATE, calibration: held.calibration, pendingToggle: held.pendingToggle, pendingToggleFrom: held.pendingToggleFrom, seedPending: true, resumeCacheExpired: e.prompt_cache_likely_expired }))
+      const now = await $.clock.now()
+      await reviseUsage($, held => defined({ ...held, contextTokens: e.context_tokens, mainRequestAt: e.seconds_since_last_response === undefined ? undefined : now - e.seconds_since_last_response * 1000 }))
+    })
+
+    return result
   })
 
   on('turn.complete', async ($, e, next) => {
@@ -2075,12 +2877,15 @@ export const register: Register = (on, options) => {
       })
     }
     // The header's working/idle cell (and the session's mascot) read it: kept whatever the options.
-    if (id === undefined && mainBusy !== false) await quietly($, () => markMainIdle($))
+    if (id === undefined) {
+      await quietly($, () => markMainIdle($, e.reason))
+      await quietly($, () => endTidyIntro($))
+      await quietly($, () => reviseTidyGate($, held => held.queuedTurnId !== e.turnId || held.queuedWait === true ? held : defined({ ...held, queuedAt: undefined, queuedTurnId: undefined, queuedWait: undefined })))
+    }
     // One more turn for the Session tab, its time busy and the context's size: in one usage write.
     // With the usage section's last turn and the context's runway, kept whatever the options.
     if (id === undefined) await quietly($, () => reviseUsage($, held => afterMainTurn(held, e.durationMs)))
-    // `tidy: auto`: a tidy due counts down in the band once the main loop is idle.
-    if (id === undefined) await quietly($, () => armCountdown($, settings))
+    await evaluateTidy($, settings)
     // The main loop's end leaves no tool current and asks for a git reading
     // and, when due, the inventory.
     await quietly($, async () => {
@@ -2090,7 +2895,9 @@ export const register: Register = (on, options) => {
       await requestInventory($)
     })
 
-    return next(e)
+    const result = await next(e)
+    if (id === undefined) await applyPendingTidyToggle($)
+    return result
   })
 
   on('session.measure', async ($, e, next) => {
@@ -2103,6 +2910,8 @@ export const register: Register = (on, options) => {
       await refreshStatus($, settings)
     })
 
+    await quietly($, () => armCooling($, settings))
+    await evaluateTidy($, settings)
     return next(e)
   })
 
@@ -2110,6 +2919,7 @@ export const register: Register = (on, options) => {
   // in a loop no list names is a workflow agent's step. Both are written once,
   // before the request goes: the chunks then stream through untouched.
   on('turn.step', async function* ($, e, next) {
+    if (summarizersInFlight > 0) summarizerSteps += 1
     if (e.agentId === undefined) {
       if (mainBusy !== true) await quietly($, () => markMainBusy($))
       const effort = effortOf(e.effort)
@@ -2138,6 +2948,7 @@ export const register: Register = (on, options) => {
     // the hooks see before that; it errs early, so the countdown never
     // overstates the time left.
     const sentAt = e.agentId === undefined ? await attempt(() => $.clock.now()) : undefined
+    if (e.agentId === undefined) await quietly($, () => armCooling($, settings, sentAt))
     const result = yield* next(e)
     // What the request read, wrote and cached, whichever loop made it: the
     // session's tokens, and the ledger's for that loop and model.
@@ -2148,6 +2959,19 @@ export const register: Register = (on, options) => {
         const at = e.agentId === undefined ? (sentAt ?? await $.clock.now()) : undefined
         await reviseUsage($, held => addTokens(held, spent, at))
       })
+      if (e.agentId === undefined) await quietly($, () => reviseTidyGate($, held => {
+        const input = counted(spent.input_tokens) + counted(spent.cache_read_input_tokens) + counted(spent.cache_creation_input_tokens)
+
+        return defined({
+          ...held,
+          requestsSinceCompaction: held.requestsSinceCompaction + 1,
+          mainRequests: held.mainRequests + 1,
+          mainInput: held.mainInput + input,
+          mainCacheRead: held.mainCacheRead + counted(spent.cache_read_input_tokens),
+          calibration: held.awaitingAfter === true ? { ...held.calibration, after: input } : held.calibration,
+          awaitingAfter: undefined,
+        })
+      }))
       if (settings.inspect) await quietly($, async () => {
         const who = await ledgerWhoOf($, settings, e.agentId)
         const now = await $.clock.now()
@@ -2162,22 +2986,47 @@ export const register: Register = (on, options) => {
   // that took place counts, and the band shows its size before and after.
   // `precompute` installs nothing; a subagent's own is its own.
   on('session.compact', async ($, e, next) => {
+    if (e.agentId === undefined) {
+      tidyEpoch += 1
+      tidyWorkEpoch += 1
+      tidyWorkReason = TIDY_WAITING_REASONS.compacting
+      await quietly($, () => stopPending($))
+    }
     const trigger = e.trigger === 'precompute' ? undefined : e.trigger
     const mine = e.agentId === undefined && trigger !== undefined
+    const idleCompaction = mine && e.trigger === 'auto' && (e.instructions ?? '').trim() === '' && (await attempt(async () => (await read($, mainFacts)).busySince === undefined)) === true
     const before = mine ? await attempt(async () => (await read($, hudUsage)).contextTokens) : undefined
     if (mine) {
       compactSeen = true
       await quietly($, () => tidyStarted($))
     }
+    let event = e
+    if (e.agentId === undefined && settings.tidy !== 'off' && (e.instructions ?? '').trim() === '') await quietly($, async () => {
+      const [session, gate] = await Promise.all([read($, hudSession), read($, tidyGate)])
+      if (session.compactDisabled === false && (e.trigger === 'precompute' || (e.trigger === 'auto' && !gate.precomputeSeen))) event = { ...e, instructions: TIDY_INSTRUCTIONS }
+    })
     let result: Awaited<ReturnType<typeof next>> | undefined
     try {
-      result = await next(e)
+      if (e.agentId === undefined) mainCompactionsInFlight += 1
+      summarizersInFlight += 1
+      result = await next(event)
     } finally {
+      summarizersInFlight -= 1
+      if (e.agentId === undefined) mainCompactionsInFlight = Math.max(0, mainCompactionsInFlight - 1)
       if (mine && result?.messages === undefined) await quietly($, () => tidyStopped($))
+      if (result === undefined) {
+        if (e.agentId === undefined) await applyPendingTidyToggle($)
+        await evaluateTidy($, settings)
+      }
     }
-    // Summarizer forks emit turn.step with their own agentId: book there only.
-    if (mine && result.messages !== undefined) await compacted($, settings, trigger, before, result)
+    // Engine compactions, including precompute, book their own result exactly
+    // once here; tidyNow skips its own hook and books its result there instead.
+    if (result.messages !== undefined) await bookSummary($, settings, result.usage, e.agentId)
+    if (e.agentId === undefined && e.trigger === 'precompute' && result.messages !== undefined) await quietly($, () => reviseTidyGate($, held => ({ ...held, precomputeSeen: true, calibration: calibrationOf(held.calibration, result.usage) })))
+    if (mine && result.messages !== undefined) await compacted($, settings, trigger, before, result, idleCompaction)
+    if (e.agentId === undefined) await applyPendingTidyToggle($)
 
+    await evaluateTidy($, settings)
     return result
   })
 
@@ -2199,15 +3048,25 @@ export const register: Register = (on, options) => {
 
   on('session.end', async ($, e, next) => {
     stopSceneClock()
+    tidyEpoch += 1
     stopCountdown()
+    coolingTimer?.cancel()
+    settleTimer?.cancel()
+    coolingTimer = undefined
+    settleTimer = undefined
+    coolingAt = undefined
+    settleAt = undefined
     stopBandClock()
     // The pictures' worlds end with their session; the next drawing starts them afresh.
     stopPictures()
     pictures.clear()
     giantPictures.clear()
     tvGiants.clear()
-    await quietly($, () => tidyTimersGone($))
+    tvFrom = undefined
+    await quietly($, () => tidyTimersGone($, settings))
     sceneEvents = []
+    pinned = {}
+    accessoryGone.clear()
     // Nothing selected, read or trailed outlives its session.
     await quietly($, async () => {
       if ((await read($, selected)) !== null) await update($, selected, () => null)
@@ -2218,9 +3077,11 @@ export const register: Register = (on, options) => {
     await quietly($, () => clearShadows($))
     const asking = [...new Set([...askingCalls].map(id => subagentCalls.get(id)).filter((id): id is string => id !== undefined))]
     clearCalls()
-    if (e.reason !== 'clear') for (const loop of asking) await syncAsking($, loop)
-    if (e.reason === 'clear') {
+    const reset = e.reason === 'clear' || e.reason === 'resume'
+    if (!reset) for (const loop of asking) await syncAsking($, loop)
+    if (reset) {
       mainBusy = undefined
+      await quietly($, () => reviseTidyGate($, held => defined({ ...NO_TIDY_GATE, calibration: held.calibration, pendingToggle: held.pendingToggle, pendingToggleFrom: held.pendingToggleFrom })))
       stopTicking()
       // Reset the board before spending any of the end-hook budget on the HUD.
       await quietly($, async () => {
@@ -2288,7 +3149,7 @@ export const register: Register = (on, options) => {
           // Only for a TV up on that surface: one torn down meanwhile (its agent gone, the session cleared) leaves none behind.
           if (tv.giant && tvUp.has(e.surface)) tvGiants.add(e.surface)
           else tvGiants.delete(e.surface)
-          if (e.surface === 'terminal' && picturesHere === true && !pictureless.has(e.surface)) $.ui.invalidate('ui.render')
+          if (e.surface === 'terminal' && picturesHere !== false && !pictureless.has(e.surface)) $.ui.invalidate('ui.render')
         } else if ('tab' in tv) {
           const tab = HUD_TABS.find(one => one === tv.tab)
           if (tab !== undefined) await selectTab($, tab)
@@ -2311,13 +3172,17 @@ export const register: Register = (on, options) => {
   })
 
   // A TV that failed on a surface: the pane's own inspect view there from now
-  // on; the band's scene that failed, the classic scene there.
+  // on; the pane's or band's scene that failed, the classic scene there.
   on('ui.fault', ($, e, next) => {
     // A picture's hit layer that failed: no pictures there, the scene's own `Client` instead.
     if (e.module === HIT_MODULE) {
       noPictures($, e.surface, e.reason)
 
       return next(e)
+    }
+    if (e.component === 'Pane' && e.element === SCENE_KEY && !sceneFaulted.has(e.surface)) {
+      sceneFaulted.add(e.surface)
+      $.ui.invalidate('ui.render')
     }
     if (e.element === TV_KEY && !tvFaulted.has(e.surface)) {
       tvFaulted.add(e.surface)
@@ -2344,6 +3209,7 @@ export const register: Register = (on, options) => {
     const list = Object.values(all)
     // The workflow agents shown, under the subagents; with the option off, never read.
     const workflow = settings.showWorkflows ? workflowOf(await read($, shadows), all, now) : []
+    if (settings.mascots) pinAccessories(list, workflow, now, settings.scenes)
 
     // A pane that was waiting undrawn (a narrow terminal) is drawn once seated:
     // start the timer then even when there are no agents.
@@ -2361,8 +3227,8 @@ export const register: Register = (on, options) => {
     let hudData: HudData | undefined
     let hudRows = 0
     try {
-      hudData = await hudDataOf($, settings, now)
-      const drawn = renderHudBlock({ Box, Text, Svg: svg }, hudData, layout)
+      hudData = { ...await hudDataOf($, settings, now), tidy: { mode: settings.tidy, pendingToggle: (await read($, tidyGate)).pendingToggle, facts: await read($, tidyFacts) } }
+      const drawn = renderHudBlock({ Box, Text, Svg: svg, Button }, hudData, layout, () => void quietly($, () => pressTidyToggle($, settings)))
       hud = drawn.element
       hudRows = drawn.rowCount
     } catch {
@@ -2387,9 +3253,10 @@ export const register: Register = (on, options) => {
       // A failed todo list leaves the rest.
     }
 
-    // With an agent (or the session) selected, the inspect view takes the
-    // pane under the HUD: its header, its tabs and the tab's rows, which the
-    // pane scrolls. Each tab reads only the facts it draws.
+    // With an agent (or the session) selected, the default inspectView: tv
+    // draws the TV over the pane where it fits; otherwise the inspect view goes
+    // under the HUD: its header, its tabs and the tab's rows, which the pane
+    // scrolls. Each tab reads only the facts it draws.
     const choice = settings.inspect ? await read($, selected) : null
     const kindOf = (id: string): HudSelection['kind'] => (id === 'main' ? 'main' : all[id] === undefined ? 'shadow' : 'agent')
     const needsMain = settings.mascots || choice?.kind === 'main'
@@ -2418,7 +3285,7 @@ export const register: Register = (on, options) => {
             const held = settings.showWorkflows ? await read($, shadows) : {}
             // The files edited, from the facts: kept, and shown here, whatever `showTools` says.
             const edited = (await read($, hudTools)).edited?.length
-            body = overviewRows(overviewOf(usage, main, await read($, ledger), hudData?.inventory?.compactAt, hudData?.session?.startedAt, all, held, now, edited === 0 ? undefined : edited), width)
+            body = overviewRows(overviewOf(usage, main, await read($, ledger), hudData === undefined ? undefined : compactRunway(hudData), hudData?.session?.startedAt, all, held, now, edited), width)
           } else if (usage !== undefined && tab === 'cost') {
             const startedAt = hudData?.session?.startedAt
             body = costRows({ totalUsd: usage.costUsd, duration: startedAt === undefined ? undefined : now - startedAt, models: costTree(await read($, ledger)) }, width, new Set(view.models ?? []))
@@ -2463,7 +3330,7 @@ export const register: Register = (on, options) => {
     // its surface module runs the motion on its own frame clock and the hooks
     // only hand it the scene's inputs. Elsewhere (and with `motion: classic`)
     // the Box/Text scene on the hooks' 250 ms clock.
-    const smooth = settings.motion === 'smooth' && (e.surface === 'terminal' || e.surface === 'desktop') && 'Client' in table
+    const smooth = settings.motion === 'smooth' && (e.surface === 'terminal' || e.surface === 'desktop') && 'Client' in table && !sceneFaulted.has(e.surface)
     // The inspected one's mascot is in the TV, out of the scene; one back from it is shaken a while.
     const away = tvRoom !== undefined && tvShow !== undefined && choice !== null ? choice.id : undefined
     if (startled !== undefined && now - startled.at >= STARTLED_MS) startled = undefined
@@ -2499,8 +3366,8 @@ export const register: Register = (on, options) => {
               ...(agentsOnly ? { only: 'agents' as const } : {}),
               ...(tidyingSince === undefined ? {} : { tidyingSince }),
               ...(word === null ? {} : { word }),
-            })
-            const { Client } = table as { Client: (props: { key: string; module: string; props?: unknown; width?: number; height?: number }) => RenderElement }
+            }, pinned)
+            const Client = clientOf(table)
             // A terminal that shows pictures: the vector art as one, swapped frame by frame; while
             // inspecting none is drawn, its world kept, paused, for when it is back.
             if (await picturedOn($, settings, e.surface, table, props.columns, props.rows)) {
@@ -2515,7 +3382,7 @@ export const register: Register = (on, options) => {
           const frame = await read($, sceneTick)
           if (bodyRows !== undefined) {
             const spare = bodyRows - (hud === undefined ? 0 : hudRows + 1) - listRows - 1
-            const mascots = sceneOf(list, hudData, now, { stalledMs: settings.stalledMs, main, shadows: workflow, scenes: settings.scenes, events: sceneEvents, character: settings.character, ...(agentsOnly ? { only: 'agents' as const } : {}), ...(tidyingSince === undefined ? {} : { tidyingSince }) })
+            const mascots = sceneOf(list, hudData, now, { stalledMs: settings.stalledMs, main, shadows: workflow, pinned, scenes: settings.scenes, events: sceneEvents, character: settings.character, ...(agentsOnly ? { only: 'agents' as const } : {}), ...(tidyingSince === undefined ? {} : { tidyingSince }) })
             const room = {
               columns,
               rows: spare,
@@ -2580,7 +3447,7 @@ export const register: Register = (on, options) => {
       const from = tvFrom?.id === choice.id && top !== undefined ? { x: tvFrom.x, y: top + tvFrom.y - offset, ...(tvFrom.mini === true ? { mini: true as const } : {}) } : undefined
       // Pressed in flight, it wears its propeller cap in the TV too.
       const flying = tvFrom?.id === choice.id && tvFrom.cap === true
-      const mascots = settings.mascots ? sceneOf(list, hudData, now, { stalledMs: settings.stalledMs, main, shadows: workflow, scenes: settings.scenes, character: settings.character }) : undefined
+      const mascots = settings.mascots ? sceneOf(list, hudData, now, { stalledMs: settings.stalledMs, main, shadows: workflow, pinned, scenes: settings.scenes, character: settings.character }) : undefined
       const who: Who = { ...tvWhoOf(choice, mascots, settings.character), ...(flying ? { cap: true as const } : {}) }
       // Grown into the giant in a terminal that shows pictures: the giant one, smooth, under the module's glass.
       const pictured = tvGiants.has(e.surface) && (await picturedOn($, settings, e.surface, table, tvRoom.width, tvRoom.height))
@@ -2603,7 +3470,7 @@ export const register: Register = (on, options) => {
         // Pictured, the casing's colour as the picture has it (the scheme's own, not the terminal theme's), for the glass's edge rows.
         ...(pictured ? { pictured: true as const, casing: rawColour(casingOf(who), await schemeFor($, now)) } : {}),
       }
-      const { Client } = table as { Client: (props: { key: string; module: string; props?: unknown; width?: number; height?: number }) => RenderElement }
+      const Client = clientOf(table)
       tv = (
         <Box key="tv-layer" position="absolute" top={offset} left={0} width={columns} height={bodyRows}>
           {giant}
@@ -2649,9 +3516,14 @@ export const register: Register = (on, options) => {
   // The band above the prompt: the session's mascot in its yard (the
   // `sessionMascot` option, with mascots on) and what tidying up has to say
   // beside it, with Tidy up and Not now while one is offered or counting down.
-  // Neither, or a survey holding the band: the engine's own.
+  // Neither, or a survey holding the band: pass the drawing beneath through.
+  // Otherwise keep another plugin's drawing under the band's rows, nearest the prompt; leave the engine's own out.
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
-    if (e.props.hasSurvey) return next(e)
+    if (e.props.hasSurvey) {
+      noteBandMascot($, e.surface, false)
+
+      return next(e)
+    }
     const table = $.ui.resolve(e)
     const { Box, Text, Button } = table
     // The band's clock redraws the countdown, the time a tidy has run and a result as it expires.
@@ -2664,9 +3536,10 @@ export const register: Register = (on, options) => {
     } catch {
       // A tidy that cannot be read leaves the mascot alone.
     }
-    const lines = shown === undefined ? [] : bandLinesOf(shown, now)
-    // The mascot walks the band's width above the prompt, what tidying up says beside it.
-    const yardColumns = lines.length > 0 ? Math.max(Math.min(columns, YARD_COLUMNS), columns - TIDY_COLUMNS) : columns
+    const tidyColumns = Math.max(0, Math.min(columns, TIDY_COLUMNS))
+    const lines = shown === undefined ? [] : bandLinesOf(shown, now, tidyColumns)
+    // At narrow widths the copy keeps its 48-column slot; the optional yard gives way.
+    const yardColumns = lines.length > 0 ? columns >= YARD_COLUMNS + TIDY_COLUMNS + 1 ? columns - TIDY_COLUMNS - 1 : 0 : columns
     let yard: RenderElement | undefined
     if (settings.mascots && settings.sessionMascot === 'band' && yardColumns >= SLOT) {
       try {
@@ -2679,18 +3552,21 @@ export const register: Register = (on, options) => {
     if (yard === undefined && shown === undefined) return next(e)
 
     // Something timed shown (a tidy running, counting down, its result): the band's clock redraws it.
-    if (shown !== undefined && shown.kind !== 'offer') startBandClock($, settings)
-    const asking = shown?.kind === 'offer' || shown?.kind === 'countdown'
+    if (e.surface === 'terminal' && shown !== undefined) bandDrawnAt = now
+    if (bandHasClock(shown, now)) startBandClock($, settings)
+    else stopBandClock()
+    const asking: 'offer' | 'waiting' | 'countdown' | undefined = shown?.kind === 'offer' || shown?.kind === 'countdown' || shown?.kind === 'waiting' ? shown.kind : undefined
+    const labels = asking === undefined ? [] : tidyButtonLabels(asking, (await attempt(() => read($, tidyGate)))?.pendingToggle ?? settings.tidy, tidyColumns)
     const runs = (line: ReturnType<typeof bandLinesOf>[number]) =>
       line.filter(run => run.text !== '').map(({ text, color, dim, bold }, index) => (
         <Text key={`run:${index}`} {...defined({ color, dimColor: dim, bold })}>{text}</Text>
       ))
 
-    return (
-      <Box key="band" flexDirection="row" flexShrink={0}>
+    const band = (
+      <Box key="band" flexDirection="row" gap={yard === undefined || lines.length === 0 ? 0 : 1} flexShrink={0}>
         {yard !== undefined && <Box key="band:yard" width={yardColumns} height={GRID_ROWS} flexShrink={0}>{yard}</Box>}
         {lines.length > 0 && (
-          <Box key="band:tidy" flexDirection="column" flexGrow={1} paddingLeft={yard === undefined ? 0 : 1} justifyContent="flex-end">
+          <Box key="band:tidy" width={tidyColumns} flexShrink={0} flexDirection="column" justifyContent="flex-end">
             {lines.map((line, index) => (
               <Box key={`tidy:${index}`} height={1} flexShrink={0}>
                 <Text wrap="truncate-end">{runs(line)}</Text>
@@ -2698,13 +3574,27 @@ export const register: Register = (on, options) => {
             ))}
             {asking && (
               <Box key="tidy:buttons" flexDirection="row" gap={1} height={1} flexShrink={0}>
-                <Button key="tidy:now" label={shown?.kind === 'countdown' ? 'Tidy up now' : 'Tidy up'} onPress={() => void quietly($, () => tidyNow($, settings))} />
-                <Button key="tidy:later" label="Not now" onPress={() => void dismissTidy($)} />
+                {labels.map((label, index) => {
+                  const key = label === 'Cancel' || label === 'Not now' ? 'tidy:later' : label.startsWith('Turn auto') ? 'tidy:auto' : 'tidy:now'
+
+                  return (
+                    <Box key={`tidy:button:${index}`} width={displayWidth(label) + 4} flexShrink={0}>
+                      <Button key={key} label={label} onPress={() => void quietly($, async () => {
+                        if (key === 'tidy:now') await pressTidyNow($, settings)
+                        else if (key === 'tidy:later') await pressTidyCancel($, settings)
+                        else await pressTidyToggle($, settings)
+                      })} />
+                    </Box>
+                  )
+                })}
               </Box>
             )}
           </Box>
         )}
       </Box>
     )
+    const beneath = await next(e)
+
+    return beneath.type === 'engine' ? band : <Box flexDirection="column" flexShrink={0}>{band}{beneath}</Box>
   })
 }

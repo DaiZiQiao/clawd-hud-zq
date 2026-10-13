@@ -1,11 +1,16 @@
 import type { BoxProps, ButtonProps, ElementConstructor, RenderElement, SvgProps, TextProps } from 'claude-code'
 
 import type { HudData, HudGit, HudLayout, HudRateLimit, HudTodo, HudUsage } from '../types'
-import { CACHE_TTL_MS, contextGrowth, limitEta, turnsUntil } from './facts'
+import { CACHE_TTL_MS, cacheCoolAt, contextGrowth, limitEta, shortModel, turnsUntil } from './facts'
 import { isNumber } from './state-json'
 import { renderTextRow } from './text-svg'
 import type { TextCell, TextSpan } from './text-svg'
-import { displayWidth, pad2, padEnd, padStart, truncate, truncateStart } from './text-width'
+import { displayWidth, pad2, padEnd, padStart, printable, truncate, truncateStart } from './text-width'
+import { bandTidyOf, fitTidyText, formatTidyCost, tidyToggleLabel } from './tidy'
+import type { BandTidy } from './tidy'
+import { TIDY_FEEDBACK_REASONS } from './tidy-policy'
+
+export { cacheCoolAt } from './facts'
 
 // The HUD drawn at the top of the mod-hud pane: pure functions from one
 // `HudData` to a tree, plus the plain-text status line. Layout and rationale:
@@ -21,6 +26,7 @@ export type HudElements = {
   Box: ElementConstructor<BoxProps>
   Text: ElementConstructor<TextProps>
   Svg?: ElementConstructor<SvgProps>
+  Button?: ElementConstructor<ButtonProps>
 }
 
 // Theme keys, so the HUD follows the person's theme on dark and light alike.
@@ -48,7 +54,7 @@ export const NARROW_GUTTER = 6
 export const SUB_WIDTH = 8
 export const NARROW_SUB_WIDTH = 7
 /** Wide, a text row's second value starts this many cells into the value column (cell 37 of the card). */
-export const SECOND_VALUE_AT = 19
+const SECOND_VALUE_AT = 19
 /** Every wide bar is this many cells: context, cache and rate limits alike. */
 export const BAR_WIDTH = 20
 /** Narrow bars: this many cells below 60 columns... */
@@ -58,8 +64,6 @@ export const SMALL_BAR_WIDTH = 8
 const SMALL_BELOW = 44
 /** ...and none at this many columns and under: `used   41%`. */
 export const BARLESS_AT = 36
-/** The todo section's bar: 10 cells wide, as narrow. */
-export const TODO_BAR_WIDTH = 10
 const FILL = '━'
 const TRACK = '─'
 const PERCENT_WIDTH = 4
@@ -77,10 +81,6 @@ const STATUS_MAX = 100
 const DAY_MS = 86_400_000
 /** The usage section's `$ / h` waits for this much of a session: earlier, the rate is noise. */
 const RATE_AFTER_MS = 5 * 60_000
-/** The cache cools (the alert strip says so, the row turns `warning`) inside this much of its TTL... */
-export const CACHE_COOL_MS = 2 * 60_000
-/** ...or this share of it, whichever is less: two minutes of an hour, one of five minutes. */
-export const CACHE_COOL_SHARE = 0.2
 
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
@@ -92,10 +92,7 @@ const LIMITS: readonly { kind: HudRateLimit['kind']; label: string; rank: number
 ]
 
 // Text from the world (a branch, a todo, a motto) is one line of printable text.
-const clean = (text: unknown): string =>
-  typeof text === 'string'
-    ? text.replace(/[\u0000-\u001f\u007f-\u009f\u2028\u2029]+/g, ' ').replace(/ {2,}/g, ' ').trim()
-    : ''
+const clean = (text: unknown): string => (typeof text === 'string' ? printable(text) : '')
 
 const countOf = (value: unknown): number => (isNumber(value) && value > 0 ? Math.floor(value) : 0)
 
@@ -190,12 +187,9 @@ export const barWidthFor = (columns: number, isNarrow: boolean): number => {
   return columns < SMALL_BELOW ? SMALL_BAR_WIDTH : NARROW_BAR_WIDTH
 }
 
-/** `claude-opus-5-5[1m]` reads `opus 5.5`; anything else passes through. */
+/** Claude ids, including Bedrock and Vertex forms, read as family and version (`opus 5.5`); other names stay printable. */
 export const modelLabel = (model: string): string => {
-  const base = clean(model)
-    .replace(/\[[^\]]*\]$/, '')
-    .replace(/^claude-/, '')
-    .replace(/-\d{8}$/, '')
+  const base = shortModel(clean(model)) ?? ''
   const named = /^([a-z]+)-(\d+)(?:-(\d+))?$/.exec(base)
   if (named === null) return base
 
@@ -252,8 +246,10 @@ export const formatAgo = (ms: number): string => {
 }
 
 /** Time left on a countdown, rounded up: `45s` under a minute, then `2m`, `42m`, `1h`. */
-export const formatLeft = (ms: number): string => {
+export const formatLeft = (ms: number, style?: 'clock' | 'span'): string => {
   const seconds = isNumber(ms) && ms > 0 ? Math.ceil(ms / 1000) : 0
+  if (style === 'clock') return `${Math.floor(seconds / 60)}:${pad2(seconds % 60)}`
+  if (style === 'span') return seconds < 60 ? `${seconds}s` : `${Math.floor(seconds / 60)}m${pad2(seconds % 60)}s`
   if (seconds < 60) return `${seconds}s`
   const minutes = Math.ceil(seconds / 60)
 
@@ -320,9 +316,6 @@ const todoItemsOf = (data: HudData): HudTodo[] =>
 /** The prompt cache as the context section draws it: its TTL, and the time left on it (0 once cold). */
 export type CacheState = { ttl: '5m' | '1h'; ttlMs: number; leftMs: number; cooling: boolean; assumed?: true }
 
-/** How close to cold the cache counts as cooling: CACHE_COOL_MS, or CACHE_COOL_SHARE of a shorter TTL. */
-export const cacheCoolAt = (ttlMs: number): number => Math.min(CACHE_COOL_MS, ttlMs * CACHE_COOL_SHARE)
-
 /** The cache's state now; undefined before a main request answered, or with no TTL. */
 export const cacheStateOf = (data: HudData): CacheState | undefined => {
   const cache = data.cache
@@ -338,7 +331,7 @@ export const cacheStateOf = (data: HudData): CacheState | undefined => {
 
 type Style = { color?: string; bold?: boolean; dimColor?: boolean; italic?: boolean }
 type Span = { text: string; style?: Style }
-type Row = { id: string; rank: number; spans: Span[] }
+type Row = { id: string; rank: number; spans: Span[]; toggleAt?: number }
 
 /** Where a row's value draws: free text runs to `card`, right-hand cells end at `edge`. */
 type Room = { card: number; edge: number }
@@ -517,6 +510,49 @@ const rewritesOf = (data: HudData): string => {
   return isNumber(tokens) && tokens > 0 ? `next turn rewrites ${formatTokens(tokens)}` : ''
 }
 
+const hudTidyOf = (data: HudData): BandTidy | undefined => bandTidyOf({
+  mode: data.tidy?.mode ?? 'auto', at: 0, tokens: data.usage?.contextTokens,
+  main: {}, tidy: data.tidy?.facts ?? {}, now: data.now, scheduled: true,
+})
+
+/** A permanent control, even before the first context measurement. */
+const tidyRow = (data: HudData, { card }: Room): Span[] => {
+  const mode = data.tidy?.mode ?? 'auto'
+  const pendingToggle = data.tidy?.pendingToggle
+  const shown = hudTidyOf(data)
+  const feedback = pendingToggle === undefined ? shown?.kind === 'toggle' ? shown.reason : shown?.kind === 'offer' || shown?.kind === 'waiting' || shown?.kind === 'countdown' ? shown.feedback : undefined : undefined
+  let state = 'nothing due'
+  let style: Style = { dimColor: true }
+  let pending = false
+  if (shown?.kind === 'tidying' || shown?.kind === 'tidied' || shown?.kind === 'failed') {
+    style = { color: shown.kind === 'failed' ? WARN : shown.kind === 'tidied' ? GOOD : ACCENT }
+    state = shown.kind === 'failed' ? `not tidied: ${clean(shown.reason)}` : shown.kind === 'tidied' ? 'tidied' : 'tidying up'
+  } else if (pendingToggle !== undefined && pendingToggle !== mode) {
+    pending = true
+    state = pendingToggle === 'ask' ? TIDY_FEEDBACK_REASONS.pendingOff : TIDY_FEEDBACK_REASONS.pendingOn
+    style = { color: ACCENT }
+  } else if (shown?.kind === 'countdown') {
+    state = `tidy in ${formatLeft(shown.leftMs, 'clock')}`
+    style = { color: ACCENT }
+  } else if (feedback !== undefined) {
+    state = `not saved: ${clean(feedback)}`
+    style = { color: WARN }
+  } else if (shown?.kind === 'waiting') {
+    state = `waiting: ${shown.reason}`
+    style = { color: ACCENT }
+  } else if (shown?.kind === 'offer') {
+    state = shown.decision?.saving === undefined ? `tidy up${shown.tokens === undefined ? '' : ` ${formatTokens(shown.tokens)}`}?` : `save ≈${formatTidyCost(shown.decision.saving)}`
+    style = { color: ACCENT }
+  }
+  const toggle = tidyToggleLabel(pendingToggle ?? mode)
+  // Plain buttons take their label's cells, so the verb stays whole at 48 columns.
+  const room = Math.max(0, card - displayWidth(toggle) - 1)
+  const value = fitTidyText(pending ? state : `${mode} · ${clean(state)}`, room)
+  const label = truncate(toggle, Math.max(0, card - displayWidth(value) - (value === '' ? 0 : 1)))
+
+  return [{ text: value, style }, ...(value === '' ? [] : [plain(' ')]), dim(label)]
+}
+
 /** What needs attention now, most severe first; empty when nothing does. */
 export const alertsOf = (data: HudData): HudAlert[] => {
   const alerts: HudAlert[] = []
@@ -534,6 +570,9 @@ export const alertsOf = (data: HudData): HudAlert[] => {
 
   const stalled = countOf(data.alerts?.stalled)
   if (stalled > 0) alerts.push({ id: 'stalled', text: `${plural(stalled, 'agent')} stalled`, color: WARN })
+
+  const tidy = hudTidyOf(data)
+  if (tidy?.kind === 'countdown') alerts.push({ id: 'tidy', text: `auto-tidy in ${formatLeft(tidy.leftMs, 'clock')}`, color: ACCENT })
 
   const runway = compactRunway(data)
   if (runway !== undefined && runway <= COMPACT_SOON_TURNS) alerts.push({ id: 'compact', text: `compact in ~${plural(runway, 'turn')}`, color: WARN })
@@ -835,6 +874,7 @@ export const RANKS = {
   'context.used': 90,
   'session.now': 70,
   'context.cache': 65,
+  'context.tidy': 64,
   'usage.cost': 60,
   'session.branch': 45,
   'session.repo': 44,
@@ -865,6 +905,7 @@ export const rowsOf = (data: HudData, layout: HudLayout): Row[] => {
     { id: 'context.used', rank: RANKS['context.used'], section: 'context', sub: 'used', draw: room => usedRow(data, room, look) },
     { id: 'context.growth', rank: RANKS['context.growth'], section: 'context', sub: 'growth', draw: room => growthRow(data, room, look) },
     { id: 'context.cache', rank: RANKS['context.cache'], section: 'context', sub: 'cache', draw: room => cacheRow(data, room, look) },
+    { id: 'context.tidy', rank: RANKS['context.tidy'], section: 'context', sub: 'tidy', draw: room => tidyRow(data, room) },
     ...LIMITS.map(({ kind, label, rank }): Line => ({ id: `limits.${label}`, rank, section: 'limits', sub: label, draw: room => limitRow(data, kind, room, look) })),
     { id: 'usage.cost', rank: RANKS['usage.cost'], section: 'usage', sub: 'cost', draw: room => costRow(data, room, look) },
     { id: 'usage.last', rank: RANKS['usage.last'], section: 'usage', sub: 'last', draw: room => lastRow(data, room, look) },
@@ -882,7 +923,8 @@ export const rowsOf = (data: HudData, layout: HudLayout): Row[] => {
 
     return spans !== undefined && widthOf(spans) > 0 ? [{ line, spans }] : []
   })
-  // The motto is the HUD's last row, never a HUD of its own: with nothing else known, nothing is drawn.
+  // The tidy control normally keeps the HUD drawn. Below about 14 columns,
+  // if it has no cells left, a motto alone still does not make a HUD.
   if (drawn.every(one => one.line.id === 'motto')) return []
 
   // One blank row between the header and alerts and the sections, when both draw.
@@ -893,7 +935,7 @@ export const rowsOf = (data: HudData, layout: HudLayout): Row[] => {
     : drawn
 
   const budget = isNumber(layout.rows) ? Math.max(MIN_ROWS, Math.floor(layout.rows / 2)) : Number.POSITIVE_INFINITY
-  const keptIds = new Set([...withGap].sort((a, b) => b.line.rank - a.line.rank).slice(0, budget).map(one => one.line.id))
+  const keptIds = new Set(['context.tidy', ...[...withGap].filter(one => one.line.id !== 'context.tidy').sort((a, b) => b.line.rank - a.line.rank).slice(0, budget - 1).map(one => one.line.id)])
   const kept = withGap.filter(one => keptIds.has(one.line.id))
   // A blank row with nothing under it (or over it) goes too.
   const shown = kept.filter((one, index) => one.line.id !== 'gap' || (index > 0 && kept.slice(index + 1).some(other => other.line.section !== undefined)))
@@ -913,7 +955,7 @@ export const rowsOf = (data: HudData, layout: HudLayout): Row[] => {
     labelled.add(line.section)
     const prefix: Span[] = [plain(padEnd(` ${label}`, look.gutter)), dim(padEnd(line.sub ?? '', look.sub))]
 
-    return [{ id: line.id, rank: line.rank, spans: [...prefix, ...value] }]
+    return [{ id: line.id, rank: line.rank, spans: [...prefix, ...value], ...(line.id === 'context.tidy' ? { toggleAt: prefix.length + value.length - 1 } : {}) }]
   })
 }
 
@@ -937,17 +979,21 @@ const merged = (spans: readonly Span[]): Span[] =>
  * one Text cut to `layout.columns`, or with `ui.Svg` the row in pixels; the
  * blank `hud:gap` an empty Box a row high. Its root never shrinks.
  */
-export const renderHudBlock = (ui: HudElements, data: HudData, layout: HudLayout): { element?: RenderElement; rowCount: number } => {
+export const renderHudBlock = (ui: HudElements, data: HudData, layout: HudLayout, onToggleTidy?: () => void): { element?: RenderElement; rowCount: number } => {
   const rows = rowsOf(data, layout)
   if (rows.length === 0) return { rowCount: 0 }
-  const { Box, Text, Svg } = ui
+  const { Box, Text, Svg, Button } = ui
+  const hasToggle = (row: Row): boolean => row.toggleAt !== undefined && Button !== undefined && onToggleTidy !== undefined
+  const cellsOf = (row: Row): TextCell[] => hasToggle(row)
+    ? row.spans.map((span, index): TextCell => index === row.toggleAt ? { button: { key: 'hud:tidy:auto', label: span.text, dimColor: true, onPress: () => onToggleTidy?.() } } : { text: span.text, ...span.style })
+    : merged(row.spans).map(span => ({ text: span.text, ...span.style }))
   const blank = (row: Row) => <Box key={`hud:${row.id}`} height={1} flexShrink={0} />
   if (Svg !== undefined) {
     const element = (
       <Box key="hud" flexDirection="column" flexShrink={0}>
         {rows.map(row => (row.spans.length === 0
           ? blank(row)
-          : renderTextRow({ Box, Svg }, { key: `hud:${row.id}`, cells: merged(row.spans).map(span => ({ text: span.text, ...span.style })) })))}
+          : renderTextRow({ Box, Svg, Button }, { key: `hud:${row.id}`, cells: cellsOf(row) })))}
       </Box>
     )
 
@@ -958,7 +1004,14 @@ export const renderHudBlock = (ui: HudElements, data: HudData, layout: HudLayout
     <Box key="hud" flexDirection="column" flexShrink={0}>
       {rows.map(row => (row.spans.length === 0
         ? blank(row)
-        : (
+        : hasToggle(row) && Button !== undefined ? (
+            <Box key={`hud:${row.id}`} height={1} flexShrink={0}>
+              <Box flexShrink={0}><Text>{merged(row.spans.slice(0, row.toggleAt)).map(span => span.style === undefined ? span.text : <Text {...span.style}>{span.text}</Text>)}</Text></Box>
+              <Box width={displayWidth(row.spans[row.toggleAt ?? -1]?.text ?? '')} flexShrink={0}>
+                <Button key="hud:tidy:auto" label={row.spans[row.toggleAt ?? -1]?.text ?? ''} plain dimColor onPress={() => onToggleTidy?.()} />
+              </Box>
+            </Box>
+          ) : (
             <Box key={`hud:${row.id}`} flexShrink={0}>
               <Text wrap="truncate-end">
                 {merged(row.spans).map(span => (span.style === undefined ? span.text : <Text {...span.style}>{span.text}</Text>))}
@@ -1031,14 +1084,14 @@ export const statusLineText = (data: HudData, skip: readonly string[] = []): str
 export const TODO_ROWS = 6
 
 /** The label row's Button: `▸` folded, `▾` listing the items. */
-export const TODO_OPEN = '▸'
-export const TODO_FOLD = '▾'
+const TODO_OPEN = '▸'
+const TODO_FOLD = '▾'
 
 const TODO_GLYPH: Record<HudTodo['status'], string> = { in_progress: '◐', pending: '☐', completed: '☑' }
 const TODO_ORDER: Record<HudTodo['status'], number> = { in_progress: 0, pending: 1, completed: 2 }
 
-/** Below this many columns the section takes the narrow gutter, as the HUD does. */
-const TODO_NARROW_BELOW = 60
+/** Below this many columns the pane uses its narrow layout: the HUD, todos, inspect header and trail. */
+export const NARROW_BELOW = 60
 
 /**
  * One row of the TODO section: its text (cut to the pane) and its state. The
@@ -1047,11 +1100,8 @@ const TODO_NARROW_BELOW = 60
  */
 export type TodoRow = { key: string; text: string; status?: HudTodo['status']; more?: number; spans?: TextSpan[]; toggle?: string; toggleAt?: number }
 
-/** The progress bar's cells: 10, 8 below 44 columns, none at 36 and under. */
-const todoBarWidth = (columns: number): number => (columns <= BARLESS_AT ? 0 : columns < SMALL_BELOW ? SMALL_BAR_WIDTH : TODO_BAR_WIDTH)
-
 /** Where the section's bar and items start: the HUD's gutter wide (10 cells), two past the toggle narrow (8). */
-export const todoIndent = (columns: number): number => (columns < TODO_NARROW_BELOW ? NARROW_GUTTER + 2 : GUTTER)
+const todoIndent = (columns: number): number => (columns < NARROW_BELOW ? NARROW_GUTTER + 2 : GUTTER)
 
 const itemText = (item: HudTodo): string =>
   item.status === 'in_progress' ? clean(item.activeForm) || clean(item.content) : clean(item.content)
@@ -1063,7 +1113,7 @@ const itemText = (item: HudTodo): string =>
 const todoLabelRow = (items: readonly HudTodo[], width: number, expanded: boolean): TodoRow => {
   const total = items.length
   const done = items.filter(item => item.status === 'completed').length
-  const cells = todoBarWidth(width)
+  const cells = barWidthFor(width, true)
   const filled = filledOf((done / Math.max(1, total)) * 100, cells)
   const toggle = expanded ? TODO_FOLD : TODO_OPEN
   const lead = ' todo '

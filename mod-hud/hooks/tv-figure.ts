@@ -3,6 +3,7 @@ import type { Look } from './mascot-poses'
 import { ACCESSORIES, CROWN, FLYING_CAP, HAT_X } from './mascot-sprites'
 import type { Accessory } from './mascot-sprites'
 import { ACCENT } from './scene-model'
+import { QUADRANTS } from './scene-svg'
 import type { Grid, MascotAgent } from './scene-types'
 import { dressOfAgent, usagiFigure } from './usagi-glyphs'
 import type { Dress } from './usagi-glyphs'
@@ -60,9 +61,6 @@ export const whoOfAgent = (agent: MascotAgent, character: 'clawd' | 'usagi'): Wh
 
 // --- quarters ------------------------------------------------------------------
 
-/** A quadrant glyph's quarters: top-left 1, top-right 2, bottom-left 4, bottom-right 8. */
-const MASKS: Readonly<Record<string, number>> = { '▘': 1, '▝': 2, '▀': 3, '▖': 4, '▌': 5, '▞': 6, '▛': 7, '▗': 8, '▚': 9, '▐': 10, '▜': 11, '▄': 12, '▙': 13, '▟': 14, '█': 15 }
-
 const blank = (width: number, height: number): string[][] => Array.from({ length: height }, () => Array.from({ length: width }, () => '.'))
 
 /** Keys for raw colours past the body's: one letter each, in the order met. */
@@ -73,7 +71,7 @@ const KEYS = 'abcdefghijlnoqrstuvwxyz'
  * (its background in the rest, for a cell of two colours); anything else (a
  * letter, a star, a flower) is left out: the giant wears its own.
  */
-export const quartersOf = (grid: Grid, body: string): Figure => {
+const quartersOf = (grid: Grid, body: string): Figure => {
   const rows = blank(Math.max(0, ...grid.map(row => row.length)) * 2, grid.length * 2)
   const palette: Record<string, string> = { '#': body }
   const keyOf = (colour: string): string => {
@@ -86,7 +84,7 @@ export const quartersOf = (grid: Grid, body: string): Figure => {
     return key
   }
   grid.forEach((row, y) => row.forEach((cell, x) => {
-    const mask = cell === undefined ? undefined : MASKS[cell.ch]
+    const mask = cell === undefined ? undefined : QUADRANTS[cell.ch]
     if (cell === undefined || mask === undefined) return
     const ink = keyOf(cell.colour)
     const ground = cell.bg === undefined ? undefined : keyOf(cell.bg)
@@ -101,7 +99,7 @@ export const quartersOf = (grid: Grid, body: string): Figure => {
 }
 
 /** A figure's quarters from (x, y), `width` by `height`. */
-export const cropped = (figure: Figure, x: number, y: number, width: number, height: number): Figure => ({
+const cropped = (figure: Figure, x: number, y: number, width: number, height: number): Figure => ({
   bitmap: Array.from({ length: height }, (_, row) => Array.from({ length: width }, (_, column) => figure.bitmap[y + row]?.[x + column] ?? '.').join('')),
   palette: figure.palette,
 })
@@ -276,7 +274,7 @@ const lay = (canvas: Canvas, art: readonly string[], palette: Palette, x: number
 const figureOf = (canvas: Canvas): Figure => {
   const rename = new Map<string, string>()
   const palette: Record<string, string> = {}
-  const free = [...'abcdefghijlnoqrstuvwxyz']
+  const free = [...KEYS]
   for (const key of Object.keys(canvas.palette)) {
     const one = key.length === 1 ? key : free.find(letter => canvas.palette[letter] === undefined && !rename.has(letter) && ![...rename.values()].includes(letter)) ?? 'z'
     rename.set(key, one)
@@ -316,7 +314,7 @@ const blocks = (glyphs: string): Stencil => {
 
   return (x, y) => {
     if (x < 0 || y < 0 || y >= 16) return false
-    const mask = MASKS[cells[Math.floor(x / 8)] ?? ''] ?? 0
+    const mask = QUADRANTS[cells[Math.floor(x / 8)] ?? ''] ?? 0
 
     return (mask & (1 << ((y >= 8 ? 2 : 0) + (x % 8 >= 4 ? 1 : 0)))) !== 0
   }
@@ -332,7 +330,7 @@ const PETALS = [0, 1, 2, 3, 4].map(at => -Math.PI / 2 + (at * 2 * Math.PI) / 5)
  * a bowtie's two bars crossed, the halo's three arcs, two notes on a beam,
  * four balloons on a cross), each in the one colour the scene draws it in.
  */
-export const WEAR: Readonly<Record<Accessory | 'crown', Stencil>> = {
+const WEAR: Readonly<Record<Accessory | 'crown', Stencil>> = {
   crown: blocks(CROWN.art),
   beanie: blocks(ACCESSORIES.beanie.art),
   cap: blocks(ACCESSORIES.cap.art),
@@ -345,7 +343,7 @@ export const WEAR: Readonly<Record<Accessory | 'crown', Stencil>> = {
 }
 
 /** The propeller's blade, turning a frame at a time: `+` then `x`, as the font draws them in a cell's middle (its pixels 8 to 16 across). */
-export const BLADES: readonly Stencil[] = [
+const BLADES: readonly Stencil[] = [
   any(stroke(12, 5.2, 12, 12.2, 1.3), stroke(8.6, 8.7, 15.4, 8.7, 1.3)),
   any(stroke(9.3, 5.7, 14.7, 12.3, 1.3), stroke(14.7, 5.7, 9.3, 12.3, 1.3)),
 ]
@@ -388,7 +386,7 @@ const sampled = (stencil: Stencil, from: Box, w: number, h: number): string[] =>
   }).join(''))
 
 /** A stencil over the scene's three cells (and `rows` of them) drawn `k` quarters to the scene's one: 6k by 2k quarters a row. */
-export const wornAt = (stencil: Stencil, k: number, rows: 1 | 2 = 1): string[] => sampled(stencil, { x: 0, y: 0, w: 24, h: 16 * rows }, 6 * k, 2 * k * rows)
+const wornAt = (stencil: Stencil, k: number, rows: 1 | 2 = 1): string[] => sampled(stencil, { x: 0, y: 0, w: 24, h: 16 * rows }, 6 * k, 2 * k * rows)
 
 /**
  * Clawd's eyes on the giant, in quarters across and down: the scene's
@@ -406,9 +404,12 @@ export const clawdEyesOf = (bodyCells: number, eyes: Eyes): { w: number; h: numb
 export const usagiEyesOf = (eyes: Eyes): { w: number; h: number } => (eyes === 'wide' ? { w: 6, h: 4 } : { w: 4, h: 2 })
 
 /** Where each part of a face stands across its body, as a fraction of its width: Clawd's eyes, Usagi's eyes and cheeks. */
-const CLAWD_EYES = [0.27, 0.73] as const
-const USAGI_EYES = [0.34, 0.66] as const
-const USAGI_CHEEKS = [0.2, 0.8] as const
+export const CLAWD_EYES = [0.27, 0.73] as const
+export const USAGI_EYES = [0.34, 0.66] as const
+export const USAGI_CHEEKS = [0.2, 0.8] as const
+
+/** Where Clawd's legs stand across its body, as a fraction of its width. */
+export const CLAWD_LEGS = [1 / 12, 3 / 12, 8 / 12, 10 / 12] as const
 
 /**
  * Clawd as the TV: its body (the casing), the TV on its forehead (`shape.tv`,
@@ -438,7 +439,7 @@ const giantClawd = (who: Who, shape: Shape, eyes: Eyes, spin: number): Figure =>
   fill(canvas, width - 1, armY + 1, 1, 1, '.')
   // Its legs, from under the body to the box's floor.
   const legW = shape.body.w >= 40 ? 4 : 2
-  for (const at of [1 / 12, 3 / 12, 8 / 12, 10 / 12]) fill(canvas, x0 + even(bw * at), y0 + bh, legW, height - y0 - bh, '#')
+  for (const at of CLAWD_LEGS) fill(canvas, x0 + even(bw * at), y0 + bh, legW, height - y0 - bh, '#')
   // Its eyes, a row under the TV (scared, wider, from that row's middle).
   if (eyes !== 'shut') {
     const eye = clawdEyesOf(shape.body.w, eyes)

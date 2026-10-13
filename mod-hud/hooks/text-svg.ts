@@ -39,7 +39,7 @@ export type RowSvg = { source: string; alt: string; width: number; height: numbe
 export type TextSvgElements = { Box: ElementConstructor<BoxProps>; Svg: ElementConstructor<SvgProps>; Button?: ElementConstructor<ButtonProps> }
 
 /** How strong dim text is drawn. */
-export const DIM_OPACITY = '.55'
+const DIM_OPACITY = '.55'
 
 /** A bar's cells as rects: the fill (`━`) thick, the track (`─`) a line, both on the cell's middle. */
 export const BAR_RECTS: Readonly<Record<'━' | '─', { y: number; height: number }>> = { '━': { y: 7, height: 3 }, '─': { y: 8, height: 1 } }

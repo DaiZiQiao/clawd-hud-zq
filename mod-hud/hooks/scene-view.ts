@@ -1,7 +1,7 @@
 import { STARTLED_MS } from './mascot-poses'
 import { BODY_WIDTH, BODY_X, BOX_ROWS, MINI } from './mascot-sprites'
 import type { Rect } from './motion-physics'
-import { KNOCKED_TICKS, LOOP_ROWS, LOOP_TICKS, clamp, frameAt } from './motion-rules'
+import { CONTACT_COOLDOWN_MS, LOOP_ROWS, LOOP_TICKS, clamp, frameAt, isKnocked } from './motion-rules'
 import type { Memo, Motion } from './motion-types'
 import { sceneFromInputs } from './scene-model'
 import { SCENE_FRAME_MS } from './scene-phases'
@@ -13,8 +13,6 @@ import type { World } from './scene-world'
 // (hooks/scene-plan.ts) for the frame and the next, and each mascot glided
 // between them (across, in depth, up a hop's arc, through a flier's loop) or
 // where the person's body has it. hooks/scene-world.ts keeps the world.
-
-export const CHOREO_MS = SCENE_FRAME_MS
 
 /** A dangling mascot kicks its legs every 120 ms; a propeller turns every 125. */
 const KICK_MS = 120
@@ -63,16 +61,16 @@ export const sceneAt = (world: World, now: number): MascotScene => sceneFromInpu
 /** The world's one contact history, in ms; predicted plans never commit contacts. */
 export const rememberContacts = (world: World): void => {
   for (const [pair, at] of world.cur?.contacts ?? []) {
-    const ms = at * CHOREO_MS
+    const ms = at * SCENE_FRAME_MS
     if (ms <= world.sceneNow) world.contacts.set(pair, Math.max(ms, world.contacts.get(pair) ?? -Infinity))
   }
-  for (const [pair, ms] of world.contacts) if (world.sceneNow - ms >= 30_000) world.contacts.delete(pair)
+  for (const [pair, ms] of world.contacts) if (world.sceneNow - ms >= CONTACT_COOLDOWN_MS.rare) world.contacts.delete(pair)
 }
 
 export const planAt = (world: World, tick: number, previous: MascotPlan | undefined): MascotPlan | undefined => {
   const contacts = new Map(previous?.contacts)
-  for (const [pair, ms] of world.contacts) contacts.set(pair, Math.max(ms / CHOREO_MS, contacts.get(pair) ?? -Infinity))
-  return mascotPlan(sceneAt(world, tick * CHOREO_MS), layoutAt(world, tick), previous === undefined ? undefined : { ...previous, contacts })
+  for (const [pair, ms] of world.contacts) contacts.set(pair, Math.max(ms / SCENE_FRAME_MS, contacts.get(pair) ?? -Infinity))
+  return mascotPlan(sceneAt(world, tick * SCENE_FRAME_MS), layoutAt(world, tick), previous === undefined ? undefined : { ...previous, contacts })
 }
 
 /** A hop's place at a moment (frames, fractional): along its line from take-off to landing, up its arc. */
@@ -99,7 +97,7 @@ export const viewOf = (world: World): { sprites: Map<string, SpriteView>; seen: 
   const plan = world.cur
   if (plan === undefined) return { sprites, seen }
   if (world.view?.at === world.sceneNow) return world.view
-  const t = world.sceneNow / CHOREO_MS
+  const t = world.sceneNow / SCENE_FRAME_MS
   const frac = clamp(t - plan.tick, 0, 1)
   const after = new Map(world.next?.placements.map(one => [one.id, one]))
   const blade = frameAt(world.ms, BLADE_MS)
@@ -108,7 +106,7 @@ export const viewOf = (world: World): { sprites: Map<string, SpriteView>; seen: 
     const carried = world.carried.get(one.id)
     if (carried !== undefined) {
       const { x, lift } = carried.body
-      sprites.set(one.id, { x, d: carried.d, lift, pose: carried.mode === 'held' ? 'dangle' : 'tumble', kick: frameAt(world.ms, KICK_MS) })
+      sprites.set(one.id, { x, d: carried.d, lift, ...(carried.mode === 'ride' ? { motion: { kind: 'hop' as const, step: 0, lift: Math.round(lift), pose: 'air' as const } } : { pose: carried.mode === 'held' ? 'dangle' as const : 'tumble' as const }), kick: frameAt(world.ms, KICK_MS) })
       seen.set(one.id, { id: one.id, kind: one.kind, d: carried.d, x, lift, rect: rectAt(plan, one.kind, carried.d, x, lift), vy: carried.body.vy, descending: false, knocked: false })
       continue
     }
@@ -172,7 +170,7 @@ export const viewOf = (world: World): { sprites: Map<string, SpriteView>; seen: 
       ...(flight === 'scan' ? { scanning: true } : {}),
       ...(then?.facing === undefined ? {} : { facing: then.facing }),
     })
-    const knocked = motion?.kind === 'fallen' || (memo?.fallFrom !== undefined && plan.tick - memo.fallFrom < KNOCKED_TICKS)
+    const knocked = motion?.kind === 'fallen' || isKnocked(memo, plan.tick)
     seen.set(one.id, { id: one.id, kind: one.kind, d, x, lift, rect: rectAt(plan, one.kind, d, x, lift), ...(motion === undefined ? {} : { motion: motion.kind }), vy, descending: memo?.fly?.stage === 'descend', knocked })
   }
   world.view = { at: world.sceneNow, sprites, seen }

@@ -1,3 +1,4 @@
+import type { Hook, Next } from 'claude-code'
 import { expect, test } from 'claude-code/testing'
 import type { Engine } from 'claude-code/testing'
 
@@ -5,15 +6,20 @@ import type { HudData, ShadowAgentEntry } from '../types'
 import { MAX_SHADOWS, shadowCallStarted, shadowStepped, shadowsPruned } from './agent-shadows'
 import {
   NOW,
+  PANE,
+  PANE_PROPS,
   SESSION_ROW,
   SHADOWS,
+  SPAWN_EVENT,
   START,
   STATUS_ON,
   SURFACES,
   TOGGLE,
+  VIEWPORT,
   agentBoxes,
   callTool,
   complete,
+  direct,
   entriesOf,
   entryOf,
   lastStatus,
@@ -25,6 +31,7 @@ import {
   workflowWorld,
 } from './register.fixtures'
 import type { Drawing, Held } from './register.fixtures'
+import { register } from './register'
 
 // Workflow agents in the hooks: shown after their first call, their tools
 // and ends, the Workflow group, expiry and the cap, facts, and the option off.
@@ -403,4 +410,50 @@ test('with showWorkflows off, workflow agents are neither kept, drawn, counted n
   expect(world.statuses.some(text => text?.includes('workflow') === true)).toBe(false)
   const { text = '' } = await $.command.run({ ...TOGGLE, args: 'facts' })
   expect(text).not.toContain('shadows')
+})
+
+test('a workflow agent\'s own agent.spawn never writes the board; its first call shows it in the Workflow group', STATUS_ON, async ($, on) => {
+  const { clock, held, agentWrites, shadowWrites, world } = workflowWorld(on)
+  const d = direct()
+  // A direct registration has no surface module for the smooth scene's Client: the proxied pane uses the classic Box scene.
+  await register(d.on, { showWorkflows: false, statusLine: true, motion: 'classic' })
+  const draw = d.hooks.get(`ui.render${JSON.stringify({ component: 'Pane', requestId: PANE })}`) as Hook<'ui.render'>
+  on('ui.render', { component: 'Pane', requestId: 'workflow-off' }, (host, e, next) =>
+    draw({ ...d.$, ui: { ...d.$.ui, resolve: host.ui.resolve } }, e, next as unknown as Next<'ui.render'>))
+  await $.session.start(START)
+  await clock.settle()
+  const before = [agentWrites(), shadowWrites(), world.writes.filter(key => key === 'statusText').length]
+  const result = await spawn($, { workflow: { runId: 'wf_1', agentIndex: 1 } })
+  expect(result.agentId).toBe('sub-1')
+  expect([agentWrites(), shadowWrites(), world.writes.filter(key => key === 'statusText').length]).toEqual(before)
+  expect(entriesOf(held)).toEqual({})
+  const ui = await mountPane($)
+  expect(await ui.find({ type: 'Box', key: 'workflow:sub-1' })).toBeUndefined()
+  await callTool($, 'sub-1', 'Read')
+  await ui.redraw()
+  expect(agentWrites()).toBe(before[0])
+  expect(await ui.find({ type: 'Box', key: 'workflow:sub-1' })).toBeDefined()
+  expect((await paneOf(ui)).board.some(row => row.startsWith('▾ Workflow'))).toBe(true)
+  await ui.unmount()
+
+  // With showWorkflows off, neither the spawn nor its first call writes or shows it.
+  const offBefore = [d.world.writes, d.world.statuses.length]
+  const spawned = d.next<'agent.spawn'>({ model: 'claude-sonnet-5-5', agentId: 'sub-1' })
+  const offResult = await d.hook('agent.spawn')(d.$, { ...SPAWN_EVENT, workflow: { runId: 'wf_1', agentIndex: 1 } }, spawned.run)
+  expect(offResult.agentId).toBe('sub-1')
+  expect(spawned.calls).toHaveLength(1)
+  expect([d.world.writes, d.world.statuses.length]).toEqual(offBefore)
+  await d.hook('tool.call')(d.$, { tool: 'Read', tool_use_id: 'read-off', agentId: 'sub-1', file_path: '/work/a' }, d.next<'tool.call'>({ result: 'ok' }).run)
+  expect([d.world.writes, d.world.statuses.length]).toEqual(offBefore)
+  expect([...d.held.keys()]).not.toContain(SHADOWS)
+  expect([...d.held.keys()]).not.toContain('agents')
+  expect([...d.held.keys()]).not.toContain('statusText')
+  for (const surface of SURFACES) {
+    const off = await $.ui.mount({ plugin: 'mod-hud', surface, component: 'Pane', requestId: 'workflow-off', props: PANE_PROPS, viewport: VIEWPORT })
+    expect((await paneOf(off)).board).toEqual([SESSION_ROW, '▾ Agents', 'No agents yet.'])
+    expect(await workflowRows(off)).toHaveLength(0)
+    expect(await agentBoxes(off)).toHaveLength(0)
+    expect((await paneOf(off)).board.join(' ')).not.toContain('Workflow')
+    await off.unmount()
+  }
 })

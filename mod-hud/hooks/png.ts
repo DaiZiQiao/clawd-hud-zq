@@ -110,7 +110,6 @@ for (let index = 0; index < LENGTH_BASE.length; index += 1) {
   const end = index + 1 < LENGTH_BASE.length ? (LENGTH_BASE[index + 1] ?? 259) : 259
   for (let length = LENGTH_BASE[index] ?? 3; length < end; length += 1) LENGTH_SYMBOL[length] = index
 }
-LENGTH_SYMBOL[258] = 28
 const DISTANCE_CODE = new Uint8Array(30).map((_, symbol) => reversed(symbol, 5))
 
 const distanceSymbol = (distance: number): number => {

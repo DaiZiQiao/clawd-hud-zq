@@ -29,7 +29,7 @@ export const DEPTH_FRAMES = 2
 export const DEPTH_COST = 2
 /** A pause between walks: 4 to 12 frames. */
 export const PAUSE_MIN = 4
-export const PAUSE_SPAN = 9
+const PAUSE_SPAN = 9
 /** One walking frame in this many starts a leap: a hop, or a flight where there is room. */
 export const LEAP_ONE_IN = 10
 /** One leap in this many is a flight, where a flight fits. */
@@ -62,10 +62,22 @@ export const frameAt = (ms: number, frameMs = 250): number => Math.floor(ms / fr
 /** A collision: knocked down (2), dizzy (8), getting up (2). */
 export const FALL_TICKS = 2
 export const DIZZY_TICKS = 8
-export const RISE_TICKS = 2
+const RISE_TICKS = 2
 export const KNOCKED_TICKS = FALL_TICKS + DIZZY_TICKS + RISE_TICKS
 /** How long a pair waits before colliding again, by mode, in ms. */
 export const CONTACT_COOLDOWN_MS: Readonly<Record<CollisionMode, number>> = { off: 0, rare: 30_000, normal: 10_000 }
+
+/** Two ids in code-point order, independent of the surface's locale. */
+export const compareIds = (a: string, b: string): number => {
+  const left = Array.from(a, one => one.codePointAt(0) ?? 0)
+  const right = Array.from(b, one => one.codePointAt(0) ?? 0)
+  for (let index = 0; index < Math.min(left.length, right.length); index += 1) {
+    const difference = (left[index] ?? 0) - (right[index] ?? 0)
+    if (difference !== 0) return difference
+  }
+
+  return left.length - right.length
+}
 
 /** The two ids of a pair, in a stable order. */
 export const pairKey = (a: string, b: string): string => (a < b ? `${a}\u0000${b}` : `${b}\u0000${a}`)

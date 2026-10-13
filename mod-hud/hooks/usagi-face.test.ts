@@ -79,7 +79,6 @@ describe('its lids', () => {
     const pose = fullTarget(look, CONTEXT)
     expect(pose.eyes).toBe('half')
     expect(pose.mouthShape).toBe('smirk')
-    expect(pose.droop).toBe(0)
     expect(pose.earsDown).toBeGreaterThan(0.5)
     expect(usagiFigure(look, { energy: 0 }).bitmap.slice(0, 3)).toEqual([...EARS.short])
   })

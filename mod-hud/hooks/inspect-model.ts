@@ -2,7 +2,7 @@ import type { HudData, HudLedger, HudMainFacts, HudSelection, HudUsageFacts, Sha
 import { ACCENT, elapsedOf, humanize, isRunning, isStalled, lookOf, shadowLookOf, titleOf } from './agent-model'
 import type { Agents } from './agent-model'
 import { shadowName } from './agent-shadows'
-import { busyIdleOf, contextGrowth, limitEta, shortModel, turnsUntil } from './facts'
+import { busyIdleOf, contextGrowth, limitEta, shortModel } from './facts'
 import { formatReset } from './hud'
 import { runCounts } from './hud-ledger'
 import type { Settings } from './hud-options'
@@ -36,7 +36,7 @@ export const inspectedOf = (
   const facts = (...items: (string | undefined)[]): string[] => items.filter((one): one is string => one !== undefined && one !== '')
   if (choice.kind === 'main') {
     const startedAt = hudData?.session?.startedAt
-    const status = main.busySince !== undefined ? 'busy' : settings.mascots && main.idleSince !== undefined ? 'idle' : undefined
+    const status = main.busySince !== undefined ? 'busy' : main.idleSince !== undefined ? 'idle' : undefined
 
     return {
       header: {
@@ -76,7 +76,7 @@ export const overviewOf = (
   usage: HudUsageFacts,
   main: HudMainFacts,
   spent: HudLedger,
-  compactAt: number | undefined,
+  turnsLeft: number | undefined,
   startedAt: number | undefined,
   all: Agents,
   held: Readonly<Record<string, ShadowAgentEntry>>,
@@ -98,7 +98,7 @@ export const overviewOf = (
       window: usage.window,
       percent,
       perTurn,
-      turnsLeft: turnsUntil(usage.contextTokens, compactAt ?? usage.window, perTurn),
+      turnsLeft,
     }),
     tokens: usage.tokens,
     limits: usage.rateLimits.map(limit => {

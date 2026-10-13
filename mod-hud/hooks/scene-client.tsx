@@ -18,12 +18,13 @@ import type { Smoother } from './smooth-pose'
 // drag and throw. The hooks hand it the scene's inputs as props on each of
 // their redraws and hear from it only when a click asks to inspect.
 //
-// Two clocks: the choreography (hooks/motion-arbitrate.ts, through
-// `mascotPlan`) steps in its 250 ms frames, a frame ahead of the drawing,
-// which glides between the two at FRAME_MS (sub-cell positions, drawn at the
-// nearest cell; hooks/scene-view.ts); the person's bodies
-// (hooks/motion-physics.ts) step at FRAME_MS (hooks/scene-world.ts); the
-// vector art (hooks/scene-smooth.ts) draws a frame every VECTOR_FRAME_MS.
+// The choreography (hooks/motion-arbitrate.ts, through `mascotPlan`) steps
+// in its 250 ms frames, a frame ahead of the drawing, which glides between
+// the two at the clock's step, FRAME_MS or VECTOR_FRAME_MS for vector art
+// in pixels (sub-cell positions, rounded to the nearest cell in text rows;
+// hooks/scene-view.ts). The frame clock steps the person's bodies too
+// (hooks/motion-physics.ts through hooks/scene-world.ts), at FRAME_MS, or
+// VECTOR_FRAME_MS for vector art drawn in pixels (hooks/scene-smooth.ts).
 // docs/mascots.md, "Physics and controls".
 
 type State = {
@@ -118,7 +119,7 @@ export const draw = (world: World, elements: SceneElements): RenderElement => {
   if (!pixels) return renderCanvas(elements, canvas.grid, 'scene')
   const alt = sceneAlt(scene, canvas.layers, plan.collapsed.length)
   // The vector art: the same plan and view, each mascot's pose eased from its last frame.
-  const frame = world.props.art === 'vector' ? smoothFrame(scene, layout, plan, view.sprites, smootherOf(world), world.sceneNow) : undefined
+  const frame = world.props.art === 'vector' ? smoothFrame(scene, layout, plan, view.sprites, smootherOf(world), world.sceneNow, false, canvas) : undefined
   if (frame !== undefined) return pixelsOf(elements, { ...smoothSvg(frame, room.columns, room.rows, SVG_MAX), alt }, room)
 
   return pixelsOf(elements, sceneSvg(canvas.layers, room, alt), room)

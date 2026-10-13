@@ -2,7 +2,7 @@ import type { AgentBoardEntry, HudData, ShadowAgentEntry } from '../types'
 import { READ_TOOLS, isShadowLive, isShadowVisible } from './agent-shadows'
 import { ACCESSORY_NAMES } from './mascot-sprites'
 import type { Accessory } from './mascot-sprites'
-import { hashOf } from './motion-rules'
+import { compareIds, hashOf } from './motion-rules'
 import {
   BATON_TICKS,
   CHEER_TICKS,
@@ -143,7 +143,7 @@ export const activityOf = (tool: string | undefined): MascotActivity => {
   return 'thinking'
 }
 
-/** A type's role, for its letter: `r` reviewer, `d` debugger, `p` Plan, `w` worker, `f` frontend, `e` Explore or researcher; none for any other. */
+/** A type's role, for its letter: `r` reviewer, `d` debugger, `p` Plan, `w` worker, coder or writer, `f` frontend, `e` Explore or researcher; none for any other. */
 export const roleOf = (type: string | undefined): MascotRole | undefined => {
   const name = (type ?? '').toLowerCase()
   if (/review/.test(name)) return 'reviewer'
@@ -151,6 +151,7 @@ export const roleOf = (type: string | undefined): MascotRole | undefined => {
   if (/plan/.test(name)) return 'planner'
   if (/frontend/.test(name)) return 'frontend'
   if (/worker/.test(name)) return 'worker'
+  if (/coder|writer/.test(name)) return 'worker'
   if (/explore|research/.test(name)) return 'explorer'
 
   return undefined
@@ -176,7 +177,11 @@ export const energyOf = (effort: string | undefined): Energy => {
 }
 
 /** A type whose desk a reviewer visits: one that writes or fixes. */
-export const isMakerType = (type: string | undefined): boolean => /worker|frontend|debug/i.test(type ?? '')
+export const isMakerType = (type: string | undefined): boolean => {
+  const role = roleOf(type)
+
+  return role === 'worker' || role === 'frontend' || role === 'debugger'
+}
 
 const contextPercentOf = (hud: HudData | undefined): number | undefined => {
   const usage = hud?.usage
@@ -211,13 +216,8 @@ const linkedBefore = (list: readonly Actor[], start: number, wanted: (actor: Act
     .filter(one => start - (one.endedAt ?? 0) >= 0 && start - (one.endedAt ?? 0) <= LINK_WINDOW_MS)
     .sort((a, b) => (b.endedAt ?? 0) - (a.endedAt ?? 0) || a.id.localeCompare(b.id))[0]
 
-/**
- * Each agent's accessory, in spawn order: `accessoryOf` against what the
- * agents before it that were still in the scene at its spawn wear. What came
- * later never counts, and what was there at its spawn stays there, so an
- * agent's accessory holds while it is in the scene.
- */
-const accessoriesOf = (list: readonly Actor[]): Map<string, Accessory> => {
+/** Each agent's accessory in spawn order, against the earlier agents still there at its spawn; what came later never counts, and pinned ones keep what they wore. */
+const accessoriesOf = (list: readonly Actor[], pinned?: Readonly<Record<string, Accessory>>): Map<string, Accessory> => {
   const worn = new Map<string, Accessory>()
   list.forEach((entry, index) => {
     const taken = new Set<Accessory>()
@@ -226,7 +226,7 @@ const accessoriesOf = (list: readonly Actor[]): Map<string, Accessory> => {
       const one = worn.get(earlier.id)
       if (!gone && one !== undefined) taken.add(one)
     }
-    worn.set(entry.id, accessoryOf(entry.id, colourFor(entry.id), taken))
+    worn.set(entry.id, pinned?.[entry.id] ?? accessoryOf(entry.id, colourFor(entry.id), taken))
   })
 
   return worn
@@ -249,9 +249,22 @@ const actorsOf = (board: readonly AgentBoardEntry[], held: SceneOptions['shadows
   const list: Actor[] = [...board, ...workflow]
   const candidates = list
     .filter(entry => entry.status === 'running' || isNumber(entry.endedAt))
-    .sort((a, b) => a.startedAt - b.startedAt || a.id.localeCompare(b.id))
+    .sort((a, b) => a.startedAt - b.startedAt || compareIds(a.id, b.id))
 
   return { list, candidates }
+}
+
+/** Every candidate's accessory, with pinned ones kept and newcomers choosing against what the earlier candidates wear. */
+export const pinnedAccessoriesOf = (
+  agents: readonly AgentBoardEntry[] | Readonly<Record<string, AgentBoardEntry>>,
+  shadows: SceneOptions['shadows'],
+  now: number,
+  pinned: Readonly<Record<string, Accessory>>,
+): Record<string, Accessory> => {
+  const board = Array.isArray(agents) ? agents : Object.values(agents)
+  const { candidates } = actorsOf(board, shadows, now)
+
+  return Object.fromEntries(accessoriesOf(candidates, pinned))
 }
 
 /**
@@ -277,8 +290,7 @@ export const sceneOf = (
   const withoutMain = options.only === 'agents'
 
   const known = new Set([...candidates.map(entry => entry.id), ...(history?.known ?? [])])
-  const runningFlow = candidates.filter(entry => entry.workflow === true && entry.status === 'running')
-  const worn = accessoriesOf(candidates)
+  const worn = accessoriesOf(candidates, options.pinned)
 
   const drafted = candidates.map((entry): MascotAgent => {
     const quiet = now - entry.lastActivityAt
@@ -288,14 +300,16 @@ export const sceneOf = (
     const idle = stalled && !asking
     const role = entry.workflow === true ? undefined : roleOf(entry.type)
     const spawner = entry.workflow === true ? undefined : entry.parentId !== undefined && known.has(entry.parentId) ? entry.parentId : withoutMain ? undefined : 'main'
-    const accessory = history?.worn[entry.id] ?? worn.get(entry.id)
+    const accessory = options.pinned?.[entry.id] ?? history?.worn[entry.id] ?? worn.get(entry.id)
     const energy = energyOf(entry.effort)
     // A reading streak: only reads since `readingSince`, the current call one too (or none).
     const reading = entry.status === 'running' && isNumber(entry.readingSince) && (entry.currentTool === undefined || READ_TOOLS.has(entry.currentTool))
       ? Math.max(0, now - entry.readingSince) : undefined
     let squadNext: string | undefined
-    if (entry.workflow === true && entry.status === 'done') {
-      squadNext = (runningFlow.find(one => one.startedAt > entry.startedAt || (one.startedAt === entry.startedAt && one.id > entry.id)) ?? runningFlow[0])?.id
+    if (entry.workflow === true && entry.status === 'done' && isNumber(entry.endedAt)) {
+      const squad = candidates.filter(one => one.workflow === true && one.id !== entry.id && one.startedAt <= entry.endedAt!
+        && (one.status === 'running' || (isNumber(one.endedAt) && one.endedAt > entry.endedAt!)))
+      squadNext = (squad.find(one => one.startedAt > entry.startedAt || (one.startedAt === entry.startedAt && compareIds(one.id, entry.id) > 0)) ?? squad[0])?.id
     }
 
     return {
@@ -339,8 +353,8 @@ export const sceneOf = (
     }
     if (agent.role === 'debugger' && (history === undefined ? followsReview(list, self) : history.fixes.includes(agent.id))) {
       const desk = shown
-        .filter(one => one.id !== agent.id && isMakerType(one.type))
-        .sort((a, b) => (a.ageMs ?? Infinity) - (b.ageMs ?? Infinity))[0]
+        .filter(one => one.id !== agent.id && isMakerType(one.type) && (byId.get(one.id)?.startedAt ?? Infinity) < self.startedAt)
+        .sort((a, b) => (byId.get(b.id)?.startedAt ?? 0) - (byId.get(a.id)?.startedAt ?? 0) || compareIds(a.id, b.id))[0]
       if (desk !== undefined) return { ...agent, link: { kind: 'fix', target: desk.id } }
     }
 
@@ -348,7 +362,7 @@ export const sceneOf = (
   })
 
   // Spawned within two seconds of the batch's first: one pipe, popping out one after another.
-  const spawned = mascots.filter(agent => agent.ageMs !== undefined)
+  const spawned = drafted.filter(agent => agent.ageMs !== undefined)
   const shared = new Map<string, PipeShare>()
   for (let index = 0; index < spawned.length;) {
     const first = spawned[index] as MascotAgent
@@ -359,8 +373,7 @@ export const sceneOf = (
     const { drops, up } = pipeBatch(batch.map(agent => now - (agent.ageMs ?? 0) - start))
     batch.forEach((agent, at) => {
       const after = now - (agent.ageMs ?? 0) - start
-      // Only while its pipe is there.
-      if ((agent.ageMs ?? 0) + after < up + PIPE_SLIDE_MS) shared.set(agent.id, { anchor: first.id, after, drop: drops[at] ?? PIPE_SLIDE_MS, up })
+      shared.set(agent.id, { anchor: first.id, after, drop: drops[at] ?? PIPE_SLIDE_MS, up })
     })
   }
   const piped = mascots.map(agent => (shared.has(agent.id) ? { ...agent, pipe: shared.get(agent.id) as PipeShare } : agent))
@@ -401,15 +414,15 @@ export const sceneOf = (
 // --- the smooth scene's inputs: what the hooks hand its surface module -----------
 
 /** What the whole board settles for the agents `carried` (`SceneHistory`): only theirs, so the props stay small. */
-const historyOf = (agents: readonly AgentBoardEntry[], shadows: readonly ShadowAgentEntry[], now: number, carried: ReadonlySet<string>): SceneHistory => {
+const historyOf = (agents: readonly AgentBoardEntry[], shadows: readonly ShadowAgentEntry[], now: number, carried: ReadonlySet<string>, pinned?: Readonly<Record<string, Accessory>>): SceneHistory => {
   const { list, candidates } = actorsOf(agents, shadows, now)
-  const worn = accessoriesOf(candidates)
+  const worn = accessoriesOf(candidates, pinned)
   const known = new Set(candidates.map(entry => entry.id))
   const kept = candidates.filter(entry => carried.has(entry.id))
 
   return {
-    worn: Object.fromEntries(kept.flatMap(entry => {
-      const accessory = worn.get(entry.id)
+    worn: Object.fromEntries((pinned === undefined ? kept : [...agents, ...shadows.map(actorOf)].filter(entry => carried.has(entry.id))).flatMap(entry => {
+      const accessory = pinned?.[entry.id] ?? worn.get(entry.id)
 
       return accessory === undefined ? [] : [[entry.id, accessory]]
     })),
@@ -424,6 +437,7 @@ export const sceneInputsOf = (
   shadows: readonly ShadowAgentEntry[],
   hud: HudData | undefined,
   room: Omit<SceneInputs, 'agents' | 'shadows' | 'hud'>,
+  pinned?: Readonly<Record<string, Accessory>>,
 ): SceneInputs => {
   const percent = contextPercentOf(hud)
   const horizon = Math.max(LINK_WINDOW_MS, (holdTicks({ status: 'done', spawner: 'main', squadNext: 'next' }, room.scenes) + EXIT_TICKS) * SCENE_FRAME_MS)
@@ -433,7 +447,7 @@ export const sceneInputsOf = (
 
   return {
     ...room,
-    history: historyOf(agents, shadows, room.now, new Set([...carried, ...flow].map(entry => entry.id))),
+    history: historyOf(agents, shadows, room.now, new Set([...carried, ...flow].map(entry => entry.id)), pinned),
     agents: carried.map(entry => defined<SceneActorInput>({
       id: entry.id,
       type: entry.type,

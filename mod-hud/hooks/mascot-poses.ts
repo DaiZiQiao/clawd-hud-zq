@@ -348,7 +348,7 @@ export const startledLook = (ms: number): Look => {
     head,
     arms: shaking ? 'rest' : 'low',
     ...(shaking && Math.floor(turn / 2) % 2 === 0 ? { nudge: turn % 2 === 0 ? (-1 as const) : (1 as const) } : {}),
-    overlays: [at(OVERLAYS.sweat, Math.floor(ms / 250)), ...OVERLAYS.startle],
+    overlays: [at(OVERLAYS.sweat, Math.floor(ms / SCENE_FRAME_MS)), ...OVERLAYS.startle],
   }
 }
 
