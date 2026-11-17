@@ -6,7 +6,9 @@ Your session's own mascot lives in the band just above the prompt, so it is ther
 
 And a strip above the prompt: thumbnails of the images you paste into Claude Code, shown before you send, real pixels in kitty and Ghostty and coloured half-block cells in other terminals.
 
-This repository is a Claude Code marketplace that ships two mods, `mod-hud` (the HUD pane) and `mod-images` (the image strip). Each installs on its own: take either, or both. Everything below is mod-hud's until [mod-images](#mod-images).
+And a look, Tidepool: sea-glass by day and a bioluminescent tidepool by night in the desktop app, with slow caustic light drifting behind the conversation, and two matching themes for the terminal.
+
+This repository is a Claude Code marketplace that ships three mods, `mod-hud` (the HUD pane), `mod-images` (the image strip) and `mod-tidepool` (the look). Each installs on its own: take any of them. Everything below is mod-hud's until [mod-images](#mod-images) and [mod-tidepool](#mod-tidepool).
 
 ## Requirements
 
@@ -25,22 +27,23 @@ From inside Claude Code:
 /plugin marketplace add DaiZiQiao/clawd-hud-zq
 /plugin install mod-hud@clawd-hud-zq
 /plugin install mod-images@clawd-hud-zq
+/plugin install mod-tidepool@clawd-hud-zq
 ```
 
-Either install line works on its own. Then restart Claude Code.
+Each install line works on its own. Then restart Claude Code.
 
 Alternatively, clone this repository and add the mod folders you want to `CLAUDE_CODE_PLUGIN_DIRS` (separated by `:`, or `;` on Windows):
 
 ```
 git clone https://github.com/DaiZiQiao/clawd-hud-zq
-export CLAUDE_CODE_PLUGIN_DIRS="$PWD/clawd-hud-zq/mod-hud:$PWD/clawd-hud-zq/mod-images"
+export CLAUDE_CODE_PLUGIN_DIRS="$PWD/clawd-hud-zq/mod-hud:$PWD/clawd-hud-zq/mod-images:$PWD/clawd-hud-zq/mod-tidepool"
 ```
 
 In PowerShell:
 
 ```
 git clone https://github.com/DaiZiQiao/clawd-hud-zq
-$env:CLAUDE_CODE_PLUGIN_DIRS = "$PWD\clawd-hud-zq\mod-hud;$PWD\clawd-hud-zq\mod-images"
+$env:CLAUDE_CODE_PLUGIN_DIRS = "$PWD\clawd-hud-zq\mod-hud;$PWD\clawd-hud-zq\mod-images;$PWD\clawd-hud-zq\mod-tidepool"
 ```
 
 ## Usage
@@ -220,6 +223,44 @@ Claude Code saves each pasted image the moment it is pasted, in a temporary fold
 - After Esc Esc and then ↑, Claude Code drops the images of the recalled prompt, but the strip still shows them.
 - No thumbnails when Claude Code keeps no image folder: with `CLAUDE_CODE_SKIP_PROMPT_HISTORY` set, or in a nested session. Each tile then reads `no preview`.
 
+## mod-tidepool
+
+A look for Claude Code. In the desktop app's Code tab it recolours the app, sea-glass and pale sand in light mode and a dark teal tidepool in dark mode, following the app's own mode, and puts a slow scene behind the conversation: caustic light drifting across the top of the window, light shafts from the top right and a few rising motes, under the app's frosted panels. In the terminal it adds two themes to `/theme`, Tidepool Dark and Tidepool Light. It needs Claude Code 2.1.324 or newer in the Code tab.
+
+![The Tidepool backdrop in dark mode (left) and light mode (right)](mod-tidepool/docs/backdrop.jpg)
+
+The backdrop alone, as Chromium draws it. In the app, the conversation sits on frosted panels over it.
+
+### Where it shows
+
+| Where | What it draws |
+| --- | --- |
+| Desktop app, Code tab | The colours and the moving backdrop. |
+| Terminal | Nothing until you choose Tidepool Dark or Tidepool Light in `/theme`. Claude Code does not change the terminal's own background, so Dark suits a dark terminal and Light a light one. |
+| Mobile app | Uncertain. Claude Code's docs list the mobile app for backdrops, but their table of where mods run says a cloud session draws nothing and Remote Control draws only in the terminal on your machine. |
+| VS Code | No look. |
+
+Not yet seen in the desktop app: it was checked with `claude plugin test`, and its scene in headless Chromium, in both modes, at desktop and phone sizes.
+
+### Usage
+
+- Install it, then start a new session in the desktop app's Code tab. The look is set as each session starts, so a session already open keeps its own until it starts again.
+- One look stands per session: another mod that sets a theme replaces Tidepool's, whichever set it last.
+- To take it off, disable or uninstall `mod-tidepool` in `/plugin` (the desktop app: + beside the prompt box, then Plugins).
+- For the terminal, run `/theme` and pick Tidepool Dark or Tidepool Light, marked as from `mod-tidepool`.
+
+### Contrast, motion and cost
+
+- In the app, primary text is 12.7:1 or better on every surface, muted text 5.7:1 or better, in both modes. In the terminal themes, every text colour is 5.5:1 or better on black, `#1e1e1e` and Solarized dark (Dark), and 4.8:1 or better on white, `#f5f5f5`, Solarized light and the look's own page colour (Light).
+- With reduced motion asked for, the scene holds still, and every moving part keeps a resting place, so it still looks finished.
+- No filters or masks, and every animation steps on one shared 10 Hz clock, so the scene redraws ten times a second rather than sixty. In headless Chromium, drawing in software, it costs about 50 ms of main-thread time a second (an empty page: 20) and holds 60 frames a second.
+
+### Changing it
+
+- The palette is in `mod-tidepool/hooks/register.tsx`, built by `makeColors` from a few colours. `hooks/make-colors.js` and `make-colors.d.ts` are copied unchanged from Claude Code's plugin-authoring skill: copy them again when Claude Code updates, and run the tests.
+- The scene is generated: edit `mod-tidepool/scripts/gen-scene.mjs` and run `node mod-tidepool/scripts/gen-scene.mjs` to rewrite `hooks/scene.ts`.
+- The terminal themes are `mod-tidepool/themes/tidepool-dark.json` and `tidepool-light.json`, in the [custom theme format](https://code.claude.com/docs/en/terminal-config#create-a-custom-theme).
+
 ## Development
 
 ```
@@ -230,6 +271,9 @@ tsc -p mod-hud/tsconfig.json
 claude plugin validate mod-images
 claude plugin test mod-images
 tsc -p mod-images/tsconfig.json
+claude plugin validate mod-tidepool
+claude plugin test mod-tidepool
+tsc -p mod-tidepool/tsconfig.json
 ```
 
 Each mod's `.claude-plugin/types/` is generated by the Claude Code engine each time it loads the mod (start one session with `claude --plugin-dir <mod>` in a fresh clone before running `tsc`); it is git-ignored and not edited by hand.
