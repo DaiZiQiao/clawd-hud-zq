@@ -4,7 +4,7 @@
     "name": "Dai Zi Qiao",
     "url": "https://github.com/DaiZiQiao"
   },
-  "description": "clawd-hud-zq: two Claude Code mods, each installed on its own: a HUD side pane with session facts, subagents and animated mascots (the session's mascot walks above the prompt and offers cost-aware auto-tidy, on by default, at a safe point; smooth vector mascots in the desktop app, Ghostty and kitty), and a strip above the prompt with thumbnails of the images pasted into it.",
+  "description": "clawd-hud-zq: three Claude Code mods, each installed on its own: a HUD side pane with session facts, subagents and animated mascots (the session's mascot walks above the prompt and offers cost-aware auto-tidy, on by default, at a safe point; smooth vector mascots in the desktop app, Ghostty and kitty), a strip above the prompt with thumbnails of the images pasted into it, and Tidepool, a look: sea-glass by day and a bioluminescent tidepool by night in the desktop app, with matching terminal themes.",
   "version": "1.11.0",
   "plugins": [
     {
@@ -36,6 +36,21 @@
       "license": "MIT",
       "category": "productivity",
       "keywords": ["images", "paste", "thumbnails", "prompt", "mods"]
+    },
+    {
+      "name": "mod-tidepool",
+      "source": "./mod-tidepool",
+      "description": "Tidepool, a look for Claude Code: in the desktop app, sea-glass by day and a bioluminescent tidepool by night, with slow caustic light drifting behind the conversation; in the terminal, Tidepool Dark and Tidepool Light in /theme.",
+      "version": "0.1.0",
+      "author": {
+        "name": "Dai Zi Qiao",
+        "url": "https://github.com/DaiZiQiao"
+      },
+      "homepage": "https://github.com/DaiZiQiao/clawd-hud-zq",
+      "repository": "https://github.com/DaiZiQiao/clawd-hud-zq",
+      "license": "MIT",
+      "category": "productivity",
+      "keywords": ["theme", "look", "backdrop", "colors", "desktop", "mods"]
     }
   ]
 }
