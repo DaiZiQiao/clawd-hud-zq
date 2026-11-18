@@ -4,7 +4,7 @@
     "name": "Dai Zi Qiao",
     "url": "https://github.com/DaiZiQiao"
   },
-  "description": "clawd-hud-zq: three Claude Code mods, each installed on its own: a HUD side pane with session facts, subagents and animated mascots (the session's mascot walks above the prompt and offers cost-aware auto-tidy, on by default, at a safe point; smooth vector mascots in the desktop app, Ghostty and kitty), a strip above the prompt with thumbnails of the images pasted into it, and Tidepool, a look: sea-glass by day and a bioluminescent tidepool by night in the desktop app, with matching terminal themes.",
+  "description": "clawd-hud-zq: four Claude Code mods, each installed on its own: a HUD side pane with session facts, subagents and animated mascots (the session's mascot walks above the prompt and offers cost-aware auto-tidy, on by default, at a safe point; smooth vector mascots in the desktop app, Ghostty and kitty), a strip above the prompt with thumbnails of the images pasted into it, Tidepool, a look: sea-glass by day and a bioluminescent tidepool by night in the desktop app, with matching terminal themes, and living backgrounds drawn on the GPU that answer your pointer.",
   "version": "1.11.0",
   "plugins": [
     {
@@ -51,6 +51,21 @@
       "license": "MIT",
       "category": "productivity",
       "keywords": ["theme", "look", "backdrop", "colors", "desktop", "mods"]
+    },
+    {
+      "name": "mod-living",
+      "source": "./mod-living",
+      "description": "Living backgrounds for the Claude desktop app, drawn on the GPU and answering your pointer: ink in water, aurora, living coral, a lava lamp and a summer meadow. /living switches between them and remembers the choice.",
+      "version": "0.1.0",
+      "author": {
+        "name": "Dai Zi Qiao",
+        "url": "https://github.com/DaiZiQiao"
+      },
+      "homepage": "https://github.com/DaiZiQiao/clawd-hud-zq",
+      "repository": "https://github.com/DaiZiQiao/clawd-hud-zq",
+      "license": "MIT",
+      "category": "productivity",
+      "keywords": ["background", "backdrop", "shader", "animated", "desktop", "mods"]
     }
   ]
 }

@@ -8,7 +8,9 @@ And a strip above the prompt: thumbnails of the images you paste into Claude Cod
 
 And a look, Tidepool: sea-glass by day and a bioluminescent tidepool by night in the desktop app, with slow caustic light drifting behind the conversation, and two matching themes for the terminal.
 
-This repository is a Claude Code marketplace that ships three mods, `mod-hud` (the HUD pane), `mod-images` (the image strip) and `mod-tidepool` (the look). Each installs on its own: take any of them. Everything below is mod-hud's until [mod-images](#mod-images) and [mod-tidepool](#mod-tidepool).
+And living backgrounds for the desktop app, drawn on the GPU and answering your pointer: ink in water, an aurora, living coral, a lava lamp and a summer meadow.
+
+This repository is a Claude Code marketplace that ships four mods, `mod-hud` (the HUD pane), `mod-images` (the image strip), `mod-tidepool` (the look) and `mod-living` (the living backgrounds). Each installs on its own: take any of them. Everything below is mod-hud's until [mod-images](#mod-images), [mod-tidepool](#mod-tidepool) and [mod-living](#mod-living).
 
 ## Requirements
 
@@ -28,6 +30,7 @@ From inside Claude Code:
 /plugin install mod-hud@clawd-hud-zq
 /plugin install mod-images@clawd-hud-zq
 /plugin install mod-tidepool@clawd-hud-zq
+/plugin install mod-living@clawd-hud-zq
 ```
 
 Each install line works on its own. Then restart Claude Code.
@@ -36,14 +39,14 @@ Alternatively, clone this repository and add the mod folders you want to `CLAUDE
 
 ```
 git clone https://github.com/DaiZiQiao/clawd-hud-zq
-export CLAUDE_CODE_PLUGIN_DIRS="$PWD/clawd-hud-zq/mod-hud:$PWD/clawd-hud-zq/mod-images:$PWD/clawd-hud-zq/mod-tidepool"
+export CLAUDE_CODE_PLUGIN_DIRS="$PWD/clawd-hud-zq/mod-hud:$PWD/clawd-hud-zq/mod-images:$PWD/clawd-hud-zq/mod-tidepool:$PWD/clawd-hud-zq/mod-living"
 ```
 
 In PowerShell:
 
 ```
 git clone https://github.com/DaiZiQiao/clawd-hud-zq
-$env:CLAUDE_CODE_PLUGIN_DIRS = "$PWD\clawd-hud-zq\mod-hud;$PWD\clawd-hud-zq\mod-images;$PWD\clawd-hud-zq\mod-tidepool"
+$env:CLAUDE_CODE_PLUGIN_DIRS = "$PWD\clawd-hud-zq\mod-hud;$PWD\clawd-hud-zq\mod-images;$PWD\clawd-hud-zq\mod-tidepool;$PWD\clawd-hud-zq\mod-living"
 ```
 
 ## Usage
@@ -261,6 +264,49 @@ Not yet seen in the desktop app: it was checked with `claude plugin test`, and i
 - The scene is generated: edit `mod-tidepool/scripts/gen-scene.mjs` and run `node mod-tidepool/scripts/gen-scene.mjs` to rewrite `hooks/scene.ts`.
 - The terminal themes are `mod-tidepool/themes/tidepool-dark.json` and `tidepool-light.json`, in the [custom theme format](https://code.claude.com/docs/en/terminal-config#create-a-custom-theme).
 
+## mod-living
+
+Living backgrounds for the Claude desktop app's Code tab. Each is a shader the app plays on the GPU behind the conversation, under its frosted panels, and each answers your pointer:
+
+| Scene | What it does | Your pointer |
+| --- | --- | --- |
+| `meadow` (the default) | Towering summer cumulus drift over blue mountains; wind rolls in bright waves through the grass; petals ride the wind. Light mode. | A gust: it bends the grass and trees and scatters the petals. A press sends a ripple of wind out across the meadow. |
+| `ink` | Glowing ink drifts and curls on a slow current; three faint springs keep it moving. | Moving or pressing pours ink and pushes the water. |
+| `aurora` | Curtains of green and violet light over dark mountains, under twinkling stars. | Bends the curtains near it and brightens them; a press sends out a soft shimmer. |
+| `coral` | A reaction-diffusion pattern that grows, splits and keeps changing. | Pressing seeds new growth. |
+| `lava` | Glossy wax blobs drift, merge and split in warm light. | Each pointer is a blob of its own. |
+
+![The five scenes: meadow, ink, aurora, coral, lava](mod-living/docs/scenes.jpg)
+
+Frames of the browser prototype the shaders were ported from.
+
+### Usage
+
+| Command | What it does |
+| --- | --- |
+| `/living` | Say which scene is on, and list them. |
+| `/living <scene>` | Switch to `meadow`, `ink`, `aurora`, `coral` or `lava`, and keep it for later sessions. |
+| `/living off` | Take the background off, for this and later sessions. |
+
+- Each scene also sets the app's colours to match it: dark for the night scenes, light for the meadow.
+- One look stands per session. With `mod-tidepool` also installed, whichever sets its look last wins, so disable the one you are not using: `claude plugin disable mod-tidepool@clawd-hud-zq`.
+
+### Where it shows
+
+| Where | What it draws |
+| --- | --- |
+| Desktop app, Code tab | The scene, moving and answering the mouse anywhere in the window. |
+| Mobile app, Reduce Motion, or a GPU too weak | A still drawing of the scene, if the surface draws backgrounds at all. |
+| Terminal, VS Code | Nothing. |
+
+`claude plugin validate mod-living` checks each shader and estimates its cost: all five run on any GPU at 30 frames a second, the app drawing them at between 0.52 and 1.40 times full sharpness on a weak GPU and at full sharpness or better on a fast one. Not yet seen in the desktop app: checked with `claude plugin test` and the validator, and the scenes in a browser prototype.
+
+### Changing it
+
+- The scenes are `mod-living/hooks/shaders/*.ts`, in Claude Code's shader language (TypeScript against `claude-code/shader`). Run `claude plugin validate mod-living` after a change: it refuses what it cannot compile and prints each scene's cost.
+- The stills are generated: edit `mod-living/scripts/gen-stills.py` and run it to rewrite `hooks/stills.ts`.
+- The colours are in `mod-living/hooks/palettes.ts`, built by `makeColors`; `hooks/make-colors.js` and `make-colors.d.ts` are copied unchanged from Claude Code's plugin-authoring skill.
+
 ## Development
 
 ```
@@ -274,6 +320,9 @@ tsc -p mod-images/tsconfig.json
 claude plugin validate mod-tidepool
 claude plugin test mod-tidepool
 tsc -p mod-tidepool/tsconfig.json
+claude plugin validate mod-living
+claude plugin test mod-living
+tsc -p mod-living/tsconfig.json
 ```
 
 Each mod's `.claude-plugin/types/` is generated by the Claude Code engine each time it loads the mod (start one session with `claude --plugin-dir <mod>` in a fresh clone before running `tsc`); it is git-ignored and not edited by hand.

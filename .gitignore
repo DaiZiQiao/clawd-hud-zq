@@ -2,6 +2,7 @@
 mod-hud/.claude-plugin/types/
 mod-images/.claude-plugin/types/
 mod-tidepool/.claude-plugin/types/
+mod-living/.claude-plugin/types/
 node_modules/
 .DS_Store
 *.log

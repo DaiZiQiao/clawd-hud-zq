@@ -1,0 +1,9 @@
+{
+  "name": "mod-living",
+  "version": "0.1.0",
+  "author": {
+    "name": "Dai Zi Qiao",
+    "url": "https://github.com/DaiZiQiao"
+  },
+  "description": "Living backgrounds for the Claude desktop app, drawn on the GPU and answering your pointer: ink in water, aurora, living coral, a lava lamp and a summer meadow. /living switches between them and remembers the choice."
+}
